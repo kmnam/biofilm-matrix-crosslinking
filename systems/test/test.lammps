@@ -22,6 +22,20 @@ bond_style hybrid fene harmonic
 pair_style lj/cut 2.5
 boundary p p p
 
+# Maintain neighbor lists with given additional "skin" distance
+neighbor 1.4 bin
+
+# Build neighbor lists at every timestep 
+neigh_modify every 1 delay 1
+
+# ---------------------------------------------------------------------- #
+# PARSE INPUT MOLECULES
+# ---------------------
+read_data test_init.data
+
+# ---------------------------------------------------------------------- #
+# DEFINE BOND AND POTENTIAL PARAMETERS
+# ------------------------------------
 # Define FENE bond parameters (K, R0, \epsilon, \sigma)
 bond_coeff 1 fene 30.0 1.5 1.0 1.0
 
@@ -35,17 +49,6 @@ pair_modify shift yes
 
 # Exclude Lennard-Jones potential contributions between FENE-bonded atoms
 special_bonds fene
-
-# Maintain neighbor lists with given additional "skin" distance
-neighbor 1.4 bin
-
-# Build neighbor lists at every timestep 
-neigh_modify every 1 delay 1
-
-# ---------------------------------------------------------------------- #
-# PARSE INPUT MOLECULES
-# ---------------------
-read_data test_init.data
 
 # ---------------------------------------------------------------------- #
 # ENERGY MINIMIZATION
