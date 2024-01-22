@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------- #
+# Equilibrate a test system of 5 polymers of length 20 and 50 crosslinkers
+# in implicit solvent.
+#
+# Authors:
+#     Kee-Myoung Nam
+#
+# Last updated:
+#     1/22/2024
+# ---------------------------------------------------------------------- #
+# INITIALIZATION
+# --------------
+# - Use Lennard-Jones units in 3 dimensions
+# - Use FENE bonds (without angular, dihedral, improper, etc. contributions)
+# - Use harmonic bonds for polymer/crosslinker bonds 
+# - Use Lennard-Jones potentials between unbonded molecules 
+# - Use periodic boundary conditions in all 3 dimensions 
+units lj
+dimension 3
+atom_style bond
+bond_style hybrid fene harmonic
+pair_style lj/cut 2.5
+boundary p p p
+
+# Define FENE bond parameters (K, R0, \epsilon, \sigma)
+bond_coeff 1 fene 30.0 1.5 1.0 1.0
+
+# Define harmonic bond parameters (K, R0)
+bond_coeff 2 harmonic 50 1.0
+
+# Define Lennard-Jones potential parameters, which are taken to be equal
+# between all pairs of atom types (\epsilon, \sigma, cutoff)
+pair_coeff * * 1.0 1.0 2.5
+pair_modify shift yes
+
+# Exclude Lennard-Jones potential contributions between FENE-bonded atoms
+special_bonds fene
+
+# Maintain neighbor lists with given additional "skin" distance
+neighbor 1.4 bin
+
+# Build neighbor lists at every timestep 
+neigh_modify every 1 delay 1
+
+# ---------------------------------------------------------------------- #
+# PARSE INPUT MOLECULES
+# ---------------------
+read_data test_input.data
+
+# ---------------------------------------------------------------------- #
+# ENERGY MINIMIZATION
+# -------------------
+minimize 1.0e-4 1.0e-6 5000 10000
+
