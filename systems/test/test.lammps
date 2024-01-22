@@ -1,4 +1,4 @@
-# ---------------------------------------------------------------------- #
+# ====================================================================== #
 # Equilibrate a test system of 5 polymers of length 20 and 50 crosslinkers
 # in implicit solvent.
 #
@@ -7,19 +7,22 @@
 #
 # Last updated:
 #     1/22/2024
-# ---------------------------------------------------------------------- #
+# ====================================================================== #
 # INITIALIZATION
-# --------------
-# - Use Lennard-Jones units in 3 dimensions
-# - Use FENE bonds (without angular, dihedral, improper, etc. contributions)
-# - Use harmonic bonds for polymer/crosslinker bonds 
-# - Use Lennard-Jones potentials between unbonded molecules 
-# - Use periodic boundary conditions in all 3 dimensions 
+# ==============
+# Use Lennard-Jones units in 3 dimensions
 units lj
 dimension 3
+
+# Use FENE bonds (without angular, dihedral, improper, etc. contributions)
+# and use harmonic bonds for polymer/crosslinker bonds 
 atom_style bond
 bond_style hybrid fene harmonic
+
+# Use Lennard-Jones potentials between unbonded molecules 
 pair_style lj/cut 2.5
+
+# Use periodic boundary conditions in all 3 dimensions 
 boundary p p p
 
 # Maintain neighbor lists with given additional "skin" distance
@@ -28,14 +31,14 @@ neighbor 1.4 bin
 # Build neighbor lists at every timestep 
 neigh_modify every 1 delay 1
 
-# ---------------------------------------------------------------------- #
+# ====================================================================== #
 # PARSE INPUT MOLECULES
-# ---------------------
+# =====================
 read_data test_init.data
 
-# ---------------------------------------------------------------------- #
+# ====================================================================== #
 # DEFINE BOND AND POTENTIAL PARAMETERS
-# ------------------------------------
+# ====================================
 # Define FENE bond parameters (K, R0, \epsilon, \sigma)
 bond_coeff 1 fene 30.0 1.5 1.0 1.0
 
@@ -50,8 +53,51 @@ pair_modify shift yes
 # Exclude Lennard-Jones potential contributions between FENE-bonded atoms
 special_bonds fene
 
-# ---------------------------------------------------------------------- #
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
+# ===================================================
+thermo 10
+thermo_style custom step temp pe ke etotal press
+
+# ====================================================================== #
 # ENERGY MINIMIZATION
-# -------------------
+# ===================
 minimize 1.0e-4 1.0e-6 5000 10000
+
+# ====================================================================== #
+# DEFINE INITIAL VELOCITIES
+# =========================
+# Set initial velocities of all molecules from a Gaussian distribution with
+# angular momenta set to zero 
+variable g equal 1.0
+velocity all create $g 12345 rot yes dist gaussian
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
+# =================================================
+thermo 1000
+thermo_style custom step temp press vol lx ly lz pxx pyy pzz etotal epair ebond
+
+# ====================================================================== #
+# SET UP SIMULATION
+# =================
+timestep 0.01
+reset_timestep 0
+
+# Sample from NPT ensemble
+fix 1 all npt temp $g $g 2.0 &
+              iso 1.0 1.0 4.0 &
+              drag 0.2
+
+# Write polymer and crosslinker coordinates from simulation to file:
+# - Write every 1000 timesteps
+# - Write atom ID, molecule ID, atom type, and atom coordinates
+# - Sort lines by atom ID
+dump 1 all custom 1000 test.lammpstrj id mol type xu yu zu
+dump_modify 1 sort id
+
+# ====================================================================== #
+# RUN SIMULATION
+# ==============
+run 100000
 
