@@ -45,7 +45,7 @@ neigh_modify every 1 delay 1
 # ---------------------------------------------------------------------- #
 # PARSE INPUT MOLECULES
 # ---------------------
-read_data test_input.data
+read_data test_init.data
 
 # ---------------------------------------------------------------------- #
 # ENERGY MINIMIZATION
