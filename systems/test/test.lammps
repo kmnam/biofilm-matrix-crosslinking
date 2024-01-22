@@ -84,10 +84,9 @@ thermo_style custom step temp press vol lx ly lz pxx pyy pzz etotal epair ebond
 timestep 0.01
 reset_timestep 0
 
-# Sample from NPT ensemble
-fix 1 all npt temp $g $g 2.0 &
-              iso 1.0 1.0 4.0 &
-              drag 0.2
+# Sample from NVT ensemble
+fix 1 all nvt temp $g $g 2.0
+fix 2 all langevin $g $g 2.0 12345
 
 # Write polymer and crosslinker coordinates from simulation to file:
 # - Write every 1000 timesteps
