@@ -95,6 +95,11 @@ fix 2 all langevin $g $g 2.0 12345
 dump 1 all custom 1000 test.lammpstrj id mol type xu yu zu
 dump_modify 1 sort id
 
+# Write polymer bonds and polymer/crosslinker bonds to file:
+compute 1 all property/local btype batom1 batom2
+dump 2 all local 1000 test.bond index c_1[1] c_1[2] c_1[3]
+dump_modify 2 sort 3
+
 # ====================================================================== #
 # RUN SIMULATION
 # ==============
