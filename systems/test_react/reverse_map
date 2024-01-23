@@ -1,0 +1,27 @@
+Map file for forward bonding reaction
+
+3 equivalences
+
+1 edgeIDs
+
+1 constraints
+
+InitiatorIDs
+
+2
+3
+
+EdgeIDs
+
+1
+
+Equivalences
+
+1	1
+2	2
+3	3
+
+Constraints
+
+arrhenius 1.0 0.0 14.0 0
+ 
