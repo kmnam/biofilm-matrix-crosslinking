@@ -19,7 +19,8 @@ dimension 3
 atom_style bond
 bond_style hybrid fene harmonic
 
-# Use Lennard-Jones potentials between unbonded molecules 
+# Use Lennard-Jones potentials between unbonded molecules (note that the 
+# 2.5 cutoff ratio is re-written below)
 pair_style lj/cut 2.5
 
 # Use periodic boundary conditions in all 3 dimensions 
@@ -45,9 +46,9 @@ bond_coeff 1 fene 30.0 1.5 1.0 1.0
 # Define harmonic bond parameters (K, R0)
 bond_coeff 2 harmonic 50 1.0
 
-# Define Lennard-Jones potential parameters, which are taken to be equal
-# between all pairs of atom types (\epsilon, \sigma, cutoff)
-pair_coeff * * 1.0 1.0 2.5
+# Define Lennard-Jones potential parameters (\epsilon, \sigma, cutoff ratio)
+pair_coeff 1 1 1.0 1.0 1.1224620483
+pair_coeff 2 2 1.0 3.0 2.5
 pair_modify shift yes
 
 # Exclude Lennard-Jones potential contributions between FENE-bonded atoms
