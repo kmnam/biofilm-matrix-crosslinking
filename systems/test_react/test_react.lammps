@@ -6,7 +6,7 @@
 #     Kee-Myoung Nam
 #
 # Last updated:
-#     1/22/2024
+#     1/23/2024
 # ====================================================================== #
 # INITIALIZATION
 # ==============
@@ -109,16 +109,18 @@ molecule reverse_unbonded unreacted.data_template
 # DEFINE POLYMER/CROSSLINKER BONDING REACTION
 # ===========================================
 # TODO What is statted_grp?
-# TODO What to set for prob?
+# - prob = 1.0 to ensure that the reaction proceeds if all constraints 
+#   (including the Arrhenius constraint) is satisfied 
 fix myrxns all bond/react stabilization yes statted_grp 0.5 &
-    react rxn1 1 2 0.0 1.1 forward_unbonded forward_bonded forward_map prob 0.1 1234 &
-    react rxn2 1 2 1.1001 2.45 reverse_bonded reverse_unbonded reverse_map prob 0.1 12345
+    react rxn1 1 2 0.0 1.1 forward_unbonded forward_bonded forward_map prob 1.0 1234 &
+    react rxn2 1 2 1.1001 2.45 reverse_bonded reverse_unbonded reverse_map prob 1.0 12345
 
 # ====================================================================== #
 # SET UP ENSEMBLES
 # ================
-fix 1 all nvt temp $g $g 2.0
-fix 2 all langevin $g $g 2.0 12345
+# TODO What are the internally defined groups here? 
+fix 1 statted_group_REACT nvt temp $g $g 2.0
+fix 2 bond_react_MASTER_group langevin $g $g 2.0 12345
 
 # ====================================================================== #
 # RUN SIMULATION
