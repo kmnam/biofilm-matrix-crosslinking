@@ -85,10 +85,6 @@ thermo_style custom step temp press vol lx ly lz pxx pyy pzz etotal epair ebond
 timestep 0.01
 reset_timestep 0
 
-# Sample from NVT ensemble
-fix 1 all nvt temp $g $g 2.0
-fix 2 all langevin $g $g 2.0 12345
-
 # Write polymer and crosslinker coordinates from simulation to file:
 # - Write every 1000 timesteps
 # - Write atom ID, molecule ID, atom type, and atom coordinates
@@ -100,6 +96,29 @@ dump_modify 1 sort id
 compute 1 all property/local btype batom1 batom2
 dump 2 all local 1000 test.bond index c_1[1] c_1[2] c_1[3]
 dump_modify 2 sort 3
+
+# ====================================================================== #
+# DEFINE MOLECULE TEMPLATES
+# =========================
+molecule forward_unbonded unreacted.data_template
+molecule forward_bonded reacted.data_template
+molecule reverse_bonded reacted.data_template
+molecule reverse_unbonded unreacted.data_template
+
+# ====================================================================== #
+# DEFINE POLYMER/CROSSLINKER BONDING REACTION
+# ===========================================
+# TODO What is statted_grp?
+# TODO What to set for prob?
+fix myrxns all bond/react stabilization yes statted_grp 0.5 &
+    react rxn1 1 2 0.0 1.1 forward_unbonded forward_bonded forward_map prob 0.1 1234 &
+    react rxn2 1 2 1.1001 2.45 reverse_bonded reverse_unbonded reverse_map prob 0.1 12345
+
+# ====================================================================== #
+# SET UP ENSEMBLES
+# ================
+fix 1 all nvt temp $g $g 2.0
+fix 2 all langevin $g $g 2.0 12345
 
 # ====================================================================== #
 # RUN SIMULATION
