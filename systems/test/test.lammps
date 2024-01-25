@@ -41,14 +41,21 @@ read_data test_init.data
 # DEFINE BOND AND POTENTIAL PARAMETERS
 # ====================================
 # Define FENE bond parameters (K, R0, \epsilon, \sigma)
-bond_coeff 1 fene 30.0 1.5 1.0 1.0
+# - Set maximum length to slightly more than double the monomer radius
+bond_coeff 1 fene 30.0 2.5 1.0 1.0
 
 # Define harmonic bond parameters (K, R0)
-bond_coeff 2 harmonic 50 1.0
+# - Set equilibrium length to slightly more than combined monomer/crosslinker
+#   radius
+bond_coeff 2 harmonic 50 4.5
 
 # Define Lennard-Jones potential parameters (\epsilon, \sigma, cutoff ratio)
-pair_coeff 1 1 1.0 1.0 1.1224620483
-pair_coeff 2 2 1.0 3.0 2.5
+# - Set cutoff distance for monomers to radius * 2^(1/6)
+# - Set cutoff distance for crosslinkers to radius * 2.5
+# - Set cutoff distance for monomer/crosslinker interactions to larger value
+pair_coeff 1 1 1.0 1.0 1.1224620483    # Only repulsion for monomers
+pair_coeff 2 2 1.0 3.0 7.5             # Attraction and repulsion for crosslinkers
+pair_coeff 1 2 1.0 1.7320508076 7.5    # Use arithmetic/geometric mixing
 pair_modify shift yes
 
 # Exclude Lennard-Jones potential contributions between FENE-bonded atoms
@@ -77,7 +84,7 @@ velocity all create $g 12345 rot yes dist gaussian
 # PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
 # =================================================
 thermo 1000
-thermo_style custom step temp press vol lx ly lz pxx pyy pzz etotal epair ebond
+thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond
 
 # ====================================================================== #
 # SET UP SIMULATION
