@@ -301,8 +301,8 @@ def plot_polymers(polymers, ax, dims=(0, 1), with_bounding_spheres=False):
     return ax
 
 #########################################################################
-def generate_atomic_crosslinkers(polymers, n, radius, rng, xmin, xmax, ymin,
-                                 ymax, zmin, zmax, eps1, eps2):
+def generate_atomic_crosslinkers(polymers, n, rng, xmin, xmax, ymin, ymax,
+                                 zmin, zmax, eps1, eps2):
     """
     Generate a set of `n` atomic crosslinkers to superimpose on the given
     set of polymers in the given 3-D box.
@@ -360,7 +360,7 @@ def generate_atomic_crosslinkers(polymers, n, radius, rng, xmin, xmax, ymin,
 
 #########################################################################
 def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
-                                      ymin, ymax, zmin, zmax, eps):
+                                      ymin, ymax, zmin, zmax, eps1, eps2):
     """
     Generate a set of `n` tetrahedral crosslinkers to superimpose on the
     given set of polymers in the given 3-D box.
