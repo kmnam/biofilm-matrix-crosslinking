@@ -445,7 +445,7 @@ def plot_crosslinkers(crosslinkers, ax, dims=(0, 1)):
     for crosslinker in crosslinkers:
         # Plot each crosslinker center 
         ax.plot(
-            [crosslinker.coords[0, dims[0]]], [crosslinker.coords[1, dims[1]]],
+            [crosslinker.coords[0, dims[0]]], [crosslinker.coords[0, dims[1]]],
             marker='x'
         )
 
