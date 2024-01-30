@@ -45,10 +45,15 @@ read_data test_init.data extra/bond/per/atom 1 extra/special/per/atom 1
 # - Set maximum length to slightly more than double the monomer radius
 bond_coeff 1 fene 30.0 2.5 1.0 1.0
 
-# Define harmonic bond parameters (K, R0)
+# Define within-crosslinker harmonic bond parameters (K, R0)
 # - Set equilibrium length to slightly more than combined monomer/crosslinker
 #   radius
 bond_coeff 2 harmonic 50.0 4.5
+
+# Define polymer-crosslinker harmonic bond parameters (K, R0)
+# - Set equilibrium length to slightly more than combined monomer/crosslinker
+#   radius
+bond_coeff 3 harmonic 50.0 4.5
 
 # Define Lennard-Jones potential parameters (\epsilon, \sigma, cutoff ratio)
 # - Set cutoff distance for monomers to 2^(1/6)
@@ -58,6 +63,9 @@ bond_coeff 2 harmonic 50.0 4.5
 pair_coeff 1 1 1.0 1.0 1.1224620483    # Only repulsion for monomers
 pair_coeff 2 2 1.0 1.0 2.5             # Attraction and repulsion for crosslinkers
 pair_coeff 3 3 1.0 1.0 2.5             # Attraction and repulsion for crosslinkers
+pair_coeff 1 2 1.0 1.0 2.5             # Fix cutoffs between different types of atoms to 2.5
+pair_coeff 1 3 1.0 1.0 2.5
+pair_coeff 2 3 1.0 1.0 2.5
 pair_modify shift yes
 
 # Exclude Lennard-Jones potential contributions between FENE-bonded atoms
@@ -91,7 +99,7 @@ thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond
 # ====================================================================== #
 # SET UP SIMULATION
 # =================
-timestep 0.01
+timestep 0.0005
 reset_timestep 0
 
 # Write polymer and crosslinker coordinates from simulation to file:
@@ -121,14 +129,14 @@ molecule reverse_unbonded unreacted.data_template
 #   for fixed number of timesteps to disallow immediate participation in
 #   further reactions)
 # - Perform bonding reaction (rxn1) if reacting atoms are within distance
-#   [0, 2.5] (2.5 = monomer radius + crosslinker radius + 0.5)
+#   [0, 2.1] (2.1 = monomer radius + crosslinker radius + 0.1)
 # - Perform unbonding reaction (rxn2) if reacting atoms are within distance
-#   [0, 2.5] (2.5 = monomer radius + crosslinker radius + 0.5)
+#   [0, 2.1] (2.1 = monomer radius + crosslinker radius + 0.1)
 # - Set prob = 1.0 to ensure that the reaction proceeds if all constraints 
 #   (including the Arrhenius constraint) is satisfied 
 fix myrxns all bond/react stabilization yes statted_group 0.5 &
-    react rxn1 all 1 0.0 2.5 forward_unbonded forward_bonded forward_map prob 1.0 1234 &
-    react rxn2 all 1 0.0 2.5 reverse_bonded reverse_unbonded reverse_map prob 1.0 12345
+    react rxn1 all 1 0.0 2.1 forward_unbonded forward_bonded forward_map prob 1.0 1234 &
+    react rxn2 all 1 0.0 2.1 reverse_bonded reverse_unbonded reverse_map prob 1.0 12345
 
 # ====================================================================== #
 # SET UP ENSEMBLES
