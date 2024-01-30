@@ -302,7 +302,7 @@ def plot_polymers(polymers, ax, dims=(0, 1), with_bounding_spheres=False):
 
 #########################################################################
 def generate_atomic_crosslinkers(polymers, n, radius, rng, xmin, xmax, ymin,
-                                 ymax, zmin, zmax, eps):
+                                 ymax, zmin, zmax, eps1, eps2):
     """
     Generate a set of `n` atomic crosslinkers to superimpose on the given
     set of polymers in the given 3-D box.
@@ -321,8 +321,10 @@ def generate_atomic_crosslinkers(polymers, n, radius, rng, xmin, xmax, ymin,
         Minimum and maximum y-coordinates. 
     zmin, zmax : float, float
         Minimum and maximum z-coordinates. 
-    eps : float
-        Separation between crosslinkers and other molecules.
+    eps1 : float
+        Minimum separation between each crosslinker and every monomer.
+    eps2 : float
+        Minimum separation between crosslinkers. 
 
     Returns
     -------
@@ -330,8 +332,8 @@ def generate_atomic_crosslinkers(polymers, n, radius, rng, xmin, xmax, ymin,
     """
     # Make the box a bit smaller, as we are sampling merely the crosslinker
     # centers and not the peripheral atoms 
-    vmin = np.array([xmin + radius, ymin + radius, zmin + radius])
-    dims = np.array([xmax - radius, ymax - radius, zmax - radius]) - vmin
+    vmin = np.array([xmin, ymin, zmin])
+    dims = np.array([xmax, ymax, zmax]) - vmin
 
     crosslinkers = []
     for i in range(n):
@@ -339,15 +341,15 @@ def generate_atomic_crosslinkers(polymers, n, radius, rng, xmin, xmax, ymin,
         # sufficiently distant from all polymers and previously sampled 
         # crosslinkers
         p = rng.random((3,)) * dims + vmin
-        near_polymers = any(poly.min_deviation(p) < eps for poly in polymers)
+        near_polymers = any(poly.min_deviation(p) < eps1 for poly in polymers)
         near_crosslinkers = any(
-            cross.min_deviation(p) < eps for cross in crosslinkers
+            cross.min_deviation(p) < eps2 for cross in crosslinkers
         )
         while near_polymers or near_crosslinkers:
             p = rng.random((3,)) * dims + vmin
-            near_polymers = any(poly.min_deviation(p) < eps for poly in polymers)
+            near_polymers = any(poly.min_deviation(p) < eps1 for poly in polymers)
             near_crosslinkers = any(
-                cross.min_deviation(p) < eps for cross in crosslinkers
+                cross.min_deviation(p) < eps2 for cross in crosslinkers
             )
 
         # Generate an atomic crosslinker at the sampled point
@@ -379,8 +381,12 @@ def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
         Minimum and maximum y-coordinates. 
     zmin, zmax : float, float
         Minimum and maximum z-coordinates. 
-    eps : float
-        Additional separation between crosslinkers and other molecules.
+    eps1 : float
+        Minimum separation between each crosslinker circumsphere and every
+        monomer.  
+    eps2 : float
+        Minimum separation between each crosslinker circumsphere and every 
+        other crosslinker atom.
 
     Returns
     -------
@@ -392,21 +398,22 @@ def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
     dims = np.array([xmax - radius, ymax - radius, zmax - radius]) - vmin
 
     crosslinkers = []
-    threshold = radius + eps
+    threshold1 = radius + eps1
+    threshold2 = radius + eps2
     for i in range(n):
         # Sample a point within the box, resampling until the point is 
         # sufficiently distant from all polymers and previously sampled 
         # crosslinkers
         p = rng.random((3,)) * dims + vmin
-        near_polymers = any(poly.min_deviation(p) < threshold for poly in polymers)
+        near_polymers = any(poly.min_deviation(p) < threshold1 for poly in polymers)
         near_crosslinkers = any(
-            cross.min_deviation(p) < threshold for cross in crosslinkers
+            cross.min_deviation(p) < threshold2 for cross in crosslinkers
         )
         while near_polymers or near_crosslinkers:
             p = rng.random((3,)) * dims + vmin
-            near_polymers = any(poly.min_deviation(p) < threshold for poly in polymers)
+            near_polymers = any(poly.min_deviation(p) < threshold1 for poly in polymers)
             near_crosslinkers = any(
-                cross.min_deviation(p) < threshold for cross in crosslinkers
+                cross.min_deviation(p) < threshold2 for cross in crosslinkers
             )
 
         # Generate a tetrahedral crosslinker at the origin, then rotate,
