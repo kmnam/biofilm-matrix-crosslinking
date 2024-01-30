@@ -90,6 +90,25 @@ class Polymer(Molecule):
         return dist
 
 #########################################################################
+class AtomicCrosslinker(Molecule):
+    """
+    A basic atomic crosslinker class. 
+    """
+    def __init__(self, p):
+        """
+        Define the crosslinker at the given point. 
+        """
+        self.coords = np.array(p).reshape(1, -1)
+
+    def translate(self, x, y, z):
+        """
+        Translate the crosslinker by the given x-, y-, and z-increments.
+        """
+        self.coords[0, 0] += x
+        self.coords[0, 1] += y
+        self.coords[0, 2] += z
+
+#########################################################################
 class TetrahedralCrosslinker(Molecule):
     """
     A basic tetrahedral crosslinker class.
@@ -282,11 +301,67 @@ def plot_polymers(polymers, ax, dims=(0, 1), with_bounding_spheres=False):
     return ax
 
 #########################################################################
-def generate_crosslinkers(polymers, n, radius, rng, xmin, xmax, ymin, ymax,
-                          zmin, zmax, eps):
+def generate_atomic_crosslinkers(polymers, n, radius, rng, xmin, xmax, ymin,
+                                 ymax, zmin, zmax, eps):
     """
-    Generate a set of `n` crosslinkers to superimpose on the given set of 
-    polymers in the given 3-D box.
+    Generate a set of `n` atomic crosslinkers to superimpose on the given
+    set of polymers in the given 3-D box.
+
+    Parameters
+    ----------
+    polymers : list
+        Pre-generated list of Polymer objects.
+    n : int
+        Number of crosslinkers.
+    rng : `numpy.random.Generator`
+        Random number generator.
+    xmin, xmax : float, float
+        Minimum and maximum x-coordinates. 
+    ymin, ymax : float, float
+        Minimum and maximum y-coordinates. 
+    zmin, zmax : float, float
+        Minimum and maximum z-coordinates. 
+    eps : float
+        Separation between crosslinkers and other molecules.
+
+    Returns
+    -------
+    A list of AtomicCrosslinker objects.
+    """
+    # Make the box a bit smaller, as we are sampling merely the crosslinker
+    # centers and not the peripheral atoms 
+    vmin = np.array([xmin + radius, ymin + radius, zmin + radius])
+    dims = np.array([xmax - radius, ymax - radius, zmax - radius]) - vmin
+
+    crosslinkers = []
+    for i in range(n):
+        # Sample a point within the box, resampling until the point is 
+        # sufficiently distant from all polymers and previously sampled 
+        # crosslinkers
+        p = rng.random((3,)) * dims + vmin
+        near_polymers = any(poly.min_deviation(p) < eps for poly in polymers)
+        near_crosslinkers = any(
+            cross.min_deviation(p) < eps for cross in crosslinkers
+        )
+        while near_polymers or near_crosslinkers:
+            p = rng.random((3,)) * dims + vmin
+            near_polymers = any(poly.min_deviation(p) < eps for poly in polymers)
+            near_crosslinkers = any(
+                cross.min_deviation(p) < eps for cross in crosslinkers
+            )
+
+        # Generate an atomic crosslinker at the sampled point
+        crosslinker = AtomicCrosslinker(p)
+        crosslinkers.append(crosslinker)
+
+    return crosslinkers
+
+#########################################################################
+def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
+                                      ymin, ymax, zmin, zmax, eps):
+    """
+    Generate a set of `n` tetrahedral crosslinkers to superimpose on the
+    given set of polymers in the given 3-D box.
 
     Parameters
     ----------
