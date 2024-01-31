@@ -56,13 +56,14 @@ bond_coeff 3 harmonic 100.0 1.5
 # Define Lennard-Jones potential parameters (\epsilon, \sigma, cutoff ratio)
 # - Set cutoff distance for monomers to 2^(1/6)
 # - Set cutoff distance for crosslinkers to 5.0 (larger than crosslinker radius)
-# - Use arithmetic/geometric mixing for all mixed interactions
+# - Weak attraction between crosslinkers, strong attraction between monomers
+#   and crosslinkers
 pair_coeff 1 1 1.0 1.0 1.1224620483    # Only repulsion for monomers
-pair_coeff 2 2 5.0 1.0 5.0             # Attraction and repulsion for crosslinkers
-pair_coeff 3 3 5.0 1.0 5.0             # Attraction and repulsion for crosslinkers
-pair_coeff 1 2 3.0 1.0 5.0             # Fix cutoffs between different types of atoms
-pair_coeff 1 3 3.0 1.0 5.0
-pair_coeff 2 3 5.0 1.0 5.0
+pair_coeff 2 2 2.0 1.0 5.0             # Attraction and repulsion for crosslinkers
+pair_coeff 3 3 2.0 1.0 5.0             # Attraction and repulsion for crosslinkers
+pair_coeff 1 2 4.0 1.0 5.0             # Fix cutoffs between different types of atoms
+pair_coeff 1 3 4.0 1.0 5.0
+pair_coeff 2 3 2.0 1.0 5.0
 pair_modify shift yes
 
 # Exclude Lennard-Jones potential contributions between FENE-bonded atoms
@@ -112,15 +113,15 @@ timestep 0.0001
 reset_timestep 0
 
 # Write polymer and crosslinker coordinates from simulation to file:
-# - Write every 1000 timesteps
+# - Write every 2000 timesteps
 # - Write atom ID, molecule ID, atom type, and atom coordinates
 # - Sort lines by atom ID
-dump 1 all custom 1000 test_tetrahedral.lammpstrj id mol type xu yu zu
+dump 1 all custom 2000 test_tetrahedral.lammpstrj id mol type xu yu zu
 dump_modify 1 sort id
 
-# Write polymer bonds and polymer/crosslinker bonds to file:
+# Write polymer bonds and polymer/crosslinker bonds to file
 compute 1 all property/local btype batom1 batom2
-dump 2 all local 1000 test_tetrahedral.bond index c_1[1] c_1[2] c_1[3]
+dump 2 all local 2000 test_tetrahedral.bond index c_1[1] c_1[2] c_1[3]
 dump_modify 2 sort 3
 
 # ====================================================================== #
@@ -158,5 +159,5 @@ fix fx2 bond_react_MASTER_group langevin $g $g 2.0 12345
 # ====================================================================== #
 # RUN SIMULATION
 # ==============
-run 1000000
+run 2000000
 
