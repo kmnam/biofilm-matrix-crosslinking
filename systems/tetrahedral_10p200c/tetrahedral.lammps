@@ -36,7 +36,7 @@ neigh_modify every 1 delay 1
 # PARSE INPUT MOLECULES
 # =====================
 # Allow for one additional bond for each atom
-read_data test_init.data extra/bond/per/atom 1 extra/special/per/atom 1
+read_data init.data extra/bond/per/atom 1 extra/special/per/atom 1
 
 # ====================================================================== #
 # DEFINE BOND AND POTENTIAL PARAMETERS
@@ -116,12 +116,12 @@ reset_timestep 0
 # - Write every 2000 timesteps
 # - Write atom ID, molecule ID, atom type, and atom coordinates
 # - Sort lines by atom ID
-dump 1 all custom 2000 test_tetrahedral.lammpstrj id mol type xu yu zu
+dump 1 all custom 2000 tetrahedral_10p200c.lammpstrj id mol type xu yu zu
 dump_modify 1 sort id
 
 # Write polymer bonds and polymer/crosslinker bonds to file
 compute 1 all property/local btype batom1 batom2
-dump 2 all local 2000 test_tetrahedral.bond index c_1[1] c_1[2] c_1[3]
+dump 2 all local 2000 tetrahedral_10p200c.bond index c_1[1] c_1[2] c_1[3]
 dump_modify 2 sort 3
 
 # ====================================================================== #
