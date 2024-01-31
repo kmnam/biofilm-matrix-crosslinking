@@ -89,11 +89,11 @@ thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond
 # ====================================================================== #
 # SET UP SIMULATION
 # =================
-timestep 0.01
+timestep 0.001
 reset_timestep 0
 
-# Sample from NVT ensemble
-fix 1 all nvt temp $g $g 2.0
+# Sample from NVE ensemble with Langevin thermostat
+fix 1 all nve 
 fix 2 all langevin $g $g 2.0 12345
 
 # Write polymer and crosslinker coordinates from simulation to file:
