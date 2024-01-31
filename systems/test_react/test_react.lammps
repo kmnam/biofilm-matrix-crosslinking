@@ -90,19 +90,19 @@ thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond
 # ====================================================================== #
 # SET UP SIMULATION
 # =================
-timestep 0.01
+timestep 0.001
 reset_timestep 0
 
 # Write polymer and crosslinker coordinates from simulation to file:
 # - Write every 1000 timesteps
 # - Write atom ID, molecule ID, atom type, and atom coordinates
 # - Sort lines by atom ID
-dump 1 all custom 1000 test_react.lammpstrj id mol type xu yu zu
+dump 1 all custom 100 test_react.lammpstrj id mol type xu yu zu
 dump_modify 1 sort id
 
 # Write polymer bonds and polymer/crosslinker bonds to file:
 compute 1 all property/local btype batom1 batom2
-dump 2 all local 1000 test_react.bond index c_1[1] c_1[2] c_1[3]
+dump 2 all local 100 test_react.bond index c_1[1] c_1[2] c_1[3]
 dump_modify 2 sort 3
 
 # ====================================================================== #
