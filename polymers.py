@@ -6,7 +6,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    1/30/2024
+    4/10/2024
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,30 +19,60 @@ class Molecule:
     """
     def __init__(self, coords=None):
         """
-        Initialize a Polymer object with the given monomer coordinates.  
+        Initialize a Molecule object with the given monomer coordinates.
+
+        Parameters
+        ----------
+        coords : numpy.ndarray
+            Array of monomer coordinates.
         """
         if coords is None:
             self.coords = np.zeros((self.length, 3), dtype=np.float64)
         else:
             self.coords = coords
 
+    #####################################################################
     def center_of_mass(self):
         """
         Return the center of mass of the Polymer object.
+
+        Returns
+        -------
+        Center of mass of the monomers. 
         """
         return np.mean(self.coords, axis=0)
 
+    #####################################################################
     def min_deviation(self, p):
         """
         Return the minimum deviation from the given point of the Polymer 
-        object, i.e., the distance to the closest monomer.  
+        object, i.e., the distance to the closest monomer.
+
+        Parameters
+        ----------
+        p : numpy.ndarray
+            Input point. 
+
+        Returns
+        -------
+        Distance between input point and the closest monomer. 
         """
         return np.linalg.norm(self.coords - p, axis=1).min()
 
+    #####################################################################
     def max_deviation(self, p):
         """
-        Return the maximum deviation from the given point of the Polymer
+        Return the maximum deviation from the given point of the Polymer 
         object, i.e., the distance to the furthest monomer. 
+
+        Parameters
+        ----------
+        p : numpy.ndarray
+            Input point. 
+
+        Returns
+        -------
+        Distance between input point and the furthest monomer. 
         """
         return np.linalg.norm(self.coords - p, axis=1).max()
 
@@ -53,34 +83,64 @@ class Polymer(Molecule):
     """
     def __init__(self, coords=None):
         """
-        Initialize a Polymer object with the given monomer coordinates.  
+        Initialize a Polymer object with the given monomer coordinates.
+
+        Parameters
+        ----------
+        coords : numpy.ndarray
+            Array of monomer coordinates.
         """
+        super(Polymer, self).__init__(coords)
         if coords is None:
             self.length = 0
-            self.coords = np.zeros((self.length, 3), dtype=np.float64)
         else:
             self.length = coords.shape[0]
-            self.coords = coords
 
+    #####################################################################
     def append(self, p):
         """
-        Add a monomer to the end of the Polymer object. 
+        Add a monomer to the end of the Polymer object.
+
+        Parameters
+        ----------
+        p : numpy.ndarray
+            Array of coordinates for the new monomer. 
         """
         self.length += 1
         self.coords = np.vstack((self.coords, p.reshape(1, -1)))
 
+    #####################################################################
     def radius(self):
         """
         Return the radius of the Polymer object, defined as the maximum 
         deviation from the center of mass. 
+
+        Note that this is not the radius of gyration of the polymer. 
+
+        Returns
+        -------
+        Radius of the polymer. 
         """
         return self.max_deviation(self.center_of_mass())
 
+    #####################################################################
     def contact_matrix(self, polymer):
         """
         Return the distance matrix between two Polymer objects.
+
+        Parameters
+        ----------
+        polymer : Polymer
+            Input polymer. 
+
+        Returns
+        -------
+        Distance matrix between monomers in the two polymers. 
         """
         dist = np.zeros((self.length, polymer.length), dtype=np.float64)
+
+        # The (ij)-th entry is the distance between monomer i in self 
+        # and monomer j in the other polymer
         for i in range(self.length):
             for j in range(polymer.length):
                 dist[i, j] = np.linalg.norm(
@@ -96,13 +156,28 @@ class AtomicCrosslinker(Molecule):
     """
     def __init__(self, p):
         """
-        Define the crosslinker at the given point. 
-        """
-        self.coords = np.array(p).reshape(1, -1)
+        Define the crosslinker at the given point.
 
+        Parameters
+        ----------
+        p : numpy.ndarray
+            Input point. 
+        """
+        super(AtomicCrosslinker, self).__init__(np.array(p).reshape(1, -1))
+
+    #####################################################################
     def translate(self, x, y, z):
         """
         Translate the crosslinker by the given x-, y-, and z-increments.
+
+        Parameters
+        ----------
+        x : float
+            x-increment. 
+        y : float
+            y-increment.
+        z : float
+            z-increment.
         """
         self.coords[0, 0] += x
         self.coords[0, 1] += y
@@ -120,7 +195,14 @@ class TetrahedralCrosslinker(Molecule):
     def __init__(self, center, radius):
         """
         Define the coordinates of a crosslinker at the given center with
-        the given radius. 
+        the given radius.
+
+        Parameters
+        ----------
+        center : numpy.ndarray
+            Input center.
+        radius : float
+            Input radius.
         """
         # First define at the origin, then translate to the given center
         self.coords = np.zeros((5, 3), dtype=np.float64)
@@ -133,20 +215,44 @@ class TetrahedralCrosslinker(Molecule):
         self.coords += center
         self.radius = radius
 
+    #####################################################################
     def translate(self, x, y, z):
         """
         Translate the crosslinker by the given x-, y-, and z-increments.
+
+        Parameters
+        ----------
+        x : float
+            x-increment. 
+        y : float
+            y-increment.
+        z : float
+            z-increment.
         """
         self.coords[:, 0] += x
         self.coords[:, 1] += y
         self.coords[:, 2] += z
 
+    #####################################################################
     def rotate(self, alpha, beta, gamma):
         """
         Rotate the crosslinker by the given Tait-Bryan angles.
 
-        The crosslinker is assumed to be situated at the origin.
+        Parameters
+        ----------
+        alpha : float
+            Angle to rotate about z-axis. 
+        beta : float
+            Angle to rotate about y-axis.
+        gamma : float
+            Angle to rotate about x-axis.
         """
+        # Translate the crosslinker to the origin
+        center = self.coords[0, :]
+        self.coords[:, 0] -= center[0]
+        self.coords[:, 1] -= center[1]
+        self.coords[:, 2] -= center[2]
+
         # Rotate by alpha about z-axis, by beta about y-axis, and by gamma
         # about x-axis 
         Rx = np.array(
@@ -175,6 +281,11 @@ class TetrahedralCrosslinker(Molecule):
         )
         for i in range(self.coords.shape[0]):
             self.coords[i, :] = Rz @ Ry @ Rx @ self.coords[i, :].T
+
+        # Translate the crosslinker back to the original center
+        self.coords[:, 0] += center[0]
+        self.coords[:, 1] += center[1]
+        self.coords[:, 2] += center[2]
 
 #########################################################################
 def random_dir(rng):
@@ -269,36 +380,6 @@ def generate_polymers(n, polymer_length, bond_length, rng, xmin, xmax, ymin,
         polymers.append(polymer)
 
     return polymers
-
-#########################################################################
-def plot_polymers(polymers, ax, dims=(0, 1), with_bounding_spheres=False):
-    """
-    Plot the given polymers on the given axes along the given dimensions. 
-
-    The dimensions `dims` can be set to a tuple of two ints, each of which 
-    specifies whether the x (0), y (1), or z (2) coordinates are plotted.
-    """
-    if not (type(dims) == tuple and len(dims) == 2):
-        raise ValueError('dims should be a tuple of length 2')
-    if not (dims[0] in [0, 1, 2] and dims[1] in [0, 1, 2]):
-        raise ValueError('Invalid value given for dims: {}'.format(dims))
-
-    for polymer in polymers:
-        # Plot each polymer ... 
-        ax.plot(polymer.coords[:, dims[0]], polymer.coords[:, dims[1]], marker='.')
-
-        # ... along with the bounding sphere if desired
-        if with_bounding_spheres:
-            center = polymer.center_of_mass()
-            radius = polymer.radius()
-            theta = np.linspace(0, 2 * np.pi, 50)
-            ax.plot(
-                center[dims[0]] + radius * np.cos(theta),
-                center[dims[1]] + radius * np.sin(theta),
-                c='black'
-            )
-
-    return ax
 
 #########################################################################
 def generate_atomic_crosslinkers(polymers, n, rng, xmin, xmax, ymin, ymax,
@@ -428,6 +509,36 @@ def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
         crosslinkers.append(crosslinker)
 
     return crosslinkers
+
+#########################################################################
+def plot_polymers(polymers, ax, dims=(0, 1), with_bounding_spheres=False):
+    """
+    Plot the given polymers on the given axes along the given dimensions. 
+
+    The dimensions `dims` can be set to a tuple of two ints, each of which 
+    specifies whether the x (0), y (1), or z (2) coordinates are plotted.
+    """
+    if not (type(dims) == tuple and len(dims) == 2):
+        raise ValueError('dims should be a tuple of length 2')
+    if not (dims[0] in [0, 1, 2] and dims[1] in [0, 1, 2]):
+        raise ValueError('Invalid value given for dims: {}'.format(dims))
+
+    for polymer in polymers:
+        # Plot each polymer ... 
+        ax.plot(polymer.coords[:, dims[0]], polymer.coords[:, dims[1]], marker='.')
+
+        # ... along with the bounding sphere if desired
+        if with_bounding_spheres:
+            center = polymer.center_of_mass()
+            radius = polymer.radius()
+            theta = np.linspace(0, 2 * np.pi, 50)
+            ax.plot(
+                center[dims[0]] + radius * np.cos(theta),
+                center[dims[1]] + radius * np.sin(theta),
+                c='black'
+            )
+
+    return ax
 
 #########################################################################
 def plot_crosslinkers(crosslinkers, ax, dims=(0, 1)):
