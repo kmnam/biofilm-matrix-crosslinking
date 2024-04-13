@@ -3,7 +3,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    1/29/2024
+    4/13/2024
 """
 import numpy as np
 
@@ -11,7 +11,20 @@ import numpy as np
 def write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax):
     """
     Return a string containing the given box dimensions to be outputted
-    into a LAMMPS data file. 
+    into a LAMMPS data file.
+
+    Parameters
+    ----------
+    xmin, xmax : float, float
+        Minimum and maximum x-coordinates. 
+    ymin, ymax : float, float
+        Minimum and maximum y-coordinates.
+    zmin, zmax : float, float
+        Minimum and maximum z-coordinates.
+
+    Returns
+    -------
+    Output string. 
     """
     return '{} {} xlo xhi\n{} {} ylo yhi\n{} {} zlo zhi'.format(
         xmin, xmax, ymin, ymax, zmin, zmax
@@ -22,6 +35,15 @@ def write_masses(masses):
     """
     Return a string containing the given masses to be outputted into a 
     LAMMPS data file.
+
+    Parameters
+    ----------
+    masses : list of floats
+        List of masses. 
+
+    Returns
+    -------
+    Output string.
     """
     return '\n'.join(
         ['{} {:.3f}'.format(i + 1, mass) for i, mass in enumerate(masses)]
@@ -54,7 +76,7 @@ def write_molecule_coords(polymers, crosslinkers, rng, polymer_type=1,
 
     Returns
     -------
-    Output string to be included in a LAMMPS data file.
+    Output string.
     """
     outstr = ''
     atom_id = 1    # Number the atoms in the string as 1, 2, 3, ...
@@ -116,7 +138,7 @@ def write_molecule_bonds(polymers, crosslinkers, polymer_bond_type=1,
 
     Returns
     -------
-    Output string to be included in a LAMMPS data file.  
+    Output string.  
     """
     outstr = ''
     bond_id = 1    # Number the bonds in the string as 1, 2, 3, ...
