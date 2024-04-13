@@ -27,7 +27,7 @@ class Molecule:
             Array of monomer coordinates.
         """
         if coords is None:
-            self.coords = np.zeros((self.length, 3), dtype=np.float64)
+            self.coords = np.zeros((0, 3), dtype=np.float64)
         else:
             self.coords = coords
 
@@ -338,13 +338,11 @@ def generate_polymers(n, polymer_length, bond_length, rng, xmin, xmax, ymin,
     """
     # Get the dimensions of the box 
     vmin = np.array([xmin, ymin, zmin])
-    dims = np.array([xmax, ymax, zmax]) - vmin
+    vmax = np.array([xmax, ymax, zmax])
+    dims = vmax - vmin
 
     # Define a function that tests whether a point lies within the box 
-    within_box = lambda p: (
-        p[0] >= xmin and p[0] <= xmax and p[1] >= ymin and p[1] <= ymax and
-        p[2] >= zmin and p[2] <= zmax
-    )
+    within_box = lambda p: ((p >= vmin).all() and (p <= vmax).all())
 
     # Maintain a list of Polymer objects 
     polymers = []
@@ -353,8 +351,8 @@ def generate_polymers(n, polymer_length, bond_length, rng, xmin, xmax, ymin,
     for i in range(n):
         polymer = Polymer()
 
-        # Sample a random starting point that is not close to any previously
-        # generated polymer
+        # Sample a random starting point that is not too close to any
+        # previously generated polymer
         p = rng.random((3,)) * dims + vmin
         while any(poly.min_deviation(p) < eps1 for poly in polymers):
             p = rng.random((3,)) * dims + vmin
@@ -411,12 +409,14 @@ def generate_atomic_crosslinkers(polymers, n, rng, xmin, xmax, ymin, ymax,
     -------
     A list of AtomicCrosslinker objects.
     """
-    # Make the box a bit smaller, as we are sampling merely the crosslinker
-    # centers and not the peripheral atoms 
+    # Get the dimensions of the box 
     vmin = np.array([xmin, ymin, zmin])
-    dims = np.array([xmax, ymax, zmax]) - vmin
+    vmax = np.array([xmax, ymax, zmax])
+    dims = vmax - vmin
 
+    # Maintain a list of AtomicCrosslinker objects
     crosslinkers = []
+
     for i in range(n):
         # Sample a point within the box, resampling until the point is 
         # sufficiently distant from all polymers and previously sampled 
@@ -433,7 +433,7 @@ def generate_atomic_crosslinkers(polymers, n, rng, xmin, xmax, ymin, ymax,
                 cross.min_deviation(p) < eps2 for cross in crosslinkers
             )
 
-        # Generate an atomic crosslinker at the sampled point
+        # Generate a crosslinker at the sampled point
         crosslinker = AtomicCrosslinker(p)
         crosslinkers.append(crosslinker)
 
@@ -476,9 +476,12 @@ def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
     # Make the box a bit smaller, as we are sampling merely the crosslinker
     # centers and not the peripheral atoms 
     vmin = np.array([xmin + radius, ymin + radius, zmin + radius])
-    dims = np.array([xmax - radius, ymax - radius, zmax - radius]) - vmin
+    vmax = np.array([xmax - radius, ymax - radius, zmax - radius])
+    dims = vmax - vmin
 
+    # Maintain a list of TetrahedralCrosslinker objects
     crosslinkers = []
+
     threshold1 = radius + eps1
     threshold2 = radius + eps2
     for i in range(n):
@@ -517,6 +520,21 @@ def plot_polymers(polymers, ax, dims=(0, 1), with_bounding_spheres=False):
 
     The dimensions `dims` can be set to a tuple of two ints, each of which 
     specifies whether the x (0), y (1), or z (2) coordinates are plotted.
+
+    Parameters
+    ----------
+    polymers : list of `Polymer` objects
+        List of Polymer objects to be plotted.
+    ax : `matplotlib.pyplot.Axes`
+        Axes object.  
+    dims : tuple of two ints
+        Indicates the dimensions that should be plotted (x, y, or z).
+    with_bounding_spheres : bool
+        If True, plot the circle that bounds each polymer.
+
+    Returns
+    -------
+    Modified Axes object. 
     """
     if not (type(dims) == tuple and len(dims) == 2):
         raise ValueError('dims should be a tuple of length 2')
@@ -547,6 +565,19 @@ def plot_crosslinkers(crosslinkers, ax, dims=(0, 1)):
 
     The dimensions `dims` can be set to a tuple of two ints, each of which 
     specifies whether the x (0), y (1), or z (2) coordinates are plotted.
+
+    Parameters
+    ----------
+    crosslinkers : list of `AtomicCrosslinker` or `TetrahedralCrosslinker` objects
+        List of AtomicCrosslinker or TetrahedralCrosslinker objects to be plotted.
+    ax : `matplotlib.pyplot.Axes`
+        Axes object.  
+    dims : tuple of two ints
+        Indicates the dimensions that should be plotted (x, y, or z).
+
+    Returns
+    -------
+    Modified Axes object. 
     """
     if not (type(dims) == tuple and len(dims) == 2):
         raise ValueError('dims should be a tuple of length 2')
