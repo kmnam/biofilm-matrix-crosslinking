@@ -1,0 +1,44 @@
+{
+    "n_polymers": 5,
+    "polymer_length": 20,
+    "bond_length": 1.0,
+    "monomer_mass": 1.0,
+    "crosslinker_style": "atomic",
+    "n_crosslinkers": 50,
+    "crosslinker_radius": 3.0,
+    "crosslinker_mass": 1.0,
+    "lj_coefs_11": {
+        "eps": 1.0,
+        "sigma": 1.0,
+        "cutoff": 1.1224620483
+    },
+    "lj_coefs_22": {
+        "eps": 1.0,
+        "sigma": 3.0,
+        "cutoff": 7.5
+    },
+    "lj_coefs_12": {
+        "eps": 1.0,
+        "sigma": 1.7320508076,
+        "cutoff": 7.5
+    },
+    "fene_coefs": {
+        "K": 30.0,
+        "R0": 2.5,
+        "eps": 1.0,
+        "sigma": 1.0
+    },
+    "harmonic_crosslink_coefs": {
+        "K": 50.0,
+        "R0": 4.5
+    },
+    "inter_molecule_mindist": 0.8,
+    "intra_polymer_mindist": 0.8,
+    "xmin": -20.0,
+    "xmax": 20.0,
+    "ymin": -20.0,
+    "ymax": 20.0,
+    "zmin": -20.0,
+    "zmax": 20.0,
+    "seed": 1234567890
+}
