@@ -1,0 +1,163 @@
+# ====================================================================== #
+# Equilibrate a test system of 20 polymers of length 1000 and 500 tetrahedral
+# crosslinkers in implicit solvent.
+#
+# Authors:
+#     Kee-Myoung Nam
+#
+# Last updated:
+#     4/17/2024
+# ====================================================================== #
+# INITIALIZATION
+# ==============
+# Use Lennard-Jones units in 3 dimensions
+units lj
+dimension 3
+
+# Use FENE bonds (without angular, dihedral, improper, etc. contributions)
+# and use harmonic bonds for polymer/crosslinker bonds 
+atom_style bond
+bond_style hybrid fene harmonic
+
+# Use Lennard-Jones potentials between unbonded molecules (note that the 
+# 2.5 cutoff ratio is re-written below)
+pair_style lj/cut 2.5
+
+# Use periodic boundary conditions in all 3 dimensions 
+boundary p p p
+
+# Maintain neighbor lists with given additional "skin" distance
+neighbor 1.4 bin
+
+# Build neighbor lists at every timestep 
+neigh_modify every 1 delay 1
+
+# ====================================================================== #
+# PARSE INPUT MOLECULES
+# =====================
+# Allow for one additional bond for each atom
+read_data init.data extra/bond/per/atom 1 extra/special/per/atom 1
+
+# ====================================================================== #
+# DEFINE BOND AND POTENTIAL PARAMETERS
+# ====================================
+# Define FENE bond parameters (K, R0, \epsilon, \sigma)
+# - Set maximum length to slightly more than double the monomer radius
+bond_coeff 1 fene 30.0 2.5 1.0 1.0
+
+# Define within-crosslinker harmonic bond parameters (K, R0)
+# - Set equilibrium length to crosslinker radius
+bond_coeff 2 harmonic 100.0 3.0
+
+# Define polymer-crosslinker harmonic bond parameters (K, R0)
+# - Set equilibrium length to monomer radius 
+bond_coeff 3 harmonic 100.0 1.0
+
+# Define Lennard-Jones potential parameters (\epsilon, \sigma, cutoff ratio)
+# - Set cutoff distance for monomers to 2^(1/6)
+# - Set cutoff distance for crosslinkers to 5.0 (larger than crosslinker radius)
+# - Weak attraction between crosslinkers, strong attraction between monomers
+#   and crosslinkers
+pair_coeff 1 1 1.0 1.0 1.1224620483    # Only repulsion for monomers
+pair_coeff 2 2 2.0 1.0 5.0             # Attraction and repulsion for crosslinkers
+pair_coeff 3 3 2.0 1.0 5.0             # Attraction and repulsion for crosslinkers
+pair_coeff 1 2 4.0 1.0 5.0             # Fix cutoffs between different types of atoms
+pair_coeff 1 3 4.0 1.0 5.0
+pair_coeff 2 3 2.0 1.0 5.0
+pair_modify shift yes
+
+# Exclude Lennard-Jones potential contributions between FENE-bonded atoms
+special_bonds fene
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
+# ===================================================
+thermo 10
+thermo_style custom step temp pe ke etotal epair ebond press
+
+# ====================================================================== #
+# ENERGY MINIMIZATION
+# ===================
+minimize 1.0e-4 1.0e-6 5000 10000
+
+# ====================================================================== #
+# DEFINE INITIAL VELOCITIES
+# =========================
+# Set initial velocities of all molecules from a Gaussian distribution with
+# angular momenta set to zero 
+variable g equal 1.0
+velocity all create $g 12345 rot yes dist gaussian
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
+# =================================================
+thermo 1000
+thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond
+
+# ====================================================================== #
+# SET UP AND RUN INITIAL EQUILIBRATION
+# ====================================
+timestep 0.0001
+reset_timestep 0
+
+# Equilibrate using the NVE ensemble and Langevin thermostat 
+fix fxinit1 all nve
+fix fxinit2 all langevin $g $g 2.0 12345
+
+run 100000
+
+# ====================================================================== #
+# SET UP SIMULATION
+# =================
+timestep 0.0001
+reset_timestep 0
+
+# Write polymer and crosslinker coordinates from simulation to file:
+# - Write every 2000 timesteps
+# - Write atom ID, molecule ID, atom type, and atom coordinates
+# - Sort lines by atom ID
+dump 1 all custom 2000 tetrahedral_20p200c.lammpstrj id mol type xu yu zu vx vy vz
+dump_modify 1 sort id
+
+# Write polymer bonds and polymer/crosslinker bonds to file
+compute 1 all property/local btype batom1 batom2
+dump 2 all local 2000 tetrahedral_20p200c.bond index c_1[1] c_1[2] c_1[3]
+dump_modify 2 sort 3
+
+# ====================================================================== #
+# DEFINE MOLECULE TEMPLATES
+# =========================
+molecule forward_unbonded unreacted.data_template
+molecule forward_bonded reacted.data_template
+molecule reverse_bonded reacted.data_template
+molecule reverse_unbonded unreacted.data_template
+
+# ====================================================================== #
+# DEFINE POLYMER/CROSSLINKER BONDING REACTION
+# ===========================================
+# - Apply reaction site stabilization (apply nve/limit to reacting atoms 
+#   for fixed number of timesteps to disallow immediate participation in
+#   further reactions)
+# - Perform bonding reaction (rxn1) if reacting atoms are within distance
+#   [0, 1.1] (1.0 = harmonic bond equilibrium length)
+# - Perform unbonding reaction (rxn2) if reacting atoms are within distance
+#   [0.9, 1.1] (1.0 = harmonic bond equilibrium length)
+# - Set prob = 1.0 to ensure that the reaction proceeds if all constraints 
+#   (including the Arrhenius constraint) is satisfied 
+fix myrxns all bond/react stabilization yes statted_group 0.5 &
+    react rxn1 all 1 0.0 1.1 forward_unbonded forward_bonded forward_map prob 1.0 1234 &
+    react rxn2 all 1 0.9 1.1 reverse_bonded reverse_unbonded reverse_map prob 1.0 12345
+
+# ====================================================================== #
+# SET UP ENSEMBLES
+# ================
+# - Apply NVT ensemble on unreacting atoms throughout the simulation
+# - Apply Langevin dynamics on reacting atoms throughout the simulation
+fix fx1 statted_group_REACT nvt temp $g $g 2.0
+fix fx2 bond_react_MASTER_group langevin $g $g 2.0 12345
+
+# ====================================================================== #
+# RUN SIMULATION
+# ==============
+run 2000000
+
