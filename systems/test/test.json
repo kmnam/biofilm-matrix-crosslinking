@@ -30,7 +30,7 @@
     },
     "harmonic_crosslink_coefs": {
         "K": 50.0,
-        "R0": 4.5
+        "R0": 4.0
     },
     "inter_molecule_mindist": 0.8,
     "intra_polymer_mindist": 0.8,
