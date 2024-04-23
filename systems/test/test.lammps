@@ -35,7 +35,7 @@ neigh_modify every 1 delay 1
 # ====================================================================== #
 # PARSE INPUT MOLECULES AND PAIR/BOND COEFFICIENTS
 # ================================================
-read_data test_init.data
+read_data ${VARS}
 pair_modify shift yes
 
 # Exclude Lennard-Jones potential contributions between FENE-bonded atoms
@@ -80,12 +80,13 @@ fix 2 all langevin $g $g 2.0 12345
 # - Write every 1000 timesteps
 # - Write atom ID, molecule ID, atom type, and atom coordinates
 # - Sort lines by atom ID
-dump 1 all custom 1000 test.lammpstrj id mol type xu yu zu vx vy vz
+next VARS
+dump 1 all custom 1000 ${VARS}.lammpstrj id mol type xu yu zu vx vy vz
 dump_modify 1 sort id
 
 # Write polymer bonds and polymer/crosslinker bonds to file:
 compute 1 all property/local btype batom1 batom2
-dump 2 all local 1000 test.bond index c_1[1] c_1[2] c_1[3]
+dump 2 all local 1000 ${VARS}.bond index c_1[1] c_1[2] c_1[3]
 dump_modify 2 sort 3
 
 # ====================================================================== #
