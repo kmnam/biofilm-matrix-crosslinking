@@ -51,6 +51,44 @@ def write_masses(masses):
     )
 
 #########################################################################
+def write_lj_coefs(lj_coefs):
+    """
+    """
+    lines = []
+    k = 0
+    n_atom_types = (2 if len(lj_coefs) == 3 else 3)
+    for i in range(1, n_atom_types + 1):
+        for j in range(i, n_atom_types + 1):
+            lines.append(
+                '{} {} {:.10f} {:.10f} {:.10f}'.format(
+                    i, j, lj_coefs[k]['eps'], lj_coefs[k]['sigma'], lj_coefs[k]['cutoff']
+                )
+            )
+            k += 1
+
+    return '\n'.join(lines)
+
+#########################################################################
+def write_bond_coefs(bond_coefs):
+    """
+    """
+    lines = []
+    n_bond_types = len(bond_coefs)
+    for i in range(n_bond_types):
+        if i == 0:
+            line = '{} fene {:.10f} {:.10f} {:.10f} {:.10f}'.format(
+                i + 1, bond_coefs[i]['K'], bond_coefs[i]['R0'],
+                bond_coefs[i]['eps'], bond_coefs[i]['sigma']
+            )
+        else:
+            line = '{} harmonic {:.10f} {:.10f}'.format(
+                i + 1, bond_coefs[i]['K'], bond_coefs[i]['R0']
+            )
+        lines.append(line)
+
+    return '\n'.join(lines)
+
+#########################################################################
 def write_molecule_coords(polymers, crosslinkers, rng, polymer_type=1,
                           crosslinker_type=2, crosslinker_sticky_type=3,
                           fmt=':.6f'):
@@ -248,6 +286,11 @@ def parse_init(init_filename):
         n_atom_types = int(line.split()[0])
         n_read += 1
 
+        # Line 10 contains the number of bond types
+        line = f.readline()
+        n_bond_types = int(line.split()[0])
+        n_read += 1
+
         # Lines 15, 16, 17 contain the simulation domain bounds 
         while n_read < 14:
             f.readline()
@@ -260,6 +303,11 @@ def parse_init(init_filename):
         zmin, zmax = float(split[0]), float(split[1])
         n_read += 3
 
+        # Read past the type labels 
+        for i in range(3 + n_atom_types + 3 + n_bond_types):
+            f.readline()
+            n_read += 1
+
         # The next set of lines contain the atom masses 
         f.readline()
         f.readline()    # "Masses"
@@ -269,6 +317,33 @@ def parse_init(init_filename):
         for i in range(n_atom_types):
             split = f.readline().split()
             atom_masses[int(split[0])] = float(split[1])
+            n_read += 1
+
+        # The next set of lines contain the Lennard-Jones potential
+        # coefficients
+        f.readline()
+        f.readline()    # "PairIJ Coeffs"
+        f.readline()
+        n_read += 3
+        lj_coefs = {}
+        for i in range(n_atom_types):
+            for j in range(i, n_atom_types):
+                split = f.readline().split()
+                eps = float(split[2])
+                sigma = float(split[3])
+                cutoff = float(split[4])
+                lj_coefs[(i + 1, j + 1)] = [eps, sigma, cutoff]
+                n_read += 1
+
+        # The next set of lines contain the bond coefficients
+        f.readline()
+        f.readline()    # "Bond Coeffs"
+        f.readline()
+        n_read += 3
+        bond_coefs = {}
+        for i in range(n_bond_types):
+            split = f.readline().split()
+            bond_coefs[i + 1] = [float(x) for x in split[2:]]
             n_read += 1
 
         # The next set of lines contain the atom types, molecule IDs, and
