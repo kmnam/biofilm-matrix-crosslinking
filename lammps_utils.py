@@ -3,10 +3,41 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    4/22/2024
+    4/29/2024
 """
 import numpy as np
 from scipy.sparse import csr_matrix
+
+#########################################################################
+def dist_periodic(x, y, xmin, ymin, zmin, xmax, ymax, zmax):
+    """
+    Get the distance between x and y, assuming periodic boundary conditions.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        First query point.
+    y : numpy.ndarray
+        Second query point.
+    xmin, xmax : float, float
+        Minimum and maximum x-coordinates.
+    ymin, ymax : float, float
+        Minimum and maximum y-coordinates.
+    zmin, zmax : float, float
+        Minimum and maximum z-coordinates.
+
+    Returns
+    -------
+    Distance between x and y, assuming periodic boundary conditions.
+    """
+    delta = [xmax - xmin, ymax - ymin, zmax - zmin]
+    total = 0.0
+    for i in range(3):
+        dist = np.abs(x[i] - y[i])
+        if dist > delta[i] - dist:
+            dist = delta[i] - dist
+        total += dist ** 2
+    return np.sqrt(total)
 
 #########################################################################
 def write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax):
@@ -53,6 +84,18 @@ def write_masses(masses):
 #########################################################################
 def write_lj_coefs(lj_coefs):
     """
+    Return a string containing the given Lennard-Jones coefficients to 
+    be outputted into a LAMMPS data file. 
+
+    Parameters
+    ----------
+    lj_coefs : list of dicts
+        List of dictionaries containing the Lennard-Jones coefficients
+        ('eps', 'sigma', 'cutoff') for each pair of atom types.
+
+    Returns
+    -------
+    Output string.
     """
     lines = []
     k = 0
@@ -71,6 +114,22 @@ def write_lj_coefs(lj_coefs):
 #########################################################################
 def write_bond_coefs(bond_coefs):
     """
+    Return a string containing the given bond energy coefficients to 
+    be outputted into a LAMMPS data file. 
+
+    The first set of coefficients is assumed to specify the intra-polymer
+    FENE bond energy parameters.
+
+    Parameters
+    ----------
+    bond_coefs : list of dicts
+        List of dictionaries containing the bond energy coefficients
+        ('K', 'R0', 'eps', 'sigma' for FENE bonds; 'K', 'R0' for harmonic
+        bonds) for each bond type. 
+
+    Returns
+    -------
+    Output string.
     """
     lines = []
     n_bond_types = len(bond_coefs)
@@ -244,17 +303,19 @@ class Simulation:
         # corresponding timepoints
         self.n_frames = 0
         self.times = []
-        self.coords = []    # List of 3-column arrays
-        self.bonds = []     # List of sparse matrices 
+        self.coords = []          # List of 3-column arrays
+        self.bonds = []           # List of sparse matrices indicating bond types 
+        self.bond_lengths = []    # List of sparse matrices indicating bond lengths
 
     #####################################################################
-    def append_frame(self, time, coords, bonds):
+    def append_frame(self, time, coords, bonds, bond_lengths):
         """
         Append a frame to the Simulation object.
         """
         self.times.append(time)
         self.coords.append(coords)
         self.bonds.append(bonds)
+        self.bond_lengths.append(bond_lengths)
 
 #########################################################################
 def parse_init(init_filename):
@@ -302,11 +363,6 @@ def parse_init(init_filename):
         split = f.readline().split()
         zmin, zmax = float(split[0]), float(split[1])
         n_read += 3
-
-        # Read past the type labels 
-        for i in range(3 + n_atom_types + 3 + n_bond_types):
-            f.readline()
-            n_read += 1
 
         # The next set of lines contain the atom masses 
         f.readline()
@@ -372,19 +428,31 @@ def parse_init(init_filename):
         bond_i = []
         bond_j = []
         bond_types = []
+        bond_lengths = []
         for i in range(n_bonds):
             split = f.readline().split()
             bond_i.append(int(split[2]) - 1)
             bond_j.append(int(split[3]) - 1)
             bond_types.append(int(split[1]))
-        bonds = csr_matrix((bond_types, (bond_i, bond_j)), shape=(n_atoms, n_atoms))
+            coords_i = coords[bond_i, :].reshape(-1)
+            coords_j = coords[bond_j, :].reshape(-1)
+            dist_ij = dist_periodic(
+                coords_i, coords_j, xmin, xmax, ymin, ymax, zmin, zmax
+            )
+            bond_lengths.append(dist_ij)
+        bonds = csr_matrix(
+            (bond_types, (bond_i, bond_j)), shape=(n_atoms, n_atoms)
+        )
+        bond_lengths = csr_matrix(
+            (bond_lengths, (bond_i, bond_j)), shape=(n_atoms, n_atoms)
+        )
 
     # Instantiate a new Simulation object
     sim = Simulation(
         n_atoms, atom_types, atom_masses, molecule_ids, xmin, xmax, ymin,
         ymax, zmin, zmax
     )
-    sim.append_frame(0.0, coords, bonds)
+    sim.append_frame(0.0, coords, bonds, bond_lengths)
     
     return sim
 
@@ -445,11 +513,12 @@ def parse_simulation(init_filename, lammpstrj_filename, bond_filename):
     # [xmin] [xmax]
     # [ymin] [ymax]
     # [zmin] [zmax]
-    # ITEM: ENTRIES index c_1[1] c_1[2] c_1[3]
-    # [bond id] [bond type] [atom i] [atom j]
-    # [bond id] [bond type] [atom i] [atom j]
+    # ITEM: ENTRIES index c_1[1] c_1[2] c_1[3] c_2[1] c_2[2] c_2[3]
+    # [bond id] [bond type] [atom i] [atom j] [bond length] [bond energy] [bond force]
+    # [bond id] [bond type] [atom i] [atom j] [bond length] [bond energy] [bond force]
     # ...
-    bonds = []
+    bond_types_all = []
+    bond_lengths_all = []
     with open(bond_filename) as f:
         curr_block = []
         curr_block.append(f.readline().strip())
@@ -464,14 +533,22 @@ def parse_simulation(init_filename, lammpstrj_filename, bond_filename):
                 bond_i = []
                 bond_j = []
                 bond_types = []
+                bond_lengths = []
                 for i in range(9, len(curr_block)):
                     split = curr_block[i].split()
                     bond_i.append(int(split[2]) - 1)
                     bond_j.append(int(split[3]) - 1)
                     bond_types.append(int(split[1]))
-                bonds.append(
+                    bond_lengths.append(float(split[4]))
+                bond_types_all.append(
                     csr_matrix(
                         (bond_types, (bond_i, bond_j)),
+                        shape=(sim.n_atoms, sim.n_atoms)
+                    )
+                )
+                bond_lengths_all.append(
+                    csr_matrix(
+                        (bond_lengths, (bond_i, bond_j)),
                         shape=(sim.n_atoms, sim.n_atoms)
                     )
                 )
@@ -480,11 +557,12 @@ def parse_simulation(init_filename, lammpstrj_filename, bond_filename):
 
     # Replace the initial configuration
     sim.coords[0] = coords[0]
-    sim.bonds[0] = bonds[0]
+    sim.bonds[0] = bond_types_all[0]
+    sim.bond_lengths[0] = bond_lengths_all[0]
 
     # Append each subsequent configuration
     for i in range(1, len(times)):
-        sim.append_frame(times[i], coords[i], bonds[i])
+        sim.append_frame(times[i], coords[i], bond_types_all[i], bond_lengths_all[i])
 
     return sim
 
