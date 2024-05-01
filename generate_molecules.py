@@ -84,10 +84,12 @@ if __name__ == '__main__':
     zmax_ = 0.95 * zmax
 
     # Generate polymers and crosslinkers
+    print('... generating polymers')
     polymers = generate_polymers(
         n_polymers, polymer_length, bond_length, rng, xmin, xmax, ymin, ymax,
         zmin, zmax, eps1, eps2
     )
+    print('... generating crosslinkers')
     if crosslinker_style == 'atomic':
         crosslinkers = generate_atomic_crosslinkers(
             polymers, n_crosslinkers, rng, xmin, xmax, ymin, ymax, zmin, zmax,
