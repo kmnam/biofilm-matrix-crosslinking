@@ -61,8 +61,8 @@ if __name__ == '__main__':
     else:    # crosslinker_style == 'tetrahedral'
         bond_coefs = [
             params['fene_coefs'], 
-            params['harmonic_crosslink_coefs'],
-            params['harmonic_within_coefs']
+            params['harmonic_within_coefs'],
+            params['harmonic_crosslink_coefs']
         ]
     eps1 = params['inter_molecule_mindist']
     eps2 = params['intra_polymer_mindist']
