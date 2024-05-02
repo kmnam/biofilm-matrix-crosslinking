@@ -90,13 +90,13 @@ reset_timestep 0
 # - Write atom ID, molecule ID, atom type, and atom coordinates
 # - Sort lines by atom ID
 next VARS
-dump 1 all custom 2000 ${VARS}.lammpstrj id mol type xu yu zu vx vy vz
+dump 1 all custom 10000 ${VARS}.lammpstrj id mol type xu yu zu vx vy vz
 dump_modify 1 sort id
 
 # Write polymer bonds and polymer/crosslinker bonds to file
 compute 1 all property/local btype batom1 batom2
 compute 2 all bond/local dist engpot force
-dump 2 all local 2000 ${VARS}.bond index c_1[*] c_2[*]
+dump 2 all local 10000 ${VARS}.bond index c_1[*] c_2[*]
 dump_modify 2 sort 2
 
 # ====================================================================== #
@@ -141,5 +141,5 @@ fix fx2 statted_group_REACT langevin $g $g 2.0 12345
 # ====================================================================== #
 # RUN SIMULATION
 # ==============
-run 20000000
+run 10000000
 
