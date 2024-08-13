@@ -6,10 +6,89 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    4/10/2024
+    8/13/2024
 """
 import numpy as np
 import matplotlib.pyplot as plt
+
+#########################################################################
+def random_dir(rng):
+    """
+    Generate a random unit vector in 3-D space.
+
+    Parameters
+    ----------
+    rng : `numpy.random.Generator`
+        Random number generator.
+
+    Returns
+    -------
+    Random unit vector in 3-D space. 
+    """
+    v = rng.normal(size=(3,))
+    return v / np.linalg.norm(v)
+
+#########################################################################
+def generate_orthonormal_basis_3d(u, rng):
+    """
+    Generate an orthonormal basis that contains the given vector, which is
+    assumed to be unit-length, in three dimensions.
+
+    This is done by:
+    1) sampling a random unit vector, subtracting its projection onto v (as
+       in Gram-Schmidt), then normalizing to get v,
+    3) then getting the cross product of u and v and normalizing to get w.  
+
+    Then u, v, and w form an orthonormal basis. 
+    """
+    # First sample a random unit vector ... 
+    v = random_dir(rng)
+
+    # ... then project it onto u and normalize ... 
+    v -= np.dot(v, u) * u
+    v /= np.linalg.norm(v)
+
+    # ... then get the cross product of u and v and normalize
+    w = np.cross(u, v)
+    w /= np.linalg.norm(w)
+
+    # Return the two new vectors 
+    return v, w
+
+#########################################################################
+def generate_next_atom(atom1_coords, atom2_coords, length, theta, rng):
+    """
+    Given the positions of two bonded atoms within a polymer, the length
+    of the next bond, and the angle formed by the next bond, generate 
+    a candidate position for the next atom.  
+    """
+    # Get the distance vector and direction from atom 1 to atom 2
+    d = atom2_coords - atom1_coords
+    u = dist_12 / np.linalg.norm(dist_12)
+
+    # Randomly sample an orthonormal basis that contains the 2-1 direction
+    # vector
+    #
+    # The other two vectors in this basis span the plane normal to the 2-1
+    # direction vector (up to translation) 
+    v, w = generate_orthonormal_basis_3d(-u, rng)
+
+    # Rotate the direction vector from atom 2 to atom 1 about atom 2 by 
+    # the given angle within the plane normal to w, which must contain u
+    #
+    # To do this, we rotate the vector (1, 0, 0) in the xy-plane, and
+    # perform a change of basis in which x <-> -u, y <-> v, and z <-> w
+    #
+    # This yields a vector that is orthogonal to w and has the desired 
+    # angle from -u 
+    rot = np.array([
+         [np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]
+    ])
+    trans = np.hstack((-u.reshape((-1, 1)), v.reshape((-1, 1)), w.reshape((-1, 1))))
+    u_new = trans @ (np.append(rot @ np.array([1, 0]), 0))
+
+    # Get the position of the next atom
+    return atom2_coords + length * u_new
 
 #########################################################################
 class Molecule:
@@ -97,6 +176,17 @@ class Polymer(Molecule):
             self.length = coords.shape[0]
 
     #####################################################################
+    def __len__(self):
+        """
+        Return the length of the Polymer object. 
+
+        Returns
+        -------
+        Length of the Polymer object. 
+        """
+        return self.length
+
+    #####################################################################
     def append(self, p):
         """
         Add a monomer to the end of the Polymer object.
@@ -137,12 +227,12 @@ class Polymer(Molecule):
         -------
         Distance matrix between monomers in the two polymers. 
         """
-        dist = np.zeros((self.length, polymer.length), dtype=np.float64)
+        dist = np.zeros((self.length, len(polymer)), dtype=np.float64)
 
-        # The (ij)-th entry is the distance between monomer i in self 
+        # The (i, j)-th entry is the distance between monomer i in self 
         # and monomer j in the other polymer
         for i in range(self.length):
-            for j in range(polymer.length):
+            for j in range(len(polymer)):
                 dist[i, j] = np.linalg.norm(
                     self.coords[i, :] - polymer.coords[j, :]
                 )
@@ -288,25 +378,8 @@ class TetrahedralCrosslinker(Molecule):
         self.coords[:, 2] += center[2]
 
 #########################################################################
-def random_dir(rng):
-    """
-    Generate a random unit vector in 3-D space.
-
-    Parameters
-    ----------
-    rng : `numpy.random.Generator`
-        Random number generator.
-
-    Returns
-    -------
-    Random unit vector in 3-D space. 
-    """
-    v = rng.normal(size=(3,))
-    return v / np.linalg.norm(v)
-
-#########################################################################
-def generate_polymers(n, polymer_length, bond_length, rng, xmin, xmax, ymin,
-                      ymax, zmin, zmax, eps1, eps2):
+def generate_polymers(n, polymer_length, bond_length, angle_dist, rng, xmin,
+                      xmax, ymin, ymax, zmin, zmax, eps1, eps2):
     """
     Generate a set of `n` random coils as Polymer objects in the given
     3-D box. 
@@ -319,6 +392,9 @@ def generate_polymers(n, polymer_length, bond_length, rng, xmin, xmax, ymin,
         Number of monomers per polymer.
     bond_length : float
         Bond length.
+    angle_dist : function
+        A callable that takes the given random number generator and samples
+        a bond angle between each triplet of atoms in each polymer. 
     rng : `numpy.random.Generator`
         Random number generator.
     xmin, xmax : float, float
@@ -349,33 +425,48 @@ def generate_polymers(n, polymer_length, bond_length, rng, xmin, xmax, ymin,
 
     # Generate the i-th polymer ... 
     for i in range(n):
-        polymer = Polymer()
+        polymer_i = Polymer()
 
         # Sample a random starting point that is not too close to any
         # previously generated polymer
         p = rng.random((3,)) * dims + vmin
-        while any(poly.min_deviation(p) < eps1 for poly in polymers):
+        while any(polymer.min_deviation(p) < eps1 for polymer in polymers):
             p = rng.random((3,)) * dims + vmin
-        polymer.append(p)
+        polymer_i.append(p)
 
-        # Sample the next monomer position, resampling until: 
+        # Sample a second monomer position by the given bond length in 
+        # any direction 
+        p = polymer_i.coords[0, :] + bond_length * random_dir(rng)
+        near_inter = any(polymer.min_deviation(p) < eps1 for polymer in polymers)
+        while (not within_box(p)) or near_inter:
+            p = polymer_i.coords[0, :] + bond_length * random_dir(rng)
+            near_inter = any(polymer.min_deviation(p) < eps1 for polymer in polymers)
+        polymer_i.append(p)
+
+        # Sample all subsequent monomer positions, resampling until: 
         # (1) the point lies within the box 
         # (2) the point is sufficiently distant from all previously sampled 
         #     polymers, and 
         # (3) the point is sufficiently distant from all previously sampled 
         #     monomers within the given polymer 
-        for j in range(polymer_length - 1):
-            q = polymer.coords[j, :] + bond_length * random_dir(rng)
-            near_inter = any(poly.min_deviation(q) < eps1 for poly in polymers)
-            near_intra = (polymer.min_deviation(q) < eps2)
-            while not (within_box(q) and not near_inter and not near_intra):
-                q = polymer.coords[j, :] + bond_length * random_dir(rng)
-                near_inter = any(poly.min_deviation(q) < eps1 for poly in polymers)
-                near_intra = (polymer.min_deviation(q) < eps2)
-            polymer.append(q)
+        for j in range(2, polymer_length):
+            q = generate_next_atom(
+                polymer_i.coords[j-1, :], polymer_i.coords[j, :], bond_length,
+                angle_dist(rng), rng
+            )
+            near_inter = any(polymer.min_deviation(q) < eps1 for polymer in polymers)
+            near_intra = (polymer_i.min_deviation(q) < eps2)
+            while (not within_box(q)) or near_inter or near_intra:
+                q = generate_next_atom(
+                    polymer_i.coords[j-1, :], polymer_i.coords[j, :], bond_length,
+                    angle_dist(rng), rng
+                )
+                near_inter = any(polymer.min_deviation(q) < eps1 for polymer in polymers)
+                near_intra = (polymer_i.min_deviation(q) < eps2)
+            polymer_i.append(q)
 
         # Keep track of generated polymer 
-        polymers.append(polymer)
+        polymers.append(polymer_i)
 
     return polymers
 

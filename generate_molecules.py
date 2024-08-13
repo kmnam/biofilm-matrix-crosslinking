@@ -17,14 +17,7 @@ from polymers import (
     plot_polymers,
     plot_crosslinkers
 )
-from lammps_utils import (
-    write_box_dims,
-    write_masses,
-    write_lj_coefs,
-    write_bond_coefs,
-    write_molecule_coords,
-    write_molecule_bonds
-)
+from lammps_utils import write_init_config
 
 #########################################################################
 if __name__ == '__main__':
@@ -121,63 +114,10 @@ if __name__ == '__main__':
     plt.tight_layout()
     plt.savefig(outprefix + '.pdf')
 
-    # Write output file
-    if crosslinker_style == 'atomic':
-        header = (
-            'Test system of {} polymers of length {} and {} atomic '
-            'crosslinkers, bond length = {}, crosslinker radius = {}\n\n'.format(
-                n_polymers, polymer_length, n_crosslinkers, bond_length,
-                crosslinker_radius
-            )
-        )
-        para1 = '{} atoms\n{} bonds\n0 angles\n0 dihedrals\n0 impropers\n\n'.format(
-            n_polymers * polymer_length + n_crosslinkers,
-            n_polymers * (polymer_length - 1)
-        )
-        para2 = (
-            '2 atom types\n2 bond types\n0 angle types\n0 dihedral types\n'
-            '0 improper types\n\n'
-        )
-        para3 = write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax) + '\n\n'
-        para4 = 'Masses\n\n{}\n\n'.format(
-            write_masses([monomer_mass, crosslinker_mass])
-        )
-        para5 = 'PairIJ Coeffs\n\n{}\n\n'.format(write_lj_coefs(lj_coefs))
-        para6 = 'Bond Coeffs\n\n{}\n\n'.format(write_bond_coefs(bond_coefs))
-        para7 = 'Atoms\n\n{}\n'.format(
-            write_molecule_coords(polymers, crosslinkers, rng)
-        )
-        para8 = 'Bonds\n\n{}\n'.format(
-            write_molecule_bonds(polymers, crosslinkers)
-        )
-    else:    # crosslinker_style == 'tetrahedral'
-        header = (
-            'Test system of {} polymers of length {} and {} tetrahedral '
-            'crosslinkers, bond length = {}, crosslinker radius = {}\n\n'.format(
-                n_polymers, polymer_length, n_crosslinkers, bond_length,
-                crosslinker_radius
-            )
-        )
-        para1 = '{} atoms\n{} bonds\n0 angles\n0 dihedrals\n0 impropers\n\n'.format(
-            n_polymers * polymer_length + 5 * n_crosslinkers,
-            n_polymers * (polymer_length - 1) + 4 * n_crosslinkers
-        )
-        para2 = (
-            '3 atom types\n3 bond types\n0 angle types\n0 dihedral types\n'
-            '0 improper types\n\n'
-        )
-        para3 = write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax) + '\n\n'
-        para4 = 'Masses\n\n{}\n\n'.format(
-            write_masses([monomer_mass, crosslinker_mass / 5, crosslinker_mass / 5])
-        )
-        para5 = 'PairIJ Coeffs\n\n{}\n\n'.format(write_lj_coefs(lj_coefs))
-        para6 = 'Bond Coeffs\n\n{}\n\n'.format(write_bond_coefs(bond_coefs))
-        para7 = 'Atoms\n\n{}\n'.format(
-            write_molecule_coords(polymers, crosslinkers, rng)
-        )
-        para8 = 'Bonds\n\n{}\n'.format(
-            write_molecule_bonds(polymers, crosslinkers)
-        )
-    with open(outprefix + '.data', 'w') as f:
-        f.write(header + para1 + para2 + para3 + para4 + para5 + para6 + para7 + para8)
+    # Write the generated initial configuration to file 
+    write_init_config(
+        polymers, crosslinkers, bond_length, crosslinker_radius, monomer_mass,
+        crosslinker_mass, lj_coefs, bond_coefs, rng, xmin, xmax, ymin, ymax,
+        zmin, zmax, outprefix + '.data'
+    )
 
