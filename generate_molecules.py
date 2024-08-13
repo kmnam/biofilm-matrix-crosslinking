@@ -61,6 +61,10 @@ if __name__ == '__main__':
             params['harmonic_within_coefs'],
             params['harmonic_crosslink_coefs']
         ]
+    angle_coefs = [
+        params['angle_default_cosine_coefs'],
+        params['angle_crosslinked_cosine_coefs']
+    ]
     eps1 = params['inter_molecule_mindist']
     eps2 = params['intra_polymer_mindist']
     xmin = params['xmin']
@@ -126,7 +130,7 @@ if __name__ == '__main__':
     # Write the generated initial configuration to file 
     write_init_config(
         polymers, crosslinkers, bond_length, crosslinker_style, crosslinker_radius,
-        monomer_mass, crosslinker_mass, lj_coefs, bond_coefs, rng, xmin, xmax,
-        ymin, ymax, zmin, zmax, outprefix + '.data'
+        monomer_mass, crosslinker_mass, lj_coefs, bond_coefs, angle_coefs, rng,
+        xmin, xmax, ymin, ymax, zmin, zmax, outprefix + '.data'
     )
 
