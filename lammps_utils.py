@@ -274,9 +274,10 @@ def write_molecule_bonds(polymers, crosslinkers, polymer_bond_type=1,
     return outstr
 
 #########################################################################
-def write_init_config(polymers, crosslinkers, bond_length, crosslinker_radius,
-                      monomer_mass, crosslinker_mass, lj_coefs, bond_coefs,
-                      rng, xmin, xmax, ymin, ymax, zmin, zmax, outfilename):
+def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
+                      crosslinker_radius, monomer_mass, crosslinker_mass,
+                      lj_coefs, bond_coefs, rng, xmin, xmax, ymin, ymax, zmin,
+                      zmax, outfilename):
     """
     Write the given initial configuration of polymer and crosslinker
     coordinates to file.
