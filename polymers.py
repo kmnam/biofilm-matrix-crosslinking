@@ -63,8 +63,8 @@ def generate_next_atom(atom1_coords, atom2_coords, length, theta, rng):
     a candidate position for the next atom.  
     """
     # Get the distance vector and direction from atom 1 to atom 2
-    d = atom2_coords - atom1_coords
-    u = dist_12 / np.linalg.norm(dist_12)
+    u = atom2_coords - atom1_coords
+    u /= np.linalg.norm(u)
 
     # Randomly sample an orthonormal basis that contains the 2-1 direction
     # vector
@@ -451,14 +451,14 @@ def generate_polymers(n, polymer_length, bond_length, angle_dist, rng, xmin,
         #     monomers within the given polymer 
         for j in range(2, polymer_length):
             q = generate_next_atom(
-                polymer_i.coords[j-1, :], polymer_i.coords[j, :], bond_length,
+                polymer_i.coords[j-2, :], polymer_i.coords[j-1, :], bond_length,
                 angle_dist(rng), rng
             )
             near_inter = any(polymer.min_deviation(q) < eps1 for polymer in polymers)
             near_intra = (polymer_i.min_deviation(q) < eps2)
             while (not within_box(q)) or near_inter or near_intra:
                 q = generate_next_atom(
-                    polymer_i.coords[j-1, :], polymer_i.coords[j, :], bond_length,
+                    polymer_i.coords[j-2, :], polymer_i.coords[j-1, :], bond_length,
                     angle_dist(rng), rng
                 )
                 near_inter = any(polymer.min_deviation(q) < eps1 for polymer in polymers)
