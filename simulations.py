@@ -18,7 +18,25 @@ class Simulation:
     def __init__(self, n_atoms, atom_types, atom_masses, molecule_ids, 
                  xmin, xmax, ymin, ymax, zmin, zmax):
         """
-        Initialize a Simulation object from the given attributes.  
+        Initialize a Simulation object from the given attributes.
+
+        Parameters
+        ----------
+        n_atoms : int
+            Number of atoms, which is assumed to be constant throughout the 
+            simulation.
+        atom_types : list
+            List of atom types. 
+        atom_masses : list
+            List of atom masses.
+        molecule_ids : list
+            List of molecule IDs. 
+        xmin, xmax : float, float
+            Bounds of periodic simulation domain along x-axis. 
+        ymin, ymax : float, float
+            Bounds of periodic simulation domain along y-axis. 
+        zmin, zmax : float, float
+            Bounds of periodic simulation domain along z-axis. 
         """
         # Number of atoms in the simulation
         self.n_atoms = n_atoms
@@ -55,7 +73,12 @@ class Simulation:
     def __init__(self, init_filename):
         """
         Initialize a Simulation object from the given initial configuration
-        file. 
+        file.
+
+        Parameters
+        ----------
+        init_filename : str
+            Path to input initial configuration file. 
         """
         # Parse the initial configuration file ... 
         with open(init_filename) as f:
@@ -202,6 +225,17 @@ class Simulation:
     def append_frame(self, time, coords, bonds, bond_lengths):
         """
         Append a frame to the Simulation instance.
+
+        Parameters
+        ----------
+        time : int or float
+            Timepoint. 
+        coords : `numpy.ndarray`
+            Atomic coordinates. 
+        bonds : dict
+            Dict indicating the type of each bond in the frame. 
+        bond_lengths : dict
+            Dict indicating the length of each bond in the frame. 
         """
         self.times.append(time)
         self.coords.append(coords)
@@ -217,6 +251,17 @@ class Simulation:
 
         A ValueError is raised if the given atom type does not exist, or 
         data for the given timepoint does not exist.
+
+        Parameters
+        ----------
+        time : int or float
+            Timepoint. 
+        atom_type : int
+            The type of atoms whose coordinates are to be returned. 
+
+        Returns
+        -------
+        Array of atomic coordinates of the given type at the given time. 
         """
         # Assume that the atom types are labeled 1, 2, 3, ... 
         if atom_type <= 0 or atom_type > self.n_atom_types:
@@ -240,8 +285,19 @@ class Simulation:
         Get an array of atom coordinates for the given molecules at the 
         given timepoint. 
 
-        A ValueError is raised if the given molecule does not exist, or 
-        data for the given timepoint does not exist. 
+        A ValueError is raised if one of the given molecules does not exist,
+        or data for the given timepoint does not exist.
+
+        Parameters
+        ----------
+        time : int or float
+            Timepoint. 
+        molecule_ids : list
+            List of molecule IDs whose atomic coordinates are to be returned.
+
+        Returns
+        -------
+        List of arrays of atomic coordinates, one for each molecule. 
         """
         # Verify that there is data for the given timepoint 
         try:
@@ -281,7 +337,20 @@ class Simulation:
     def from_file(cls, init_filename, lammpstrj_filename, bond_filename):
         """
         Parse a simulation, given the initial configuration file, the
-        .lammpstrj file, and the .bond file. 
+        .lammpstrj file, and the .bond file.
+
+        Parameters
+        ----------
+        init_filename : str
+            Path to input initial configuration file. 
+        lammpstrj_filename : str
+            Path to input LAMMPS trajectory file. 
+        bond_filename : str
+            Path to input bonding information file.
+
+        Returns
+        -------
+        A `Simulation` instance containing the parsed simulation. 
         """
         # First initialize the simulation
         sim = cls(init_filename)
@@ -400,7 +469,25 @@ class PolymerCrosslinkSimulation(Simulation):
     def __init__(self, n_atoms, atom_types, atom_masses, molecule_ids, 
                  xmin, xmax, ymin, ymax, zmin, zmax):
         """
-        Initialize a PolymerCrosslinkSimulation from the given attributes. 
+        Initialize a PolymerCrosslinkSimulation from the given attributes.
+
+        Parameters
+        ----------
+        n_atoms : int
+            Number of atoms, which is assumed to be constant throughout the 
+            simulation.
+        atom_types : list
+            List of atom types. 
+        atom_masses : list
+            List of atom masses.
+        molecule_ids : list
+            List of molecule IDs. 
+        xmin, xmax : float, float
+            Bounds of periodic simulation domain along x-axis. 
+        ymin, ymax : float, float
+            Bounds of periodic simulation domain along y-axis. 
+        zmin, zmax : float, float
+            Bounds of periodic simulation domain along z-axis. 
         """
         super().__init__(
             n_atoms, atom_types, atom_masses, molecule_ids, xmin, xmax, ymin,
@@ -426,7 +513,12 @@ class PolymerCrosslinkSimulation(Simulation):
     def __init__(self, init_filename):
         """
         Initialize a PolymerCrosslinkSimulation object from the given initial
-        configuration file. 
+        configuration file.
+
+        Parameters
+        ----------
+        init_filename : str
+            Path to input initial configuration file. 
         """
         super().__init__(init_filename)
 
