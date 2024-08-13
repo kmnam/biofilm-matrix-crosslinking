@@ -1,9 +1,11 @@
 """
+Randomly generates initial configurations of polymers and crosslinkers.
+
 Authors:
     Kee-Myoung Nam
 
 Last updated:
-    4/13/2024
+    8/13/2024
 """
 
 import sys
@@ -21,17 +23,19 @@ from lammps_utils import write_init_config
 
 #########################################################################
 if __name__ == '__main__':
-    # Parse input arguments and JSON file
-    infilename = sys.argv[1]
+    # Parse input arguments
+    json_filename = sys.argv[1]
     outprefix = sys.argv[2]
     seed = int(sys.argv[3])
-    data = ''
-    with open(infilename) as f:
-        data = f.read()
-    params = json.loads(data)
+
+    # Parse input .json file  
+    with open(json_filename) as f:
+        params = json.load(f)
     n_polymers = params['n_polymers']
     polymer_length = params['polymer_length']
     bond_length = params['bond_length']
+    theta_mean = params['init_angle_mean']
+    theta_conc = params['init_angle_conc']
     monomer_mass = params['monomer_mass']
     crosslinker_style = params['crosslinker_style']
     n_crosslinkers = params['n_crosslinkers']
@@ -65,7 +69,12 @@ if __name__ == '__main__':
     ymax = params['ymax']
     zmin = params['zmin']
     zmax = params['zmax']
+
+    # Initialize random number generator 
     rng = np.random.default_rng(seed)
+
+    # Define von Mises distribution of bond angles 
+    angle_dist = lambda rng: rng.vonmises(theta_mean, theta_conc)
 
     # Generate box and distance thresholds, adding a little padding along
     # all faces of the box
@@ -79,8 +88,8 @@ if __name__ == '__main__':
     # Generate polymers and crosslinkers
     print('... generating polymers')
     polymers = generate_polymers(
-        n_polymers, polymer_length, bond_length, rng, xmin, xmax, ymin, ymax,
-        zmin, zmax, eps1, eps2
+        n_polymers, polymer_length, bond_length, angle_dist, rng, xmin, xmax,
+        ymin, ymax, zmin, zmax, eps1, eps2
     )
     print('... generating crosslinkers')
     if crosslinker_style == 'atomic':
@@ -116,8 +125,8 @@ if __name__ == '__main__':
 
     # Write the generated initial configuration to file 
     write_init_config(
-        polymers, crosslinkers, bond_length, crosslinker_radius, monomer_mass,
-        crosslinker_mass, lj_coefs, bond_coefs, rng, xmin, xmax, ymin, ymax,
-        zmin, zmax, outprefix + '.data'
+        polymers, crosslinkers, bond_length, crosslinker_style, crosslinker_radius,
+        monomer_mass, crosslinker_mass, lj_coefs, bond_coefs, rng, xmin, xmax,
+        ymin, ymax, zmin, zmax, outprefix + '.data'
     )
 
