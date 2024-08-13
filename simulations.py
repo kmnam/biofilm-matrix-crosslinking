@@ -472,17 +472,17 @@ class PolymerCrosslinkSimulation(Simulation):
         return self.crosslinker_ids
 
     #####################################################################
-    def get_intermolecular_bond_matrices(self):
+    def get_intermolecular_bonds(self):
         """
-        Return a list of `(n_polymers, n_crosslinkers)` matrices that summarizes
-        the bonding between polymers and crosslinkers.
+        Return a list of dicts that summarizes the bonding between polymers 
+        and crosslinkers in each frame of the simulation.  
 
         The polymers and crosslinkers are indexed in order of their IDs. 
 
         Returns 
         -------
-        Sparse matrix that summarizes the bonding between polymers and 
-        crosslinkers. 
+        List of dicts that summarizes the bonding between polymers and 
+        crosslinkers in each frame of the simulation. 
         """
         polymer_idx = {pid: i for i, pid in enumerate(self.polymer_ids)}
         crosslinker_idx = {cid: i for i, cid in enumerate(self.crosslinker_ids)}
@@ -493,21 +493,21 @@ class PolymerCrosslinkSimulation(Simulation):
 
         # For each frame in the simulation ... 
         for i in range(self.n_frames):
-            # Identify the polymer-crosslinker bonds within the system 
-            crosslinks = np.vstack((sim.bonds[i] == 3).nonzero()).T
-            n_crosslinks = crosslinks.shape[0]
-            for j in range(n_crosslinks):
-                atom1, atom2 = crosslinks[j, :]
-                mol1, mol2 = self.molecule_ids[atom1], self.molecule_ids[atom2]
-                type1 = type2 = self.atom_types[atom1], self.atom_types[atom2]
-                if type1 == polymer_atom_type:
-                    p = polymer_idx[mol1]
-                    q = crosslinker_idx[mol2]
-                else:    # type2 == polymer_atom_type
-                    p = polymer_idx[mol2]
-                    q = crosslinker_idx[mol1]
-                graphs_pc[i][(p, q)] = 1
-
-         # Return adjacency lists 
-         return graphs_pc
+            # Identify the polymer-crosslinker bonds within the system in 
+            # the i-th frame 
+            for bi, bj in self.bonds[i]:
+                if self.bonds[i][(bi, bj)] == 3:
+                    # Get the molecules and atom types of atoms bi and bj
+                    mol_i, mol_j = self.molecule_ids[bi], self.molecule_ids[bj]
+                    type_i, type_j = self.atom_types[bi], self.atom_types[bj]
+                    if type_i == 1:   # If bi is the polymer atom ... 
+                        p = polymer_idx[mol_i]
+                        q = crosslinker_idx[mol_j]
+                    else:             # If bj is the polymer atom ...
+                        p = polymer_idx[mol_j]
+                        q = crosslinker_idx[mol_i]
+                    graphs_pc[i][(p, q)] = 1
+        
+        # Return adjacency lists 
+        return graphs_pc
 
