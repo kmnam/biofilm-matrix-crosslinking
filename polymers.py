@@ -6,7 +6,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    8/13/2024
+    8/14/2024
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -86,6 +86,7 @@ def generate_next_atom(atom1_coords, atom2_coords, length, theta, rng):
     ])
     trans = np.hstack((-u.reshape((-1, 1)), v.reshape((-1, 1)), w.reshape((-1, 1))))
     u_new = trans @ (np.append(rot @ np.array([1, 0]), 0))
+    assert np.abs(np.cos(theta) - np.dot(u_new, -u)) < 1e-8
 
     # Get the position of the next atom
     return atom2_coords + length * u_new
@@ -198,6 +199,22 @@ class Polymer(Molecule):
         """
         self.length += 1
         self.coords = np.vstack((self.coords, p.reshape(1, -1)))
+
+    #####################################################################
+    def pop(self):
+        """
+        Remove the last monomer from the Polymer object.
+        """
+        self.length -= 1
+        self.coords = self.coords[:self.length, :]
+
+    #####################################################################
+    def clear(self):
+        """
+        Clear the Polymer object.
+        """
+        self.length = 0
+        self.coords = np.zeros((0, 3), dtype=np.float64)
 
     #####################################################################
     def radius(self):
@@ -379,7 +396,9 @@ class TetrahedralCrosslinker(Molecule):
 
 #########################################################################
 def generate_polymers(n, polymer_length, bond_length, angle_dist, rng, xmin,
-                      xmax, ymin, ymax, zmin, zmax, eps1, eps2):
+                      xmax, ymin, ymax, zmin, zmax, eps1, eps2,
+                      max_seed_per_polymer=1000, max_backtrack_per_polymer=100,
+                      max_tries_per_bond=100):
     """
     Generate a set of `n` random coils as Polymer objects in the given
     3-D box. 
@@ -423,47 +442,115 @@ def generate_polymers(n, polymer_length, bond_length, angle_dist, rng, xmin,
     # Maintain a list of Polymer objects 
     polymers = []
 
+    # Number of times the polymer has been seeded (its 0-th monomer position
+    # determined)
+    n_seed = 0
+
+    # Number of times a subsequent monomer position has been sampled
+    n_tries = 0
+
+    # Number of backtracks while sampling a given polymer 
+    n_backtrack = 0
+
     # Generate the i-th polymer ... 
     for i in range(n):
         polymer_i = Polymer()
-
-        # Sample a random starting point that is not too close to any
-        # previously generated polymer
-        p = rng.random((3,)) * dims + vmin
-        while any(polymer.min_deviation(p) < eps1 for polymer in polymers):
-            p = rng.random((3,)) * dims + vmin
-        polymer_i.append(p)
-
-        # Sample a second monomer position by the given bond length in 
-        # any direction 
-        p = polymer_i.coords[0, :] + bond_length * random_dir(rng)
-        near_inter = any(polymer.min_deviation(p) < eps1 for polymer in polymers)
-        while (not within_box(p)) or near_inter:
-            p = polymer_i.coords[0, :] + bond_length * random_dir(rng)
-            near_inter = any(polymer.min_deviation(p) < eps1 for polymer in polymers)
-        polymer_i.append(p)
-
-        # Sample all subsequent monomer positions, resampling until: 
-        # (1) the point lies within the box 
-        # (2) the point is sufficiently distant from all previously sampled 
-        #     polymers, and 
-        # (3) the point is sufficiently distant from all previously sampled 
-        #     monomers within the given polymer 
-        for j in range(2, polymer_length):
-            q = generate_next_atom(
-                polymer_i.coords[j-2, :], polymer_i.coords[j-1, :], bond_length,
-                angle_dist(rng), rng
-            )
-            near_inter = any(polymer.min_deviation(q) < eps1 for polymer in polymers)
-            near_intra = (polymer_i.min_deviation(q) < eps2)
-            while (not within_box(q)) or near_inter or near_intra:
-                q = generate_next_atom(
-                    polymer_i.coords[j-2, :], polymer_i.coords[j-1, :], bond_length,
-                    angle_dist(rng), rng
+        j = 0
+        while j < polymer_length:
+            # If j == 0, sample a random starting point that is not too close
+            # to any previously generated polymer
+            if j == 0:
+                p = rng.random((3,)) * dims + vmin
+                n_seed += 1
+                near_inter = any(
+                    polymer.min_deviation(p) < eps1 for polymer in polymers
                 )
-                near_inter = any(polymer.min_deviation(q) < eps1 for polymer in polymers)
-                near_intra = (polymer_i.min_deviation(q) < eps2)
-            polymer_i.append(q)
+                while near_inter and n_seed <= max_seed_per_polymer:
+                    p = rng.random((3,)) * dims + vmin
+                    near_inter = any(
+                        polymer.min_deviation(p) < eps1 for polymer in polymers
+                    )
+                    n_seed += 1
+                if n_seed > max_seed_per_polymer:
+                    raise RuntimeError('Exceeded max number of seeds for polymer')
+                polymer_i.append(p)
+                j += 1
+            # If j == 1, sample a second monomer position by the given bond
+            # length in any direction
+            elif j == 1:
+                p = polymer_i.coords[0, :] + bond_length * random_dir(rng)
+                n_tries += 1
+                near_inter = any(
+                    polymer.min_deviation(p) < eps1 for polymer in polymers
+                )
+                while (
+                    (not within_box(p) or near_inter) and
+                    n_backtrack <= max_backtrack_per_polymer and
+                    n_tries <= max_tries_per_bond
+                ):
+                    p = polymer_i.coords[0, :] + bond_length * random_dir(rng)
+                    near_inter = any(
+                        polymer.min_deviation(p) < eps1 for polymer in polymers
+                    )
+                    n_tries += 1
+                if n_backtrack > max_backtrack_per_polymer:
+                    polymer_i.clear()
+                    j = 0
+                    n_backtrack = 0
+                    n_tries = 0
+                if n_tries > max_tries_per_bond:
+                    polymer_i.pop()
+                    j -= 1
+                    n_backtrack += 1
+                    n_tries = 0
+                else:
+                    polymer_i.append(p)
+                    j += 1
+                    n_tries = 0
+            # Otherwise, sample the j-th monomer positions, resampling until: 
+            # (1) the point lies within the box 
+            # (2) the point is sufficiently distant from all previously sampled 
+            #     polymers, and 
+            # (3) the point is sufficiently distant from all previously sampled 
+            #     monomers within the given polymer
+            else:
+                p = generate_next_atom(
+                    polymer_i.coords[j-2, :], polymer_i.coords[j-1, :],
+                    bond_length, angle_dist(rng), rng
+                )
+                near_inter = any(
+                    polymer.min_deviation(p) < eps1 for polymer in polymers
+                )
+                near_intra = (polymer_i.min_deviation(p) < eps2)
+                n_tries += 1
+                while (
+                    (not within_box(p) or near_inter or near_intra) and
+                    n_backtrack <= max_backtrack_per_polymer and
+                    n_tries <= max_tries_per_bond
+                ):
+                    p = generate_next_atom(
+                        polymer_i.coords[j-2, :], polymer_i.coords[j-1, :],
+                        bond_length, angle_dist(rng), rng
+                    )
+                    near_inter = any(
+                        polymer.min_deviation(p) < eps1 for polymer in polymers
+                    )
+                    near_intra = (polymer_i.min_deviation(p) < eps2)
+                    n_tries += 1
+                if n_backtrack > max_backtrack_per_polymer:
+                    polymer_i.clear()
+                    j = 0
+                    n_backtrack = 0
+                    n_tries = 0
+                if n_tries > max_tries_per_bond:
+                    polymer_i.pop()
+                    j -= 1
+                    n_backtrack += 1
+                    n_tries = 0
+                else:
+                    polymer_i.append(p)
+                    j += 1
+                    n_tries = 0
 
         # Keep track of generated polymer 
         polymers.append(polymer_i)
