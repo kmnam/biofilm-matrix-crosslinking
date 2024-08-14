@@ -5,7 +5,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    8/13/2024
+    8/14/2024
 """
 import numpy as np
 
@@ -64,7 +64,7 @@ def write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax):
     )
 
 #########################################################################
-def write_masses(masses):
+def write_masses(masses, fmt=':.3f'):
     """
     Return a string containing the given masses to be outputted into a 
     LAMMPS data file.
@@ -72,115 +72,121 @@ def write_masses(masses):
     Parameters
     ----------
     masses : list of floats
-        List of masses. 
+        List of masses.
+    fmt : str
+        Format string for each floating-point value. 
 
     Returns
     -------
     Output string.
     """
-    return '\n'.join(
-        ['{} {:.3f}'.format(i + 1, mass) for i, mass in enumerate(masses)]
+    return '\n'.join([
+        ('{} {' + fmt + '}').format(i + 1, mass) for i, mass in enumerate(masses)
+    ])
+
+#########################################################################
+def write_lj_coefs(type_i, type_j, lj_coefs, fmt=':.6f'):
+    """
+    Return a one-line string containing the given Lennard-Jones coefficients
+    to be outputted into a LAMMPS data file. 
+
+    Parameters
+    ----------
+    type_i : int
+        Index of first atom type. 
+    type_j : int
+        Index of second atom type. 
+    lj_coefs : dict
+        Dict containing the Lennard-Jones coefficients ('eps', 'sigma', 
+        'cutoff') for a pair of atom types.
+    fmt : str
+        Format string for each floating-point value. 
+
+    Returns
+    -------
+    Output string.
+    """
+    return ('{} {} {' + fmt + '} {' + fmt + '} {' + fmt + '}\n').format(
+        type_i, type_j, lj_coefs['eps'], lj_coefs['sigma'], lj_coefs['cutoff']
     )
 
 #########################################################################
-def write_lj_coefs(lj_coefs):
+def write_bond_coefs(bond_idx, bond_coefs, bond_type='harmonic', write_type=True,
+                     fmt=':.6f'):
     """
-    Return a string containing the given Lennard-Jones coefficients to 
+    Return a string containing the given FENE bond energy coefficients to 
     be outputted into a LAMMPS data file. 
 
     Parameters
     ----------
-    lj_coefs : list of dicts
-        List of dictionaries containing the Lennard-Jones coefficients
-        ('eps', 'sigma', 'cutoff') for each pair of atom types.
+    bond_idx : int
+        Index of bond type. 
+    bond_coefs : dict
+        Dict containing the bond energy coefficients.
+    bond_type : str
+        String indicating the bond type; should be either 'fene' or
+        'harmonic'.
+    write_type : bool
+        If True, write the bond type.
+    fmt : str
+        Format string for each floating-point value. 
 
     Returns
     -------
     Output string.
     """
-    lines = []
-    k = 0
-    n_atom_types = (2 if len(lj_coefs) == 3 else 3)
-    for i in range(1, n_atom_types + 1):
-        for j in range(i, n_atom_types + 1):
-            lines.append(
-                '{} {} {:.10f} {:.10f} {:.10f}'.format(
-                    i, j, lj_coefs[k]['eps'], lj_coefs[k]['sigma'], lj_coefs[k]['cutoff']
-                )
-            )
-            k += 1
-
-    return '\n'.join(lines)
-
-#########################################################################
-def write_bond_coefs(bond_coefs):
-    """
-    Return a string containing the given bond energy coefficients to 
-    be outputted into a LAMMPS data file. 
-
-    The first set of coefficients is assumed to specify the intra-polymer
-    FENE bond energy parameters.
-
-    Parameters
-    ----------
-    bond_coefs : list of dicts
-        List of dictionaries containing the bond energy coefficients
-        ('K', 'R0', 'eps', 'sigma' for FENE bonds; 'K', 'R0' for harmonic
-        bonds) for each bond type. 
-
-    Returns
-    -------
-    Output string.
-    """
-    lines = []
-    n_bond_types = len(bond_coefs)
-    for i in range(n_bond_types):
-        if i == 0:
-            line = '{} fene {:.10f} {:.10f} {:.10f} {:.10f}'.format(
-                i + 1, bond_coefs[i]['K'], bond_coefs[i]['R0'],
-                bond_coefs[i]['eps'], bond_coefs[i]['sigma']
-            )
-        else:
-            line = '{} harmonic {:.10f} {:.10f}'.format(
-                i + 1, bond_coefs[i]['K'], bond_coefs[i]['R0']
-            )
-        lines.append(line)
-
-    return '\n'.join(lines)
+    if bond_type == 'harmonic':
+        return ('{} {}{' + fmt + '} {' + fmt + '}\n').format(
+            bond_idx, bond_type + ' ' if write_type else '', bond_coefs['K'],
+            bond_coefs['R0']
+        )
+    elif bond_type == 'fene':
+        return ('{} {}{' + fmt + '} {' + fmt + '} {' + fmt + '} {' + fmt + '}\n').format(
+            bond_idx, bond_type + ' ' if write_type else '', bond_coefs['K'],
+            bond_coefs['R0'], bond_coefs['eps'], bond_coefs['sigma']
+        )
+    else:
+        raise ValueError('Unrecognized bond type')
 
 #########################################################################
-def write_angle_coefs(angle_coefs):
+def write_angle_coefs(angle_idx, angle_coefs, angle_type='cosine/delta',
+                      write_type=True, fmt=':.6f'):
     """
     Return a string containing the given angle energy coefficients to 
     be outputted into a LAMMPS data file. 
 
     Parameters
     ----------
-    angle_coefs : list of dicts
-        List of two dictionaries containing the angle energy coefficients 
-        ('K' and 'theta0'). The first pertains to the angles formed by 
-        uncrosslinked monomer triplets, the second to the angles formed by
-        crosslinked monomer triplets.
+    angle_idx : int
+        Index of angle type.
+    angle_coefs : dict
+        Dict containing the angle energy coefficients.
+    angle_type : str
+        String indicating the angle type; should be 'cosine' or 'cosine/delta'.
+    write_type : bool
+        If True, write the angle type.
+    fmt : str
+        Format string for each floating-point value. 
 
     Returns
     -------
     Output string.
     """
-    lines = []
-    n_angle_types = 2
-    for i in range(2):
-        lines.append(
-            '{} {:.10f} {:.10f}'.format(
-                i + 1, angle_coefs[i]['K'], angle_coefs[i]['theta0']
-            )
+    if angle_type == 'cosine':
+        return ('{} {}{' + fmt + '}\n').format(
+            angle_idx, angle_type + ' ' if write_type else '', angle_coefs['K']
         )
-
-    return '\n'.join(lines)
+    elif angle_type == 'cosine/delta':
+        return ('{} {}{' + fmt + '} {' + fmt + '}\n').format(
+            angle_idx, angle_type + ' ' if write_type else '', angle_coefs['K'],
+            angle_coefs['theta0']
+        )
+    else:
+        raise ValueError('Unrecognized angle type')
 
 #########################################################################
-def write_molecule_coords(polymers, crosslinkers, rng, polymer_type=1,
-                          crosslinker_type=2, crosslinker_sticky_type=3,
-                          fmt=':.6f'):
+def write_coords(polymers, crosslinkers, rng, polymer_type=1, crosslinker_type=2,
+                 crosslinker_sticky_type=3, fmt=':.6f'):
     """
     Return a string containing the given polymer and crosslinker coordinates
     to be outputted into a LAMMPS data file.
@@ -212,7 +218,7 @@ def write_molecule_coords(polymers, crosslinkers, rng, polymer_type=1,
     # Write the polymer coordinates first ...
     for i, polymer in enumerate(polymers):
         molecule_id = i + 1
-        for j in range(polymer.length):
+        for j in range(len(polymer)):
             # For each atom, write the line:
             # [atom_id] [molecule_id] [atom_type] [xcoord] [ycoord] [zcoord]
             outstr += ('{} {} {} {' + fmt + '} {' + fmt + '} {' + fmt + '}\n').format(
@@ -250,8 +256,7 @@ def write_molecule_coords(polymers, crosslinkers, rng, polymer_type=1,
     return outstr
 
 #########################################################################
-def write_molecule_bonds(polymers, crosslinkers, polymer_bond_type=1,
-                         crosslinker_bond_type=2):
+def write_bonds(polymers, crosslinkers, polymer_bond_type=1, crosslinker_bond_type=2):
     """
     Return a string containing the bonds within the given set of polymers 
     and crosslinkers to be outputted into a LAMMPS data file.
@@ -263,9 +268,9 @@ def write_molecule_bonds(polymers, crosslinkers, polymer_bond_type=1,
     crosslinkers : list
         List of AtomicCrosslinker or TetrahedralCrosslinker objects.
     polymer_bond_type : int
-        Type of bond within each polymer. 
+        Bond type within each polymer. 
     crosslinker_bond_type : int
-        Type of bond within each crosslinker.
+        Bond type within each crosslinker.
 
     Returns
     -------
@@ -277,9 +282,9 @@ def write_molecule_bonds(polymers, crosslinkers, polymer_bond_type=1,
     # Write the polymer bonds first ... 
     first_atom_id = 1
     for i, polymer in enumerate(polymers):
-        last_atom_id = first_atom_id + polymer.length - 1
+        last_atom_id = first_atom_id + len(polymer) - 1
         atom_ids = list(range(first_atom_id, last_atom_id + 1))
-        for j in range(polymer.length - 1):
+        for j in range(len(polymer) - 1):
             # For each bond, write the line: 
             # [bond_id] [bond_type] [first_atom_id] [second_atom_id]
             outstr += '{} {} {} {}\n'.format(
@@ -289,7 +294,7 @@ def write_molecule_bonds(polymers, crosslinkers, polymer_bond_type=1,
         first_atom_id = last_atom_id + 1
 
     # ... then write the crosslinker bonds 
-    first_atom_id = sum(polymer.length for polymer in polymers) + 1
+    first_atom_id = sum(len(polymer) for polymer in polymers) + 1
     for i, crosslinker in enumerate(crosslinkers):
         for j in range(1, crosslinker.coords.shape[0]):
             # For each bond, write the line:
@@ -303,10 +308,46 @@ def write_molecule_bonds(polymers, crosslinkers, polymer_bond_type=1,
     return outstr
 
 #########################################################################
+def write_angles(polymers, angle_type=1):
+    """
+    Return a string containing the angles within the given set of polymers 
+    to be outputted into a LAMMPS data file. 
+
+    Parameters
+    ----------
+    polymers : list
+        List of Polymer objects.
+    angle_type : int
+        Angle type within each polymer.
+
+    Returns 
+    -------
+    Output string.
+    """
+    outstr = ''
+    angle_id = 1    # Number the angles in the string as 1, 2, 3, ...
+    
+    # Write the polymer angles ... 
+    first_atom_id = 1
+    for i, polymer in enumerate(polymers):
+        last_atom_id = first_atom_id + len(polymer) - 1
+        atom_ids = list(range(first_atom_id, last_atom_id + 1))
+        for j in range(1, len(polymer) - 1):
+            # For each angle, write the line: 
+            # [angle_id] [angle_type] [first_atom_id] [second_atom_id] [third_atom_id]
+            outstr += '{} {} {} {} {}\n'.format(
+                angle_id, angle_type, atom_ids[j-1], atom_ids[j], atom_ids[j+1]
+            )
+            angle_id += 1
+        first_atom_id = last_atom_id + 1
+
+    return outstr
+
+#########################################################################
 def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
                       crosslinker_radius, monomer_mass, crosslinker_mass,
-                      lj_coefs, bond_coefs, angle_coefs, rng, xmin, xmax,
-                      ymin, ymax, zmin, zmax, outfilename):
+                      lj_coefs, bond_coefs, bond_types, angle_coefs, angle_types,
+                      rng, xmin, xmax, ymin, ymax, zmin, zmax, outfilename):
     """
     Write the given initial configuration of polymer and crosslinker
     coordinates to file.
@@ -317,6 +358,21 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
         List of Polymer objects.
     crosslinkers : list
         List of AtomicCrosslinker or TetrahedralCrosslinker objects.
+    bond_length : int
+        Polymer bond lengths in the initial configuration. 
+    crosslinker_style : str
+        Crosslinker style, either 'atomic' or 'tetrahedral'.
+    crosslinker_radius : float
+        Crosslinker radius. 
+    monomer_mass : float
+        Monomer mass. 
+    crosslinker_mass : float
+        Crosslinker mass. 
+    lj_coefs : list of dicts
+        Lennard-Jones potential coefficients for each pair of atom types.
+    bond_coefs : list of dicts
+        Bond 
+        
     TODO Fill this in
     """
     n_polymers = len(polymers)
@@ -333,12 +389,13 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
                 crosslinker_radius
             )
         )
-        text += '{} atoms\n{} bonds\n0 angles\n0 dihedrals\n0 impropers\n\n'.format(
+        text += '{} atoms\n{} bonds\n{} angles\n0 dihedrals\n0 impropers\n\n'.format(
             n_polymers * polymer_length + n_crosslinkers,
-            n_polymers * (polymer_length - 1)
+            n_polymers * (polymer_length - 1),
+            n_polymers * (polymer_length - 2)
         )
         text += (
-            '2 atom types\n2 bond types\n0 angle types\n0 dihedral types\n'
+            '2 atom types\n2 bond types\n2 angle types\n0 dihedral types\n'
             '0 improper types\n\n'
         )
         text += write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax) + '\n\n'
@@ -354,23 +411,58 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
                 crosslinker_radius
             )
         )
-        text += '{} atoms\n{} bonds\n0 angles\n0 dihedrals\n0 impropers\n\n'.format(
+        text += '{} atoms\n{} bonds\n{} angles\n0 dihedrals\n0 impropers\n\n'.format(
             n_polymers * polymer_length + 5 * n_crosslinkers,
-            n_polymers * (polymer_length - 1) + 4 * n_crosslinkers
+            n_polymers * (polymer_length - 1) + 4 * n_crosslinkers,
+            n_polymers * (polymer_length - 2)
         )
         text += (
-            '3 atom types\n3 bond types\n0 angle types\n0 dihedral types\n'
+            '3 atom types\n3 bond types\n2 angle types\n0 dihedral types\n'
             '0 improper types\n\n'
         )
         text += write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax) + '\n\n'
         text += 'Masses\n\n{}\n\n'.format(
             write_masses([monomer_mass, crosslinker_mass / 5, crosslinker_mass / 5])
         )
-    text += 'PairIJ Coeffs\n\n{}\n\n'.format(write_lj_coefs(lj_coefs))
-    text += 'Bond Coeffs\n\n{}\n\n'.format(write_bond_coefs(bond_coefs))
-    text += 'Angle Coeffs\n\n{}\n\n'.format(write_angle_coefs(angle_coefs))
-    text += 'Atoms\n\n{}\n'.format(write_molecule_coords(polymers, crosslinkers, rng))
-    text += 'Bonds\n\n{}\n'.format(write_molecule_bonds(polymers, crosslinkers))
+    
+    # Write the Lennard-Jones coefficients
+    #
+    # A dict of coefficients should be present for each pair of atom types 
+    text += 'PairIJ Coeffs\n\n'
+    n_pairs = len(lj_coefs)
+    n_atom_types = int((-1 + np.sqrt(1 + 8 * n_pairs)) / 2)
+    k = 0
+    for i in range(1, n_atom_types + 1):
+        for j in range(i, n_atom_types + 1):
+            text += write_lj_coefs(i, j, lj_coefs[k])
+            k += 1
+    text += '\n'
+
+    # Write the bond potential coefficients
+    #
+    # A dict of coefficients should be present for every bond type
+    text += 'Bond Coeffs\n\n'
+    for i in range(len(bond_coefs)):
+        text += write_bond_coefs(
+            i + 1, bond_coefs[i], bond_types[i], write_type=True
+        )
+    text += '\n'
+
+    # Write the angle potential coefficients 
+    #
+    # A dict of coefficients should be present for every angle type
+    text += 'Angle Coeffs\n\n'
+    for i in range(len(angle_coefs)):
+        text += write_angle_coefs(
+            i + 1, angle_coefs[i], angle_types[i], write_type=False
+        )
+    text += '\n'
+
+    # Write atomic coordinates, bonds, and angles  
+    text += 'Atoms\n\n{}\n'.format(write_coords(polymers, crosslinkers, rng))
+    text += 'Bonds\n\n{}\n'.format(write_bonds(polymers, crosslinkers))
+    text += 'Angles\n\n{}\n'.format(write_angles(polymers))
+
     with open(outfilename, 'w') as f:
         f.write(header + text)
 
