@@ -1,0 +1,76 @@
+{
+    "n_polymers": 16,
+    "polymer_length": 1000,
+    "bond_length": 3.0,
+    "monomer_mass": 0.001328432,
+    "crosslinker_style": "tetrahedral",
+    "n_crosslinkers": 160,
+    "crosslinker_mass": 0.083027,
+    "lj_coefs_11": {
+        "eps": 4.141947,
+        "sigma": 2.6726961544,
+        "cutoff": 3.0
+    },
+    "lj_coefs_12": {
+        "eps": 4.141947,
+        "sigma": 2.6726961544,
+        "cutoff": 3.0
+    },
+    "lj_coefs_13": {
+        "eps": 8.283894,
+        "sigma": 2.6726961544,
+        "cutoff": 15.0
+    },
+    "lj_coefs_22": {
+        "eps": 8.283894,
+        "sigma": 2.6726961544,
+        "cutoff": 15.0
+    },
+    "lj_coefs_23": {
+        "eps": 4.141947,
+        "sigma": 2.6726961544,
+        "cutoff": 3.0
+    },
+    "lj_coefs_33": {
+        "eps": 4.141947,
+        "sigma": 2.6726961544,
+        "cutoff": 3.0
+    },
+    "fene_coefs": {
+        "K": 13.0,
+        "R0": 7.5,
+        "eps": 4.141947,
+        "sigma": 3.06
+    },
+    "harmonic_within_coefs": {
+        "K": 60.0,
+        "R0": 2.5
+    },
+    "harmonic_crosslink_coefs": {
+        "K": 60.0,
+        "R0": 3.0
+    },
+    "angle_polymer_cosine_coefs": {
+        "K": 10.0,
+        "theta0": 3.1415926536
+    },
+    "angle_crosslinker_cosine_coefs": {
+        "K": 30.0,
+        "theta0": 1.9106332362
+    },
+    "angle_polymer_crosslinked_cosine_coefs": {
+        "K": 30.0,
+        "theta0": 2.09439510239
+    },
+    "inter_molecule_mindist": 3.0,
+    "intra_polymer_mindist": 3.0,
+    "xmin": -300.0,
+    "xmax": 300.0,
+    "ymin": -300.0,
+    "ymax": 300.0,
+    "zmin": -300.0,
+    "zmax": 300.0,
+    "path_unbonded_template": "/home/kn449/EPS-crosslinking/templates/unbonded.data_template",
+    "path_bonded_template": "/home/kn449/EPS-crosslinking/templates/bonded.data_template",
+    "path_forward_map": "/home/kn449/EPS-crosslinking/maps/map_rxn1"
+}
