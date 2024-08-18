@@ -6,7 +6,7 @@
 #     Kee-Myoung Nam
 #
 # Last updated:
-#     8/13/2024
+#     8/17/2024
 # ====================================================================== #
 # INPUT VARIABLES
 # ===============
@@ -37,11 +37,8 @@ dimension 3
 atom_style bond
 bond_style hybrid fene harmonic
 
-# Subject polymeric bond angles to a cosine angle potential 
-angle_style cosine
-
-# Subject crosslinkers to a harmonic improper potential
-improper_style harmonic
+# Subject polymeric and crosslinker bond angles to a cosine angle potential 
+angle_style cosine/delta
 
 # Use Lennard-Jones potentials between unbonded molecules (note that the 2.5
 # cutoff ratio is re-written below when the initial configuration file is
@@ -98,7 +95,7 @@ thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond
 timestep 0.0001
 reset_timestep 0
 
-# Equilibrate using the NVE ensemble and Langevin thermostat 
+# Equilibrate using the NVE ensemble and Langevin thermostat (i.e., NVT ensemble)
 fix fxinit1 all nve
 fix fxinit2 all langevin $g $g 2.0 12345
 
@@ -117,19 +114,17 @@ reset_timestep 0
 dump 1 all custom 10000 lammpstrj_filename id mol type xu yu zu vx vy vz
 dump_modify 1 sort id
 
-# Write polymeric bonds and polymer/crosslinker bonds to file
+# Write bond lengths and energies to file 
 compute 1 all property/local btype batom1 batom2
 compute 2 all bond/local dist engpot force
 dump 2 all local 10000 bond_filename index c_1[*] c_2[*]
 dump_modify 2 sort 2
 
-# Write polymeric bond angles to file 
+# Write bond angles and energies to file 
 compute 3 all property/local atype aatom1 aatom2 aatom3
 compute 4 all angle/local theta eng
 dump 3 all local 10000 angle_filename index c_3[*] c_4[*]
 dump_modify 3 sort 2
-
-# TODO Write improper? 
 
 # ====================================================================== #
 # DEFINE MOLECULE TEMPLATES
