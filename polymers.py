@@ -1336,10 +1336,10 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
         text += '{} atoms\n{} bonds\n{} angles\n0 dihedrals\n0 impropers\n\n'.format(
             n_polymers * polymer_length + 5 * n_crosslinkers,
             n_polymers * (polymer_length - 1) + 4 * n_crosslinkers,
-            n_polymers * (polymer_length - 2)
+            n_polymers * (polymer_length - 2) + 6 * n_crosslinkers
         )
         text += (
-            '3 atom types\n3 bond types\n2 angle types\n0 dihedral types\n'
+            '3 atom types\n3 bond types\n3 angle types\n0 dihedral types\n'
             '0 improper types\n\n'
         )
         text += write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax) + '\n\n'

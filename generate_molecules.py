@@ -22,12 +22,7 @@ from polymers import (
 )
 
 #########################################################################
-if __name__ == '__main__':
-    # Parse input arguments
-    json_filename = sys.argv[1]
-    outprefix = sys.argv[2]
-    seed = int(sys.argv[3])
-
+def main(json_filename, init_filename, pdf_filename, rng_seed):
     # Parse input .json file  
     with open(json_filename) as f:
         params = json.load(f)
@@ -75,7 +70,7 @@ if __name__ == '__main__':
     zmax = params['zmax']
 
     # Initialize random number generator 
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(rng_seed)
 
     # Define von Mises distribution of polymer bond angles 
     angle_dist = lambda rng: rng.vonmises(
@@ -128,12 +123,19 @@ if __name__ == '__main__':
     axes[1].set_aspect('equal')
     axes[2].set_aspect('equal')
     plt.tight_layout()
-    plt.savefig(outprefix + '.pdf')
+    plt.savefig(pdf_filename)
 
     # Write the generated initial configuration to file 
     write_init_config(
         polymers, crosslinkers, bond_length, crosslinker_style, crosslinker_radius,
         monomer_mass, crosslinker_mass, lj_coefs, bond_coefs, bond_styles,
-        angle_coefs, xmin, xmax, ymin, ymax, zmin, zmax, outprefix + '.data'
+        angle_coefs, xmin, xmax, ymin, ymax, zmin, zmax, init_filename
     )
 
+
+#########################################################################
+if __name__ == '__main__':
+    json_filename = sys.argv[1]
+    outprefix = sys.argv[2]
+    rng_seed = int(sys.argv[3])
+    main(json_filename, outprefix + '.data', outprefix + '.pdf', rng_seed)
