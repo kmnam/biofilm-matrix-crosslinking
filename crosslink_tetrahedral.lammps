@@ -34,7 +34,7 @@ dimension 3
 
 # Use FENE bonds for polymeric bonds and harmonic bonds for polymer/crosslinker
 # bonds 
-atom_style bond
+atom_style angle
 bond_style hybrid fene harmonic
 
 # Subject polymeric and crosslinker bond angles to a cosine angle potential 
@@ -44,8 +44,7 @@ angle_style cosine/delta
 #
 # Note that the 2.5 * \sigma cutoff ratio is re-written below when the initial
 # configuration file is parsed
-variable sigma equal 3.0/2^(1/6)
-pair_style lj/cut $(2.5*sigma)
+pair_style lj/cut 6.6817403861
 
 # Use periodic boundary conditions in all 3 dimensions 
 boundary p p p
@@ -53,7 +52,7 @@ boundary p p p
 # Maintain neighbor lists with given additional "skin" distance
 #
 # Skin distance is set to 0.3 * \sigma, where \sigma = 3 nm / (2^(1/6))
-neighbor $(0.3*sigma) bin
+neighbor 0.8018088463 bin
 
 # Build neighbor lists at every timestep 
 neigh_modify every 1 delay 1
@@ -62,7 +61,7 @@ neigh_modify every 1 delay 1
 # PARSE INPUT MOLECULES
 # =====================
 # Allow for one additional bond for each atom
-read_data init_filename extra/bond/per/atom 1 extra/special/per/atom 10
+read_data ${init_filename} extra/bond/per/atom 1 extra/special/per/atom 10
 pair_modify shift yes
 
 # - Exclude Lennard-Jones potential contributions between FENE-bonded atoms
@@ -73,7 +72,7 @@ special_bonds fene angle no
 # PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
 # ===================================================
 thermo 10
-thermo_style custom step temp pe ke etotal epair ebond press
+thermo_style custom step temp pe ke etotal epair ebond eangle press
 
 # ====================================================================== #
 # ENERGY MINIMIZATION
@@ -86,32 +85,32 @@ minimize 1.0e-4 1.0e-6 5000 10000
 # Set initial velocities of all molecules from a Gaussian distribution with
 # angular momenta set to zero 
 variable temp equal 300.0
-velocity all create $temp 1234 rot yes dist gaussian
+velocity all create ${temp} 1234 rot yes dist gaussian
 
 # ====================================================================== #
 # PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
 # =================================================
 thermo 1000
-thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond
+thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond eangle
 
 # ====================================================================== #
 # SET UP AND RUN INITIAL EQUILIBRATION
 # ====================================
 variable dt equal 0.0001
-timestep $dt
+timestep ${dt}
 reset_timestep 0
 
 # Equilibrate using the NVE ensemble and Langevin thermostat (i.e., NVT ensemble)
 fix fxinit1 all nve
-fix fxinit2 all langevin $temp $temp $(dt*2) 12345
+fix fxinit2 all langevin ${temp} ${temp} $(dt/20) 12345 scale 2 20 scale 3 20
 
 run 100000
 
 # ====================================================================== #
 # SET UP SIMULATION
 # =================
-variable dt equal 0.00045
-timestep $dt
+variable dt equal 0.0001
+timestep ${dt}
 reset_timestep 0
 
 # Write polymer and crosslinker coordinates from simulation to file:
@@ -160,7 +159,7 @@ fix myrxns all bond/react stabilization yes statted_group 0.5 &
 # - Apply NVT ensemble on unreacting atoms throughout the simulation
 # - Apply Langevin dynamics on reacting atoms throughout the simulation
 fix fx1 statted_group_REACT nve
-fix fx2 statted_group_REACT langevin $temp $temp $(dt*2) 1234567
+fix fx2 statted_group_REACT langevin ${temp} ${temp} $(dt/20) 1234567 scale 2 20 scale 3 20
 
 # ====================================================================== #
 # RUN SIMULATION
