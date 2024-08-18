@@ -6,17 +6,20 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    8/17/2024
+    8/18/2024
 """
 import numpy as np
 import matplotlib.pyplot as plt
 
-__polymer_atom_type = 1
-__crosslinker_atom_type = 2
-__crosslinker_sticky_atom_type = 3
-__polymer_bond_type = 1
-__crosslinker_bond_type = 2
-__polymer_crosslinker_bond_type = 3
+_polymer_atom_type = 1
+_crosslinker_atom_type = 2
+_crosslinker_sticky_atom_type = 3
+_polymer_bond_type = 1
+_crosslinker_bond_type = 2
+_polymer_crosslinker_bond_type = 3
+_polymer_angle_type = 1
+_crosslinker_angle_type = 2
+_polymer_crosslinked_angle_type = 3
 
 #########################################################################
 #                           HELPER FUNCTIONS                            #
@@ -36,6 +39,37 @@ def random_dir(rng):
     """
     v = rng.normal(size=(3,))
     return v / np.linalg.norm(v)
+
+#########################################################################
+def dist_periodic(x, y, xmin, xmax, ymin, ymax, zmin, zmax):
+    """
+    Get the distance between x and y, assuming periodic boundary conditions.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        First query point.
+    y : numpy.ndarray
+        Second query point.
+    xmin, xmax : float, float
+        Minimum and maximum x-coordinates.
+    ymin, ymax : float, float
+        Minimum and maximum y-coordinates.
+    zmin, zmax : float, float
+        Minimum and maximum z-coordinates.
+
+    Returns
+    -------
+    Distance between x and y, assuming periodic boundary conditions.
+    """
+    delta = [xmax - xmin, ymax - ymin, zmax - zmin]
+    total = 0.0
+    for i in range(3):
+        dist = np.abs(x[i] - y[i])
+        if dist > delta[i] - dist:
+            dist = delta[i] - dist
+        total += dist ** 2
+    return np.sqrt(total)
 
 #########################################################################
 def generate_orthonormal_basis_3d(u, rng):
@@ -162,7 +196,7 @@ class Molecule:
     common to both polymers and crosslinkers.
 
     This class is not meant to be used by itself, but rather as a base 
-    class for Polymer, AtomicCrosslinker, and TetrahedralCrosslinker. 
+    class for `Polymer`, `AtomicCrosslinker`, and `TetrahedralCrosslinker`. 
     """
     def __init__(self, coords=None, atom_types=None, bonds=None):
         """
@@ -256,16 +290,16 @@ class Molecule:
 #########################################################################
 class Polymer(Molecule):
     """
-    A basic Polymer class. 
+    A basic polymer class. 
     """
     def __init__(self, coords=None, atom_types=None):
         """
-        Initialize a Polymer object with the given monomer coordinates.
+        Initialize a `Polymer` object with the given monomer coordinates.
 
-        Note that a Polymer object can be empty. 
+        Note that a `Polymer` object can be empty. 
 
-        The monomers in the Polymer object are assumed to be consecutive, 
-        and the bonds in the Polymer object are accordingly generated.
+        The monomers in the `Polymer` object are assumed to be consecutive, 
+        and the bonds in the `Polymer` object are accordingly generated.
 
         Parameters
         ----------
@@ -281,23 +315,23 @@ class Polymer(Molecule):
             self.length = coords.shape[0]
         self.bonds = {}
         for i in range(self.length - 2):
-            self.bonds[(i, i + 1)] = __polymer_bond_type
+            self.bonds[(i, i + 1)] = _polymer_bond_type
 
     #####################################################################
     def __len__(self):
         """
-        Return the length of the Polymer object. 
+        Return the length of the `Polymer` object. 
 
         Returns
         -------
-        Length of the Polymer object. 
+        Length of the `Polymer` object. 
         """
         return self.length
 
     #####################################################################
     def append(self, p, atom_type):
         """
-        Add a monomer to the end of the Polymer object.
+        Add a monomer to the end of the `Polymer` object.
 
         Parameters
         ----------
@@ -309,12 +343,12 @@ class Polymer(Molecule):
         self.length += 1
         self.coords = np.vstack((self.coords, p.reshape(1, -1)))
         self.atom_types = np.append(self.atom_types, atom_type)
-        self.bonds[(self.length - 2, self.length - 1)] = __polymer_bond_type
+        self.bonds[(self.length - 2, self.length - 1)] = _polymer_bond_type
 
     #####################################################################
     def pop(self):
         """
-        Remove the last monomer from the Polymer object.
+        Remove the last monomer from the `Polymer` object.
         """
         self.length -= 1
         self.coords = self.coords[:self.length, :]
@@ -324,7 +358,7 @@ class Polymer(Molecule):
     #####################################################################
     def clear(self):
         """
-        Clear the Polymer object.
+        Clear the `Polymer` object.
         """
         self.length = 0
         self.coords = np.zeros((0, 3), dtype=np.float64)
@@ -406,7 +440,7 @@ class TetrahedralCrosslinker(Molecule):
             self.atom_types = np.array(atom_types, dtype=np.int64)
             if self.atom_types.shape[0] != self.coords.shape[0]:
                 raise RuntimeError('Invalid array of atom types')
-        self.bonds = {(0, i): __crosslinker_bond_type for i in range(1, 5)}
+        self.bonds = {(0, i): _crosslinker_bond_type for i in range(1, 5)}
 
     #####################################################################
     def translate(self, x, y, z):
@@ -485,10 +519,10 @@ class TetrahedralCrosslinker(Molecule):
 #########################################################################
 def generate_polymers(n, polymer_length, bond_length, angle_dist, rng, xmin,
                       xmax, ymin, ymax, zmin, zmax, eps1, eps2,
-                      atom_type=__polymer_atom_type, max_seed_per_polymer=1000,
+                      atom_type=_polymer_atom_type, max_seed_per_polymer=1000,
                       max_backtrack_per_polymer=100, max_tries_per_bond=100):
     """
-    Generate a set of `n` random coils as Polymer objects in the given
+    Generate a set of `n` random coils as `Polymer` objects in the given
     3-D box. 
 
     Parameters
@@ -514,10 +548,28 @@ def generate_polymers(n, polymer_length, bond_length, angle_dist, rng, xmin,
         Inter-polymer distance threshold for sampling.
     eps2 : float
         Intra-polymer distance threshold for sampling.
+    atom_type : int
+        Atom type for each atom in each `Polymer` object. 
+    max_seed_per_polymer : int
+        Maximum number of starting monomer positions to be sampled for any
+        `Polymer` object. If this number is exceeded, a `RuntimeError` is
+        raised.
+    max_backtrack_per_polymer : int
+        Maximum number of backtracking events for any `Polymer` object. This 
+        function backtracks along a `Polymer` object (i.e., removes the
+        previously sampled monomer position) if it samples more than
+        `max_tries_per_bond` positions for the next monomer. If the number of
+        backtracking events for a `Polymer` object is exceeded, then the
+        function "starts over" by sampling a new starting monomer position.
+    max_tries_per_bond : int
+        Maximum number of sampling attempts for the (i+1)-th monomer from the
+        i-th monomer in a `Polymer` object. If this number is exceeded, the 
+        function backtracks along the `Polymer` object, i.e., resamples the
+        i-th monomer position. 
 
     Returns
     -------
-    A list of generated Polymer objects.
+    A list of generated `Polymer` objects.
     """
     # Get the dimensions of the box 
     vmin = np.array([xmin, ymin, zmin])
@@ -663,7 +715,7 @@ def generate_polymers(n, polymer_length, bond_length, angle_dist, rng, xmin,
 
 #########################################################################
 def generate_atomic_crosslinkers(polymers, n, rng, xmin, xmax, ymin, ymax, zmin,
-                                 zmax, eps1, eps2, atom_type=__crosslinker_atom_type):
+                                 zmax, eps1, eps2, atom_type=_crosslinker_atom_type):
     """
     Generate a set of `n` atomic crosslinkers to superimpose on the given
     set of polymers in the given 3-D box.
@@ -671,7 +723,7 @@ def generate_atomic_crosslinkers(polymers, n, rng, xmin, xmax, ymin, ymax, zmin,
     Parameters
     ----------
     polymers : list
-        Pre-generated list of Polymer objects.
+        Pre-generated list of `Polymer` objects.
     n : int
         Number of crosslinkers.
     rng : `numpy.random.Generator`
@@ -685,11 +737,13 @@ def generate_atomic_crosslinkers(polymers, n, rng, xmin, xmax, ymin, ymax, zmin,
     eps1 : float
         Minimum separation between each crosslinker and every monomer.
     eps2 : float
-        Minimum separation between crosslinkers. 
+        Minimum separation between crosslinkers.
+    atom_type : int
+        Atom type for the sole atom in each `AtomicCrosslinker`. 
 
     Returns
     -------
-    A list of AtomicCrosslinker objects.
+    A list of `AtomicCrosslinker` objects.
     """
     # Get the dimensions of the box 
     vmin = np.array([xmin, ymin, zmin])
@@ -725,8 +779,8 @@ def generate_atomic_crosslinkers(polymers, n, rng, xmin, xmax, ymin, ymax, zmin,
 #########################################################################
 def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
                                       ymin, ymax, zmin, zmax, eps1, eps2,
-                                      atom_type=__crosslinker_atom_type,
-                                      sticky_atom_type=__crosslinker_sticky_atom_type):
+                                      atom_type=_crosslinker_atom_type,
+                                      sticky_atom_type=_crosslinker_sticky_atom_type):
     """
     Generate a set of `n` tetrahedral crosslinkers to superimpose on the
     given set of polymers in the given 3-D box.
@@ -734,7 +788,7 @@ def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
     Parameters
     ----------
     polymers : list
-        Pre-generated list of Polymer objects.
+        Pre-generated list of `Polymer` objects.
     n : int
         Number of crosslinkers.
     radius : float
@@ -756,7 +810,7 @@ def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
 
     Returns
     -------
-    A list of TetrahedralCrosslinker objects.
+    A list of `TetrahedralCrosslinker` objects.
     """
     # Make the box a bit smaller, as we are sampling merely the crosslinker
     # centers and not the peripheral atoms 
@@ -805,6 +859,8 @@ def generate_tetrahedral_crosslinkers(polymers, n, radius, rng, xmin, xmax,
     return crosslinkers
 
 #########################################################################
+#           FUNCTIONS FOR PLOTTING POLYMERS AND CROSSLINKERS            #
+#########################################################################
 def plot_polymers(polymers, ax, dims=(0, 1)):
     """
     Plot the given polymers on the given axes along the given dimensions. 
@@ -815,7 +871,7 @@ def plot_polymers(polymers, ax, dims=(0, 1)):
     Parameters
     ----------
     polymers : list of `Polymer` objects
-        List of Polymer objects to be plotted.
+        List of `Polymer` objects to be plotted.
     ax : `matplotlib.pyplot.Axes`
         Axes object.  
     dims : tuple of two ints
@@ -845,8 +901,9 @@ def plot_crosslinkers(crosslinkers, ax, dims=(0, 1)):
 
     Parameters
     ----------
-    crosslinkers : list of `AtomicCrosslinker` or `TetrahedralCrosslinker` objects
-        List of AtomicCrosslinker or TetrahedralCrosslinker objects to be plotted.
+    crosslinkers : list
+        List of `AtomicCrosslinker` or `TetrahedralCrosslinker` objects to
+        be plotted.
     ax : `matplotlib.pyplot.Axes`
         Axes object.  
     dims : tuple of two ints
@@ -871,36 +928,7 @@ def plot_crosslinkers(crosslinkers, ax, dims=(0, 1)):
     return ax
 
 #########################################################################
-def dist_periodic(x, y, xmin, xmax, ymin, ymax, zmin, zmax):
-    """
-    Get the distance between x and y, assuming periodic boundary conditions.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        First query point.
-    y : numpy.ndarray
-        Second query point.
-    xmin, xmax : float, float
-        Minimum and maximum x-coordinates.
-    ymin, ymax : float, float
-        Minimum and maximum y-coordinates.
-    zmin, zmax : float, float
-        Minimum and maximum z-coordinates.
-
-    Returns
-    -------
-    Distance between x and y, assuming periodic boundary conditions.
-    """
-    delta = [xmax - xmin, ymax - ymin, zmax - zmin]
-    total = 0.0
-    for i in range(3):
-        dist = np.abs(x[i] - y[i])
-        if dist > delta[i] - dist:
-            dist = delta[i] - dist
-        total += dist ** 2
-    return np.sqrt(total)
-
+#               FUNCTIONS FOR WRITING LAMMPS INPUT FILES                #
 #########################################################################
 def write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax):
     """
@@ -925,7 +953,7 @@ def write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax):
     )
 
 #########################################################################
-def write_masses(masses, fmt=':.3f'):
+def write_masses(masses, fmt=':.10f'):
     """
     Return a string containing the given masses to be outputted into a 
     LAMMPS data file.
@@ -946,7 +974,7 @@ def write_masses(masses, fmt=':.3f'):
     ])
 
 #########################################################################
-def write_lj_coefs(type_i, type_j, lj_coefs, fmt=':.6f'):
+def write_lj_coefs(type_i, type_j, lj_coefs, fmt=':.10f'):
     """
     Return a one-line string containing the given Lennard-Jones coefficients
     to be outputted into a LAMMPS data file. 
@@ -976,8 +1004,8 @@ def write_lj_coefs(type_i, type_j, lj_coefs, fmt=':.6f'):
     )
 
 #########################################################################
-def write_bond_coefs(bond_idx, bond_coefs, bond_style='harmonic', write_style=True,
-                     fmt=':.6f'):
+def write_bond_coefs(bond_idx, bond_coefs, bond_style, write_style=True,
+                     fmt=':.10f'):
     """
     Return a string containing the given FENE bond energy coefficients to 
     be outputted into a LAMMPS data file. 
@@ -1020,11 +1048,12 @@ def write_bond_coefs(bond_idx, bond_coefs, bond_style='harmonic', write_style=Tr
         raise ValueError('Unrecognized bond style')
 
 #########################################################################
-def write_angle_coefs(angle_idx, angle_coefs, angle_style='cosine/delta',
-                      write_style=True, fmt=':.6f'):
+def write_angle_coefs(angle_idx, angle_coefs, write_style=True, fmt=':.10f'):
     """
     Return a string containing the given angle energy coefficients to 
-    be outputted into a LAMMPS data file. 
+    be outputted into a LAMMPS data file.
+
+    The angle style is assumed to be cosine/delta. 
 
     Parameters
     ----------
@@ -1032,8 +1061,6 @@ def write_angle_coefs(angle_idx, angle_coefs, angle_style='cosine/delta',
         Angle index.
     angle_coefs : dict
         Dict containing the angle energy coefficients.
-    angle_style : str
-        String indicating the angle style; should be 'cosine' or 'cosine/delta'.
     write_style : bool
         If True, write the angle style.
     fmt : str
@@ -1043,27 +1070,18 @@ def write_angle_coefs(angle_idx, angle_coefs, angle_style='cosine/delta',
     -------
     Output string.
     """
-    if angle_style == 'cosine':
-        return ('{} {}{' + fmt + '}\n').format(
-            angle_idx,
-            'cosine ' if write_style else '',
-            angle_coefs['K']
-        )
-    elif angle_style == 'cosine/delta':
-        return ('{} {}{' + fmt + '} {' + fmt + '}\n').format(
-            angle_idx,
-            'cosine/delta ' if write_style else '',
-            angle_coefs['K'],
-            angle_coefs['theta0']
-        )
-    else:
-        raise ValueError('Unrecognized angle style')
+    return ('{} {}{' + fmt + '} {' + fmt + '}\n').format(
+        angle_idx,
+        'cosine/delta ' if write_style else '',
+        angle_coefs['K'],
+        angle_coefs['theta0'] * 180 / np.pi   # LAMMPS takes degrees as input
+    )
 
 #########################################################################
-def write_coords(polymers, crosslinkers, polymer_atom_type=__polymer_atom_type,
-                 crosslinker_atom_type=__crosslinker_atom_type,
-                 crosslinker_sticky_atom_type=__crosslinker_sticky_atom_type,
-                 fmt=':.6f'):
+def write_coords(polymers, crosslinkers, polymer_atom_type=_polymer_atom_type,
+                 crosslinker_atom_type=_crosslinker_atom_type,
+                 crosslinker_sticky_atom_type=_crosslinker_sticky_atom_type,
+                 fmt=':.10f'):
     """
     Return a string containing the given polymer and crosslinker coordinates
     to be outputted into a LAMMPS data file.
@@ -1071,9 +1089,9 @@ def write_coords(polymers, crosslinkers, polymer_atom_type=__polymer_atom_type,
     Parameters
     ----------
     polymers : list
-        List of Polymer objects.
+        List of `Polymer` objects.
     crosslinkers : list
-        List of AtomicCrosslinker or TetrahedralCrosslinker objects.
+        List of `AtomicCrosslinker` or `TetrahedralCrosslinker` objects.
     polymer_atom_type : int
         Atom type for each monomer. 
     crosslinker_atom_type : int
@@ -1126,8 +1144,8 @@ def write_coords(polymers, crosslinkers, polymer_atom_type=__polymer_atom_type,
     return outstr
 
 #########################################################################
-def write_bonds(polymers, crosslinkers, polymer_bond_type=__polymer_bond_type,
-                crosslinker_bond_type=__crosslinker_bond_type):
+def write_bonds(polymers, crosslinkers, polymer_bond_type=_polymer_bond_type,
+                crosslinker_bond_type=_crosslinker_bond_type):
     """
     Return a string containing the bonds within the given set of polymers 
     and crosslinkers to be outputted into a LAMMPS data file.
@@ -1135,9 +1153,9 @@ def write_bonds(polymers, crosslinkers, polymer_bond_type=__polymer_bond_type,
     Parameters
     ----------
     polymers : list
-        List of Polymer objects.
+        List of `Polymer` objects.
     crosslinkers : list
-        List of AtomicCrosslinker or TetrahedralCrosslinker objects.
+        List of `AtomicCrosslinker` or `TetrahedralCrosslinker` objects.
     polymer_bond_type : int
         Bond type within each polymer. 
     crosslinker_bond_type : int
@@ -1179,8 +1197,8 @@ def write_bonds(polymers, crosslinkers, polymer_bond_type=__polymer_bond_type,
     return outstr
 
 #########################################################################
-def write_angles(polymers, crosslinkers, polymer_angle_type=__polymer_angle_type,
-                 crosslinker_angle_type=__crosslinker_angle_type):
+def write_angles(polymers, crosslinkers, polymer_angle_type=_polymer_angle_type,
+                 crosslinker_angle_type=_crosslinker_angle_type):
     """
     Return a string containing the angles within the given set of polymers 
     to be outputted into a LAMMPS data file. 
@@ -1188,9 +1206,9 @@ def write_angles(polymers, crosslinkers, polymer_angle_type=__polymer_angle_type
     Parameters
     ----------
     polymers : list
-        List of Polymer objects.
+        List of `Polymer` objects.
     crosslinkers : list
-        List of AtomicCrosslinker or TetrahedralCrosslinker objects.
+        List of `AtomicCrosslinker` or `TetrahedralCrosslinker` objects.
     polymer_angle_type : int
         Angle type within each polymer.
     crosslinker_angle_type : int
@@ -1239,7 +1257,7 @@ def write_angles(polymers, crosslinkers, polymer_angle_type=__polymer_angle_type
 #########################################################################
 def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
                       crosslinker_radius, monomer_mass, crosslinker_mass,
-                      lj_coefs, bond_coefs, bond_types, angle_coefs, angle_types,
+                      lj_coefs, bond_coefs, bond_styles, angle_coefs,
                       xmin, xmax, ymin, ymax, zmin, zmax, outfilename):
     """
     Write the given initial configuration of polymer and crosslinker
@@ -1248,9 +1266,9 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
     Parameters
     ----------
     polymers : list
-        List of Polymer objects.
+        List of `Polymer` objects.
     crosslinkers : list
-        List of AtomicCrosslinker or TetrahedralCrosslinker objects.
+        List of `AtomicCrosslinker` or `TetrahedralCrosslinker` objects.
     bond_length : int
         Polymer bond lengths in the initial configuration. 
     crosslinker_style : str
@@ -1268,9 +1286,8 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
     bond_styles : list
         Bond styles, each of which should be 'fene' or 'harmonic'.
     angle_coefs : list of dicts
-        Angle potential coefficients.
-    angle_styles : list 
-        Angle styles, each of which should be 'cosine' or 'cosine/delta'.
+        Angle potential coefficients. There should be two dicts, one for the
+        polymers and another for the crosslinkers. 
     xmin, xmax : float, float
         Minimum and maximum x-coordinates.
     ymin, ymax : float, float
@@ -1349,7 +1366,7 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
     text += 'Bond Coeffs\n\n'
     for i in range(len(bond_coefs)):
         text += write_bond_coefs(
-            i + 1, bond_coefs[i], bond_types[i], write_type=True
+            i + 1, bond_coefs[i], bond_styles[i], write_style=True
         )
     text += '\n'
 
@@ -1358,15 +1375,13 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
     # A dict of coefficients should be present for every angle type
     text += 'Angle Coeffs\n\n'
     for i in range(len(angle_coefs)):
-        text += write_angle_coefs(
-            i + 1, angle_coefs[i], angle_types[i], write_type=False
-        )
+        text += write_angle_coefs(i + 1, angle_coefs[i], write_style=False)
     text += '\n'
 
     # Write atomic coordinates, bonds, and angles  
     text += 'Atoms\n\n{}\n'.format(write_coords(polymers, crosslinkers))
     text += 'Bonds\n\n{}\n'.format(write_bonds(polymers, crosslinkers))
-    text += 'Angles\n\n{}\n'.format(write_angles(polymers))
+    text += 'Angles\n\n{}\n'.format(write_angles(polymers, crosslinkers))
 
     with open(outfilename, 'w') as f:
         f.write(header + text)
