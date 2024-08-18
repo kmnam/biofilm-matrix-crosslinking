@@ -1,0 +1,166 @@
+# ====================================================================== #
+# Equilibrate a test system of 20 polymers of length 1000 and 500 tetrahedral
+# crosslinkers in implicit solvent.
+#
+# Authors:
+#     Kee-Myoung Nam
+#
+# Last updated:
+#     8/13/2024
+# ====================================================================== #
+# INPUT VARIABLES
+# ===============
+variable f file ${VARS}
+variable init_filename string $f
+next f
+variable lammpstrj_filename string $f
+next f
+variable bond_filename string $f
+next f
+variable angle_filename string $f
+next f
+variable unbonded_template string $f
+next f
+variable bonded_template string $f
+next f
+variable forward_map string $f
+
+# ====================================================================== #
+# INITIALIZATION
+# ==============
+# Use Lennard-Jones units in 3 dimensions
+units lj
+dimension 3
+
+# Use FENE bonds for polymeric bonds and harmonic bonds for polymer/crosslinker
+# bonds 
+atom_style bond
+bond_style hybrid fene harmonic
+
+# Subject polymeric bond angles to a cosine angle potential 
+angle_style cosine
+
+# Subject crosslinkers to a harmonic improper potential
+improper_style harmonic
+
+# Use Lennard-Jones potentials between unbonded molecules (note that the 2.5
+# cutoff ratio is re-written below when the initial configuration file is
+# parsed)
+pair_style lj/cut 2.5
+
+# Use periodic boundary conditions in all 3 dimensions 
+boundary p p p
+
+# Maintain neighbor lists with given additional "skin" distance
+neighbor 1.4 bin
+
+# Build neighbor lists at every timestep 
+neigh_modify every 1 delay 1
+
+# ====================================================================== #
+# PARSE INPUT MOLECULES
+# =====================
+# Allow for one additional bond for each atom
+read_data init_filename extra/bond/per/atom 1 extra/special/per/atom 10
+pair_modify shift yes
+
+# Exclude Lennard-Jones potential contributions between FENE-bonded atoms
+special_bonds fene
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
+# ===================================================
+thermo 10
+thermo_style custom step temp pe ke etotal epair ebond press
+
+# ====================================================================== #
+# ENERGY MINIMIZATION
+# ===================
+minimize 1.0e-4 1.0e-6 5000 10000
+
+# ====================================================================== #
+# DEFINE INITIAL VELOCITIES
+# =========================
+# Set initial velocities of all molecules from a Gaussian distribution with
+# angular momenta set to zero 
+variable g equal 1.0
+velocity all create $g 1234 rot yes dist gaussian
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
+# =================================================
+thermo 1000
+thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond
+
+# ====================================================================== #
+# SET UP AND RUN INITIAL EQUILIBRATION
+# ====================================
+timestep 0.0001
+reset_timestep 0
+
+# Equilibrate using the NVE ensemble and Langevin thermostat 
+fix fxinit1 all nve
+fix fxinit2 all langevin $g $g 2.0 12345
+
+run 100000
+
+# ====================================================================== #
+# SET UP SIMULATION
+# =================
+timestep 0.0001
+reset_timestep 0
+
+# Write polymer and crosslinker coordinates from simulation to file:
+# - Write every 2000 timesteps
+# - Write atom ID, molecule ID, atom type, and atom coordinates
+# - Sort lines by atom ID
+dump 1 all custom 10000 lammpstrj_filename id mol type xu yu zu vx vy vz
+dump_modify 1 sort id
+
+# Write polymeric bonds and polymer/crosslinker bonds to file
+compute 1 all property/local btype batom1 batom2
+compute 2 all bond/local dist engpot force
+dump 2 all local 10000 bond_filename index c_1[*] c_2[*]
+dump_modify 2 sort 2
+
+# Write polymeric bond angles to file 
+compute 3 all property/local atype aatom1 aatom2 aatom3
+compute 4 all angle/local theta eng
+dump 3 all local 10000 angle_filename index c_3[*] c_4[*]
+dump_modify 3 sort 2
+
+# TODO Write improper? 
+
+# ====================================================================== #
+# DEFINE MOLECULE TEMPLATES
+# =========================
+# Molecule templates for bonding reactions 
+molecule forward_unreacted unbonded_template
+molecule forward_reacted bonded_template
+
+# ====================================================================== #
+# DEFINE POLYMER/CROSSLINKER BONDING REACTION
+# ===========================================
+# - Apply reaction site stabilization (apply nve/limit to reacting atoms 
+#   for fixed number of timesteps to disallow immediate participation in
+#   further reactions)
+# - Perform bonding reaction (rxn1) if reacting atoms are within distance
+#   [0, 1.1] (1.0 = harmonic bond equilibrium length)
+# - Set prob = 1.0 to ensure that the reaction proceeds if all constraints 
+#   (including the Arrhenius constraint) is satisfied 
+fix myrxns all bond/react stabilization yes statted_group 0.5 &
+    react rxn1 all 1 0.0 1.1 forward_unreacted forward_reacted forward_map prob 1.0 123456
+
+# ====================================================================== #
+# SET UP ENSEMBLES
+# ================
+# - Apply NVT ensemble on unreacting atoms throughout the simulation
+# - Apply Langevin dynamics on reacting atoms throughout the simulation
+fix fx1 statted_group_REACT nve
+fix fx2 statted_group_REACT langevin $g $g 2.0 1234567
+
+# ====================================================================== #
+# RUN SIMULATION
+# ==============
+run 10000000
+
