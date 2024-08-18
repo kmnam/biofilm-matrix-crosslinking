@@ -5,7 +5,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    8/13/2024
+    8/18/2024
 """
 
 import sys
@@ -17,9 +17,9 @@ from polymers import (
     generate_atomic_crosslinkers,
     generate_tetrahedral_crosslinkers,
     plot_polymers,
-    plot_crosslinkers
+    plot_crosslinkers,
+    write_init_config
 )
-from lammps_utils import write_init_config
 
 #########################################################################
 if __name__ == '__main__':
@@ -34,36 +34,36 @@ if __name__ == '__main__':
     n_polymers = params['n_polymers']
     polymer_length = params['polymer_length']
     bond_length = params['bond_length']
-    theta_mean = params['init_angle_mean']
-    theta_conc = params['init_angle_conc']
     monomer_mass = params['monomer_mass']
     crosslinker_style = params['crosslinker_style']
     n_crosslinkers = params['n_crosslinkers']
-    crosslinker_radius = params['crosslinker_radius']
     crosslinker_mass = params['crosslinker_mass']
     if crosslinker_style == 'atomic':
         lj_coefs = [
             params['lj_coefs_11'], params['lj_coefs_12'], params['lj_coefs_22']
         ]
+        bond_coefs = [
+            params['fene_coefs'], 
+            params['harmonic_crosslink_coefs']
+        ]
+        bond_styles = ['fene', 'harmonic']
+        crosslinker_radius = 0.0
     else:    # crosslinker_style == 'tetrahedral'
         lj_coefs = [
             params['lj_coefs_11'], params['lj_coefs_12'], params['lj_coefs_13'],
             params['lj_coefs_22'], params['lj_coefs_23'], params['lj_coefs_33']
         ]
-    if crosslinker_style == 'atomic':
-        bond_coefs = [
-            params['fene_coefs'], 
-            params['harmonic_crosslink_coefs']
-        ]
-    else:    # crosslinker_style == 'tetrahedral'
         bond_coefs = [
             params['fene_coefs'], 
             params['harmonic_within_coefs'],
             params['harmonic_crosslink_coefs']
         ]
+        bond_styles = ['fene', 'harmonic', 'harmonic']
+        crosslinker_radius = params['harmonic_within_coefs']['R0']
     angle_coefs = [
-        params['angle_default_cosine_coefs'],
-        params['angle_crosslinked_cosine_coefs']
+        params['angle_polymer_cosine_coefs'],
+        params['angle_crosslinker_cosine_coefs'],
+        params['angle_polymer_crosslinked_cosine_coefs']
     ]
     eps1 = params['inter_molecule_mindist']
     eps2 = params['intra_polymer_mindist']
@@ -77,8 +77,11 @@ if __name__ == '__main__':
     # Initialize random number generator 
     rng = np.random.default_rng(seed)
 
-    # Define von Mises distribution of bond angles 
-    angle_dist = lambda rng: rng.vonmises(theta_mean, theta_conc)
+    # Define von Mises distribution of polymer bond angles 
+    angle_dist = lambda rng: rng.vonmises(
+        params['angle_polymer_cosine_coefs']['theta0'],
+        params['angle_polymer_cosine_coefs']['K']
+    )
 
     # Generate box and distance thresholds, adding a little padding along
     # all faces of the box
@@ -130,7 +133,7 @@ if __name__ == '__main__':
     # Write the generated initial configuration to file 
     write_init_config(
         polymers, crosslinkers, bond_length, crosslinker_style, crosslinker_radius,
-        monomer_mass, crosslinker_mass, lj_coefs, bond_coefs, angle_coefs, rng,
-        xmin, xmax, ymin, ymax, zmin, zmax, outprefix + '.data'
+        monomer_mass, crosslinker_mass, lj_coefs, bond_coefs, bond_styles,
+        angle_coefs, xmin, xmax, ymin, ymax, zmin, zmax, outprefix + '.data'
     )
 
