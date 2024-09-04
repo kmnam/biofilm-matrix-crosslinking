@@ -13,6 +13,12 @@
 variable f file ${VARS}
 variable init_filename string $f
 next f
+variable equil_filename string $f
+next f
+variable eqbond_filename string $f
+next f
+variable eqangle_filename string $f
+next f
 variable lammpstrj_filename string $f
 next f
 variable bond_filename string $f
@@ -24,6 +30,37 @@ next f
 variable bonded_template string $f
 next f
 variable forward_map string $f
+next f
+variable equil_dt equal $f
+next f
+variable equil_nsteps equal $f
+next f
+variable equil_nsteps_per_dump equal $f
+next f
+variable main_dt equal $f
+next f
+variable main_nsteps equal $f
+next f
+variable main_nsteps_per_dump equal $f
+next f
+variable crosslink_max_length equal $f
+next f
+variable seed_velocity equal $f
+next f
+variable seed_langevin_equil equal $f
+next f
+variable seed_react equal $f
+next f
+variable seed_langevin_main equal $f
+print ${forward_map}
+print ${main_dt}
+print ${main_nsteps}
+print ${main_nsteps_per_dump}
+print ${crosslink_max_length}
+print ${seed_velocity}
+print ${seed_langevin_equil}
+print ${seed_react}
+print ${seed_langevin_main}
 
 # ====================================================================== #
 # INITIALIZATION
@@ -77,7 +114,7 @@ thermo_style custom step temp pe ke etotal epair ebond eangle press
 # ====================================================================== #
 # ENERGY MINIMIZATION
 # ===================
-minimize 1.0e-4 1.0e-6 5000 10000
+minimize 1e-4 1e-6 5000 10000
 
 # ====================================================================== #
 # DEFINE INITIAL VELOCITIES
@@ -85,59 +122,79 @@ minimize 1.0e-4 1.0e-6 5000 10000
 # Set initial velocities of all molecules from a Gaussian distribution with
 # angular momenta set to zero 
 variable temp equal 300.0
-velocity all create ${temp} 1234 rot yes dist gaussian
+velocity all create ${temp} ${seed_velocity} rot yes dist gaussian
 
 # ====================================================================== #
 # PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
 # =================================================
-thermo 1000
+thermo ${equil_nsteps_per_dump}
 thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond eangle
 
 # ====================================================================== #
 # SET UP AND RUN INITIAL EQUILIBRATION
 # ====================================
-variable dt equal 0.0001
-timestep ${dt}
+timestep ${equil_dt}
 reset_timestep 0
 
-# Equilibrate using the NVE ensemble and Langevin thermostat (i.e., NVT ensemble)
-fix fxinit1 all nve
-fix fxinit2 all langevin ${temp} ${temp} $(dt/20) 12345 scale 2 20 scale 3 20
+# Write polymer and crosslinker coordinates from simulation to file:
+# - Write atom ID, molecule ID, atom type, atom coordinates, and atom velocities
+# - Sort lines by atom ID
+dump eqsim1 all custom ${equil_nsteps_per_dump} ${equil_filename} id mol type xu yu zu vx vy vz
+dump_modify eqsim1 sort id
 
-run 100000
+# Write bond lengths and energies to file 
+compute eqbond1 all property/local btype batom1 batom2
+compute eqbond2 all bond/local dist engpot force
+dump eqsim2 all local ${equil_nsteps_per_dump} ${eqbond_filename} index c_eqbond1[*] c_eqbond2[*]
+dump_modify eqsim2 sort 2
+
+# Write bond angles and energies to file 
+compute eqangle1 all property/local atype aatom1 aatom2 aatom3
+compute eqangle2 all angle/local theta eng
+dump eqsim3 all local ${equil_nsteps_per_dump} ${eqangle_filename} index c_eqangle1[*] c_eqangle2[*]
+dump_modify eqsim3 sort 2
+
+# Equilibrate using the NVE ensemble and Langevin thermostat (i.e., NVT ensemble)
+#fix eqfx1 all nvt temp ${temp} ${temp} $(100.0*dt)
+fix eqfx1 all nve
+fix eqfx2 all langevin ${temp} ${temp} $(100.0*dt) ${seed_langevin_equil}
+
+# Run the equilibration and remove all previously defined dumps 
+run ${equil_nsteps}
+undump eqsim1
+undump eqsim2
+undump eqsim3
 
 # ====================================================================== #
 # SET UP SIMULATION
 # =================
-variable dt equal 0.0001
-timestep ${dt}
+timestep ${main_dt}
 reset_timestep 0
 
 # Write polymer and crosslinker coordinates from simulation to file:
-# - Write every 2000 timesteps
-# - Write atom ID, molecule ID, atom type, and atom coordinates
+# - Write atom ID, molecule ID, atom type, atom coordinates, and atom velocities
 # - Sort lines by atom ID
-dump 1 all custom 10000 lammpstrj_filename id mol type xu yu zu vx vy vz
-dump_modify 1 sort id
+dump sim1 all custom ${main_nsteps_per_dump} ${lammpstrj_filename} id mol type xu yu zu vx vy vz
+dump_modify sim1 sort id
 
 # Write bond lengths and energies to file 
-compute 1 all property/local btype batom1 batom2
-compute 2 all bond/local dist engpot force
-dump 2 all local 10000 bond_filename index c_1[*] c_2[*]
-dump_modify 2 sort 2
+compute bond1 all property/local btype batom1 batom2
+compute bond2 all bond/local dist engpot force
+dump sim2 all local ${main_nsteps_per_dump} ${bond_filename} index c_bond1[*] c_bond2[*]
+dump_modify sim2 sort 2
 
 # Write bond angles and energies to file 
-compute 3 all property/local atype aatom1 aatom2 aatom3
-compute 4 all angle/local theta eng
-dump 3 all local 10000 angle_filename index c_3[*] c_4[*]
-dump_modify 3 sort 2
+compute angle1 all property/local atype aatom1 aatom2 aatom3
+compute angle2 all angle/local theta eng
+dump sim3 all local ${main_nsteps_per_dump} ${angle_filename} index c_angle1[*] c_angle2[*]
+dump_modify sim3 sort 2
 
 # ====================================================================== #
 # DEFINE MOLECULE TEMPLATES
 # =========================
 # Molecule templates for bonding reactions 
-molecule forward_unreacted unbonded_template
-molecule forward_reacted bonded_template
+molecule forward_unreacted ${unbonded_template}
+molecule forward_reacted ${bonded_template}
 
 # ====================================================================== #
 # DEFINE POLYMER/CROSSLINKER BONDING REACTION
@@ -146,12 +203,11 @@ molecule forward_reacted bonded_template
 #   for fixed number of timesteps to disallow immediate participation in
 #   further reactions)
 # - Perform bonding reaction (rxn1) if reacting atoms are within distance
-#   [0, 3.3] (3 nm = harmonic bond equilibrium length)
+#   [0, 1.1*x], where x is the equilibrium bond length (this should be 3 nm)
 # - Set prob = 1.0 to ensure that the reaction proceeds if all constraints 
 #   (including the Arrhenius constraint) is satisfied
-variable eqlen equal 3.0
 fix myrxns all bond/react stabilization yes statted_group 0.5 &
-    react rxn1 all 1 0.0 $(eqlen*1.1) forward_unreacted forward_reacted forward_map prob 1.0 123456
+    react rxn1 all 1 0.0 3.3 forward_unreacted forward_reacted maps/map_rxn1 prob 1.0 1
 
 # ====================================================================== #
 # SET UP ENSEMBLES
@@ -159,10 +215,10 @@ fix myrxns all bond/react stabilization yes statted_group 0.5 &
 # - Apply NVT ensemble on unreacting atoms throughout the simulation
 # - Apply Langevin dynamics on reacting atoms throughout the simulation
 fix fx1 statted_group_REACT nve
-fix fx2 statted_group_REACT langevin ${temp} ${temp} $(dt/20) 1234567 scale 2 20 scale 3 20
+fix fx2 statted_group_REACT langevin ${temp} ${temp} $(dt/20) ${seed_langevin_main} scale 2 20 scale 3 20
 
 # ====================================================================== #
 # RUN SIMULATION
 # ==============
-run 10000000
+run ${main_nsteps}
 
