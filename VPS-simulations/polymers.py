@@ -1,6 +1,5 @@
 """
-Utility functions and classes for defining initial conformations of polymers
-of fixed bond length and tetrahedral crosslinkers.
+Simple classes for molecules, polymers, and crosslinkers. 
 
 Authors:
     Kee-Myoung Nam
@@ -19,7 +18,6 @@ _polymer_crosslinker_bond_type = 3
 _polymer_angle_type = 1
 _crosslinker_angle_type = 2
 _polymer_crosslinked_angle_type = 3
-_polymer_dihedral_type = 1
 
 #########################################################################
 #                           MOLECULE CLASSES                            #
