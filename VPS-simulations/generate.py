@@ -1,6 +1,5 @@
 """
-Utility functions and classes for defining initial conformations of polymers
-of fixed bond length and tetrahedral crosslinkers.
+Functions for generating new polymer/crosslinker configurations. 
 
 Authors:
     Kee-Myoung Nam
@@ -11,17 +10,6 @@ Last updated:
 import numpy as np
 from scipy.stats import circmean
 from polymers import Polymer, AtomicCrosslinker, TetrahedralCrosslinker
-
-_polymer_atom_type = 1
-_crosslinker_atom_type = 2
-_crosslinker_sticky_atom_type = 3
-_polymer_bond_type = 1
-_crosslinker_bond_type = 2
-_polymer_crosslinker_bond_type = 3
-_polymer_angle_type = 1
-_crosslinker_angle_type = 2
-_polymer_crosslinked_angle_type = 3
-_polymer_dihedral_type = 1
 
 #########################################################################
 #                           HELPER FUNCTIONS                            #
