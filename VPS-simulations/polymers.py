@@ -5,7 +5,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    10/10/2025
+    10/22/2025
 """
 import numpy as np
 
@@ -18,6 +18,65 @@ _polymer_crosslinker_bond_type = 3
 _polymer_angle_type = 1
 _crosslinker_angle_type = 2
 _polymer_crosslinked_angle_type = 3
+
+#########################################################################
+def periodic_vec(u, v, xmin, xmax, ymin, ymax, zmin, zmax):
+    """
+    Get the vector from u to v, assuming periodic boundary conditions in 
+    the given domain. 
+
+    Parameters
+    ----------
+    u : numpy.ndarray
+        First query point.
+    v : numpy.ndarray
+        Second query point.
+    xmin, xmax : float, float
+        Minimum and maximum x-coordinates.
+    ymin, ymax : float, float
+        Minimum and maximum y-coordinates.
+    zmin, zmax : float, float
+        Minimum and maximum z-coordinates.
+
+    Returns
+    -------
+    Vector from u to v, assuming periodic boundary conditions.
+    """
+    dims = [xmax - xmin, ymax - ymin, zmax - zmin]
+    dist = np.zeros(3, dtype=np.float64)
+    for i in range(3):
+        dist_i = v[i] - u[i]
+        if dist_i >= dims[i] / 2:
+            dist_i -= dims[i]
+        elif dist_i <= -dims[i] / 2:
+            dist_i += dims[i]
+        dist[i] = dist_i
+    return dist
+
+#########################################################################
+def periodic_dist(u, v, xmin, xmax, ymin, ymax, zmin, zmax):
+    """
+    Get the distance from u to v, assuming periodic boundary conditions in 
+    the given domain. 
+
+    Parameters
+    ----------
+    u : numpy.ndarray
+        First query point.
+    v : numpy.ndarray
+        Second query point.
+    xmin, xmax : float, float
+        Minimum and maximum x-coordinates.
+    ymin, ymax : float, float
+        Minimum and maximum y-coordinates.
+    zmin, zmax : float, float
+        Minimum and maximum z-coordinates.
+
+    Returns
+    -------
+    Distance from u to v, assuming periodic boundary conditions.
+    """
+    return np.linalg.norm(periodic_vec(u, v, xmin, xmax, ymin, ymax, zmin, zmax))
 
 #########################################################################
 #                           MOLECULE CLASSES                            #
@@ -114,7 +173,7 @@ class Molecule:
         """
         dist = np.zeros((self.coords.shape[0], self.coords.shape[0]))
 
-        # Only fill in the upper triangle of the matrix 
+        # Only fill in the upper triangle of the matrix
         for i in range(self.coords.shape[0]):
             for j in range(i + 1, self.coords.shape[0]):
                 dist[i, j] = np.linalg.norm(self.coords[i, :] - self.coords[j, :])
@@ -217,6 +276,98 @@ class Polymer(Molecule):
         self.coords = np.zeros((0, 3), dtype=np.float64)
         self.atom_types = np.zeros((0,), dtype=np.int64)
         self.bonds = {}
+
+    #####################################################################
+    def radius_of_gyration(self):
+        """
+        Get the radius of gyration.
+
+        Returns
+        -------
+        Radius of gyration. 
+        """
+        if self.length == 0:
+            return 0
+        else:
+            delta = self.coords - self.center_of_mass()
+            return np.sqrt(np.sum(delta ** 2) / self.length)
+
+    #####################################################################
+    def end_to_end(self):
+        """
+        Get the end-to-end vector.
+
+        Returns
+        -------
+        End-to-end vector. 
+        """
+        if self.length == 0:
+            return np.zeros(3, dtype=np.float64)
+        else:
+            return self.coords[-1, :] - self.coords[0, :]
+
+    #####################################################################
+    def bond_vecs(self):
+        """
+        Return an array in which the i-th row is the vector from atom i
+        to atom i + 1. 
+
+        Returns
+        -------
+        Array of bond vectors. 
+        """
+        return self.coords[1:, :] - self.coords[:-1, :]
+
+    #####################################################################
+    def bond_lengths(self):
+        """
+        Return the bond lengths along the polymer. 
+
+        Returns
+        -------
+        Array of bond lengths. 
+        """
+        return np.linalg.norm(self.coords[1:, :] - self.coords[:-1, :], axis=1)
+
+    #####################################################################
+    def bond_angles(self):
+        """
+        Return the bond angles along the polymer.
+
+        Returns
+        -------
+        Array of bond angles.
+        """
+        angles = np.zeros(self.length - 2, dtype=np.float64)
+        bonds = self.bond_vecs()
+        for i in range(self.length - 2):
+            u = bonds[i, :]
+            v = bonds[i + 1, :]
+            angles[i] = np.dot(-u, v)
+
+        return angles
+
+    #####################################################################
+    def dihedrals(self):
+        """
+        Return the dihedral angles along the polymer.
+
+        Returns
+        -------
+        Array of dihedral angles.
+        """
+        dihedrals = np.zeros(self.length - 3, dtype=np.float64)
+        bonds = self.bond_vecs()
+        for i in range(self.length - 3):
+            u1 = bonds[i, :]
+            u2 = bonds[i + 1, :]
+            u3 = bonds[i + 2, :]
+            dihedrals[i] = np.arctan2(
+                np.linalg.norm(u2) * np.dot(u1, np.cross(u2, u3)),
+                np.dot(np.cross(u1, u2), np.cross(u2, u3))
+            )
+
+        return dihedrals
 
 #########################################################################
 class AtomicCrosslinker(Molecule):
