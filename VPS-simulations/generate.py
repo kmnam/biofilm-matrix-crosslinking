@@ -41,37 +41,6 @@ def random_dir(rng):
     return v / np.linalg.norm(v)
 
 #########################################################################
-def dist_periodic(x, y, xmin, xmax, ymin, ymax, zmin, zmax):
-    """
-    Get the distance between x and y, assuming periodic boundary conditions.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        First query point.
-    y : numpy.ndarray
-        Second query point.
-    xmin, xmax : float, float
-        Minimum and maximum x-coordinates.
-    ymin, ymax : float, float
-        Minimum and maximum y-coordinates.
-    zmin, zmax : float, float
-        Minimum and maximum z-coordinates.
-
-    Returns
-    -------
-    Distance between x and y, assuming periodic boundary conditions.
-    """
-    delta = [xmax - xmin, ymax - ymin, zmax - zmin]
-    total = 0.0
-    for i in range(3):
-        dist = np.abs(x[i] - y[i])
-        if dist > delta[i] - dist:
-            dist = delta[i] - dist
-        total += dist ** 2
-    return np.sqrt(total)
-
-#########################################################################
 def generate_orthonormal_basis_3d(u, rng):
     """
     Generate an orthonormal basis that contains the given vector, which is
