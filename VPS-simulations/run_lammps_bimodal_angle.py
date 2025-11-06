@@ -6,7 +6,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    9/16/2025
+    11/6/2025
 """
 
 import sys
@@ -35,13 +35,13 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
         Path to output PDF file, showing the polymer configuration as 
         xy-, xz-, and yz-projections. 
     rng_seed : int
-        Seed for random number generation. 
+        Seed for random number generation.
     """
     # Parse input .json file  
     with open(json_filename) as f:
         params = json.load(f)
 
-    # Parse input parameters  
+    # Parse input parameters from the .json file ...
     n_polymers = params['n_polymers']
     polymer_length = params['polymer_length']
     bond_length = params['bond_length']
@@ -49,14 +49,6 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
     lj_coefs = [params['lj_coefs']]
     bond_coefs = [params['fene_coefs']]
     angle_coefs = params['angle_coefs']
-    try:
-        dihedral_coefs = params['dihedral_coefs']
-        for key in dihedral_coefs:
-            if 'n' not in dihedral_coefs[key]:
-                dihedral_coefs[key]['n'] = 1
-            dihedral_coefs[key]['d'] = 1
-    except KeyError:
-        dihedral_coefs = None
     eps1 = params['inter_molecule_mindist']
     eps2 = params['intra_polymer_mindist']
     xmin = params['xmin']
@@ -65,6 +57,22 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
     ymax = params['ymax']
     zmin = params['zmin']
     zmax = params['zmax']
+
+    # Try parsing the dihedral potential coefficients, if (1) they were given
+    # and (2) the angle potential is cosine/delta
+    if angle_coefs['type'] == 'cosine/delta':
+        try:
+            dihedral_coefs = params['dihedral_coefs']
+            for key in dihedral_coefs:
+                if 'n' not in dihedral_coefs[key]:
+                    dihedral_coefs[key]['n'] = 1
+                dihedral_coefs[key]['d'] = 1
+        except KeyError:
+            dihedral_coefs = None
+    else:
+        dihedral_coefs = None
+
+    # Parse optional input parameters
     try:
         max_backtracks_per_polymer = params['max_backtracks_per_polymer']
     except KeyError:
@@ -79,26 +87,42 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
 
     # If there are multiple angle types, randomly assign angle types along
     # each polymer 
-    if len(angle_coefs) > 1:
+    if angle_coefs['type'] == 'cosine/delta' and 'type1' in angle_coefs and 'type2' in angle_coefs:
+        n_types = len([
+            k for k in angle_coefs if k.startswith('type') and k[4:].isdigit()
+        ])
         angle_probs = [
-            angle_coefs['type{}'.format(i + 1)]['prob']
-            for i in range(len(angle_coefs))
+            angle_coefs['type{}'.format(i + 1)]['prob'] for i in range(n_types)
         ]
         angle_types = np.zeros((n_polymers, polymer_length - 2), dtype=np.int64)
         for i in range(n_polymers):
             for j in range(polymer_length - 2):
-                angle_types[i, j] = rng.choice(len(angle_coefs), p=angle_probs) + 1
-    else:
+                angle_types[i, j] = rng.choice(n_types, p=angle_probs) + 1
+    else:    # There is only one angle type
         angle_types = np.ones((n_polymers, polymer_length - 2), dtype=np.int64)
 
-    # Define von Mises distributions of bond angles and dihedral angles
-    angle_dists = [
-        lambda rng: rng.vonmises(
-            angle_coefs['type{}'.format(i + 1)]['theta0'],
-            angle_coefs['type{}'.format(i + 1)]['K']
-        )
-        for i in range(len(angle_coefs))
-    ]
+    # Define bond angle distributions 
+    if angle_coefs['type'] == 'gaussian':
+        n_components = angle_coefs['n']
+        angle_dists = [
+            lambda rng: np.sum(
+                rng.normal(
+                    loc=angle_coefs['theta0_{}'.format(i + 1)],
+                    scale=angle_coefs['w_{}'.format(i + 1)] / 2,
+                )
+                for i in range(n_components)
+            )
+        ]
+    else:
+        angle_dists = [
+            lambda rng: rng.vonmises(
+                angle_coefs['type{}'.format(i + 1)]['theta0'],
+                angle_coefs['type{}'.format(i + 1)]['K']
+            )
+            for i in range(len(angle_coefs))
+        ]
+
+    # Define dihedral angle distributions 
     if dihedral_coefs is None:
         dihedral_dists = None
     else:
@@ -205,6 +229,7 @@ if __name__ == '__main__':
 
     # Run LAMMPS
     subprocess.run([
+        'mpirun', '-np', sys.argv[4],
         'lmp', '-i', 'bimodal_angles.lammps', '-v', 'VARS', input_filename
     ])
 
