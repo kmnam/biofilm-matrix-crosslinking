@@ -91,6 +91,7 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
         n_types = len([
             k for k in angle_coefs if k.startswith('type') and k[4:].isdigit()
         ])
+        print(n_types)
         angle_probs = [
             angle_coefs['type{}'.format(i + 1)]['prob'] for i in range(n_types)
         ]
@@ -100,41 +101,6 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
                 angle_types[i, j] = rng.choice(n_types, p=angle_probs) + 1
     else:    # There is only one angle type
         angle_types = np.ones((n_polymers, polymer_length - 2), dtype=np.int64)
-
-    # Define bond angle distributions 
-    if angle_coefs['type'] == 'gaussian':
-        n_components = angle_coefs['n']
-        angle_dists = [
-            lambda rng: np.sum(
-                rng.normal(
-                    loc=angle_coefs['theta0_{}'.format(i + 1)],
-                    scale=angle_coefs['w_{}'.format(i + 1)] / 2,
-                )
-                for i in range(n_components)
-            )
-        ]
-    else:
-        angle_dists = [
-            lambda rng: rng.vonmises(
-                angle_coefs['type{}'.format(i + 1)]['theta0'],
-                angle_coefs['type{}'.format(i + 1)]['K']
-            )
-            for i in range(len(angle_coefs))
-        ]
-
-    # Define dihedral angle distributions 
-    if dihedral_coefs is None:
-        dihedral_dists = None
-    else:
-        dihedral_dists = []
-        for i in range(len(dihedral_coefs)):
-            key = 'type{}'.format(i + 1)
-            K = dihedral_coefs[key]['K']
-            n = dihedral_coefs[key]['n']
-            if n == 1:
-                dihedral_dists.append(lambda rng: rng.vonmises(np.pi, K))
-            elif n == 2:
-                dihedral_dists.append(lambda rng: rng.vonmises(np.pi / 2, K))
 
     # Generate box and distance thresholds, adding a little padding along
     # all faces of the box
@@ -148,7 +114,7 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
     # Generate polymers and crosslinkers
     polymers = generate_polymers(
         n_polymers, polymer_length, bond_length, angle_types, angle_coefs, rng,
-        xmin, xmax, ymin, ymax, zmin, zmax, eps1, eps2, dihedral_dists=dihedral_dists,
+        xmin, xmax, ymin, ymax, zmin, zmax, eps1, eps2, dihedral_coefs=dihedral_coefs,
         max_backtracks_per_polymer=max_backtracks_per_polymer, 
         max_tries_per_bond=max_tries_per_bond
     )
@@ -165,7 +131,7 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
     plt.tight_layout()
     plt.savefig(pdf_filename)
 
-    # Write the generated initial configuration to file
+    # Define dihedral angle types 
     dihedral_types = np.zeros((n_polymers, polymer_length - 3), dtype=np.int64)
     for i in range(n_polymers):
         for j in range(polymer_length - 3):
@@ -179,14 +145,18 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
                 dihedral_types[i, j] = 2
             else:
                 dihedral_types[i, j] = 1
+
+    # Write initial configuration to file
+    crosslinkers = []
+    crosslinker_style = 'none'
+    crosslinker_radius = 0
+    crosslinker_mass = 0
+    bond_styles = ['fene']
     write_init_config(
-        polymers, [], bond_length, 'none', 0, monomer_mass, 0, lj_coefs,
-        bond_coefs, ['fene'],
-        [angle_coefs['type{}'.format(i + 1)] for i in range(len(angle_coefs))],
-        angle_types,
-        [dihedral_coefs['type{}'.format(i + 1)] for i in range(len(dihedral_coefs))],
-        dihedral_types,
-        xmin, xmax, ymin, ymax, zmin, zmax, init_filename
+        polymers, crosslinkers, bond_length, crosslinker_style, crosslinker_radius,
+        monomer_mass, crosslinker_mass, lj_coefs, bond_coefs, bond_styles, 
+        angle_coefs, angle_types, dihedral_coefs, dihedral_types, xmin, xmax,
+        ymin, ymax, zmin, zmax, init_filename
     )
 
 #########################################################################
@@ -228,8 +198,16 @@ if __name__ == '__main__':
         f.write('{}\n'.format(rng.integers(0, 1000)))
 
     # Run LAMMPS
-    subprocess.run([
-        'mpirun', '-np', sys.argv[4],
-        'lmp', '-i', 'bimodal_angles.lammps', '-v', 'VARS', input_filename
-    ])
+    if params['angle_coefs']['type'] == 'gaussian':
+        subprocess.run([
+            'mpirun', '-np', sys.argv[4],
+            'lmp', '-i', 'bimodal_angles_gaussian.lammps', '-v', 'VARS',
+            input_filename
+        ])
+    else:
+        subprocess.run([
+            'mpirun', '-np', sys.argv[4],
+            'lmp', '-i', 'bimodal_angles_static.lammps', '-v', 'VARS',
+            input_filename
+        ])
 

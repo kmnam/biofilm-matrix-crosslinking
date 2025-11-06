@@ -273,7 +273,7 @@ def write_bond_coefs(bond_idx, bond_coefs, bond_style, write_style=True,
         raise ValueError('Unrecognized bond style')
 
 #########################################################################
-def write_angle_coefs(angle_idx, angle_coefs, write_style=True, fmt=':.10f'):
+def write_cosine_angle_coefs(angle_idx, angle_coefs, write_style=True, fmt=':.10f'):
     """
     Return a string containing the given angle energy coefficients to 
     be outputted into a LAMMPS data file.
@@ -301,6 +301,46 @@ def write_angle_coefs(angle_idx, angle_coefs, write_style=True, fmt=':.10f'):
         angle_coefs['K'],
         angle_coefs['theta0'] * 180 / np.pi   # LAMMPS takes degrees as input
     )
+
+#########################################################################
+def write_gaussian_angle_coefs(angle_coefs, write_style=True, fmt=':.10f',
+                               temp=300):
+    """
+    Return a string containing the given angle energy coefficients to 
+    be outputted into a LAMMPS data file.
+
+    The angle style is assumed to be gaussian.
+
+    Parameters
+    ----------
+    angle_coefs : dict
+        Dict containing the angle energy coefficients.
+    write_style : bool
+        If True, write the angle style.
+    fmt : str
+        Format string for each floating-point value.
+    temp : float
+        System temperature in Kelvin.  
+
+    Returns
+    -------
+    Output string.
+    """
+    fmt_ = '{' + fmt + '}'
+    s = '1 '
+    if write_style:
+        s += 'gaussian '
+    n_types = angle_coefs['n']
+    s += fmt_.format(temp) + ' {:d} '.format(n_types)
+    for i in range(n_types - 1):
+        s += fmt_.format(angle_coefs['A_{}'.format(i + 1)]) + ' '
+        s += fmt_.format(angle_coefs['w_{}'.format(i + 1)]) + ' '
+        s += fmt_.format(angle_coefs['theta0_{}'.format(i + 1)] * 180 / np.pi) + ' '
+    s += fmt_.format(angle_coefs['A_{}'.format(n_types)]) + ' '
+    s += fmt_.format(angle_coefs['w_{}'.format(n_types)]) + ' '
+    s += fmt_.format(angle_coefs['theta0_{}'.format(n_types)] * 180 / np.pi) + '\n'
+
+    return s
 
 #########################################################################
 def write_dihedral_coefs(dihedral_idx, dihedral_coefs, write_style=True,
@@ -616,12 +656,11 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
             n_polymers * (polymer_length - 2),
             0 if dihedral_coefs is None else n_polymers * (polymer_length - 3)
         )
+        n_angle_types = int(np.max(polymer_angle_types))
+        n_dihedral_types = (0 if dihedral_coefs is None else len(dihedral_coefs))
         text += (
             '1 atom types\n1 bond types\n{} angle types\n{} dihedral types\n'
-            '0 improper types\n\n'.format(
-                len(angle_coefs),
-                0 if dihedral_coefs is None else len(dihedral_coefs)
-            )
+            '0 improper types\n\n'.format(n_angle_types, n_dihedral_types)
         )
         text += write_box_dims(xmin, xmax, ymin, ymax, zmin, zmax) + '\n\n'
         text += 'Masses\n\n1 {}\n\n'.format(monomer_mass)
@@ -697,8 +736,14 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
     #
     # A dict of coefficients should be present for every angle type
     text += 'Angle Coeffs\n\n'
-    for i in range(len(angle_coefs)):
-        text += write_angle_coefs(i + 1, angle_coefs[i], write_style=False)
+    if angle_coefs['type'] == 'gaussian':
+        text += write_gaussian_angle_coefs(angle_coefs, write_style=False)
+    else:
+        n_angle_types = int(np.max(polymer_angle_types))
+        for i in range(n_angle_types):
+            text += write_cosine_angle_coefs(
+                i + 1, angle_coefs['type{}'.format(i + 1)], write_style=False
+            )
     text += '\n'
 
     # Write the dihedral potential coefficients
@@ -707,7 +752,9 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
     if dihedral_coefs is not None:
         text += 'Dihedral Coeffs\n\n'
         for i in range(len(dihedral_coefs)):
-            text += write_dihedral_coefs(i + 1, dihedral_coefs[i], write_style=False)
+            text += write_dihedral_coefs(
+                i + 1, dihedral_coefs['type{}'.format(i + 1)], write_style=False
+            )
         text += '\n'
 
     # Write atomic coordinates, bonds, and angles  
