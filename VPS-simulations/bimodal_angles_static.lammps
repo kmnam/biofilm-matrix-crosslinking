@@ -1,0 +1,145 @@
+# ====================================================================== #
+# Equilibrate a test system of polymers in implicit solvent. 
+#
+# Authors:
+#     Kee-Myoung Nam
+#
+# Last updated:
+#     10/10/2025
+# ====================================================================== #
+# INPUT VARIABLES
+# ===============
+variable f file ${VARS}
+variable init_filename string $f
+next f
+variable lammpstrj_filename string $f
+next f
+variable bond_filename string $f
+next f
+variable angle_filename string $f
+next f
+variable dt equal $f
+next f
+variable damp equal $f
+next f
+variable nsteps equal $f
+next f
+variable nsteps_per_dump equal $f
+next f
+variable seed_velocity equal $f
+next f
+variable seed_langevin equal $f
+print ${dt}
+print ${damp}
+print ${nsteps}
+print ${nsteps_per_dump}
+print ${seed_velocity}
+print ${seed_langevin}
+
+# ====================================================================== #
+# INITIALIZATION
+# ==============
+# Use nano units (nm, ag, ns, K; 1 kT = 4.141947 ag*nm^2/ns^2) in 3 dimensions
+units nano
+dimension 3
+
+# Use FENE bonds for polymeric bonds
+atom_style molecular 
+bond_style fene
+
+# Subject polymeric bond angles to a cosine angle potential 
+angle_style cosine/delta
+
+# Subject polymeric dihedral angles to a harmonic potential
+dihedral_style harmonic 
+
+# Use Lennard-Jones potentials between unbonded molecules
+#
+# Note that the 2.5 * \sigma cutoff ratio is re-written below when the initial
+# configuration file is parsed
+pair_style lj/cut 4.4544935907
+
+# Use periodic boundary conditions in all 3 dimensions 
+boundary p p p
+
+# Maintain neighbor lists with given additional "skin" distance
+#
+# Skin distance is set to 0.3 * \sigma, where \sigma = 2 nm / (2^(1/6))
+neighbor 0.5345392309 bin
+
+# Build neighbor lists at every timestep 
+neigh_modify every 1 delay 1
+
+# ====================================================================== #
+# PARSE INPUT MOLECULES
+# =====================
+read_data ${init_filename}
+pair_modify shift yes
+
+# - Exclude Lennard-Jones potential contributions between FENE-bonded atoms
+# - Weight Lennard-Jones potential contributions between 1-3 atoms with angles
+special_bonds fene angle no
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
+# ===================================================
+thermo 10
+thermo_style custom step temp pe ke etotal epair ebond eangle press
+
+# ====================================================================== #
+# ENERGY MINIMIZATION
+# ===================
+minimize 1e-4 1e-6 5000 10000
+
+# ====================================================================== #
+# DEFINE INITIAL VELOCITIES
+# =========================
+# Set initial velocities of all molecules from a Gaussian distribution with
+# angular momenta set to zero 
+variable temp equal 300.0
+velocity all create ${temp} ${seed_velocity} rot yes dist gaussian
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
+# =================================================
+thermo ${nsteps_per_dump}
+thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond eangle
+
+# ====================================================================== #
+# SET UP SIMULATION
+# =================
+timestep ${dt}
+reset_timestep 0
+
+# Write polymer and crosslinker coordinates from simulation to file:
+# - Write atom ID, molecule ID, atom type, atom coordinates, and atom velocities
+# - Sort lines by atom ID
+dump sim1 all custom ${nsteps_per_dump} ${lammpstrj_filename} id mol type xu yu zu vx vy vz
+dump_modify sim1 sort id
+
+# Write bond lengths and energies to file 
+compute bond1 all property/local btype batom1 batom2
+compute bond2 all bond/local dist engpot force
+dump sim2 all local ${nsteps_per_dump} ${bond_filename} index c_bond1[*] c_bond2[*]
+dump_modify sim2 sort 2
+
+# Write bond angles and energies to file 
+compute angle1 all property/local atype aatom1 aatom2 aatom3
+compute angle2 all angle/local theta eng
+dump sim3 all local ${nsteps_per_dump} ${angle_filename} index c_angle1[*] c_angle2[*]
+dump_modify sim3 sort 2
+
+# TODO Write dihedrals?
+
+# ====================================================================== #
+# SET UP ENSEMBLES
+# ================
+# Apply NVT ensemble plus Langevin thermostat
+fix fx1 all nve
+fix fx2 all langevin ${temp} ${temp} ${damp} ${seed_langevin}
+
+# ====================================================================== #
+# RUN SIMULATION
+# ==============
+run ${nsteps}
+
