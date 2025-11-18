@@ -5,7 +5,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    11/6/2025
+    11/18/2025
 """
 import numpy as np
 from scipy.stats import circmean
@@ -20,6 +20,8 @@ _polymer_crosslinker_bond_type = 3
 _polymer_angle_type = 1
 _crosslinker_angle_type = 2
 _polymer_crosslinked_angle_type = 3
+
+kT = 4.141947    # Boltzmann's constant times temperature
 
 #########################################################################
 #                           HELPER FUNCTIONS                            #
@@ -242,9 +244,8 @@ def generate_polymers(n, polymer_length, bond_length, angle_types, angle_coefs,
         Inter-polymer distance threshold for sampling.
     eps2 : float
         Intra-polymer distance threshold for sampling.
-    dihedral_coefs : list of callables 
-        Dictionary of dihedral angle parameters for each dihedral type.
-        May be None. 
+    dihedral_coefs : dict
+        Dictionary of dihedral angle parameters. May be None. 
     atom_type : int
         Atom type for each atom in each `Polymer` object. 
     max_seed_per_polymer : int
@@ -370,7 +371,7 @@ def generate_polymers(n, polymer_length, bond_length, angle_types, angle_coefs,
             angle_type = angle_types[i, j - 2]
             angle = rng.vonmises(
                 angle_coefs['type{}'.format(angle_type)]['theta0'],
-                angle_coefs['type{}'.format(angle_type)]['K']
+                angle_coefs['type{}'.format(angle_type)]['K'] / kT
             )
         if j == 2 or dihedral_coefs is None:
             p = generate_next_atom(
@@ -383,10 +384,7 @@ def generate_polymers(n, polymer_length, bond_length, angle_types, angle_coefs,
             #
             # Note that these correspond to the entries angle_types[i, j - 3]
             # and angle_types[i, j - 2], respectively
-            if angle_types[i, j - 3] == 2 or angle_types[i, j - 2] == 2:
-                dihedral = rng.vonmises(np.pi / 2, dihedral_coefs['type2']['K'])
-            else:
-                dihedral = rng.vonmises(np.pi, dihedral_coefs['type1']['K'])
+            dihedral = rng.vonmises(np.pi, dihedral_coefs['K'] / kT)
             p = generate_next_atom_dihedral(
                 polymer_i.coords[j-3, :], polymer_i.coords[j-2, :],
                 polymer_i.coords[j-1, :], bond_length, angle,
@@ -412,7 +410,7 @@ def generate_polymers(n, polymer_length, bond_length, angle_types, angle_coefs,
                 angle_type = angle_types[i, j - 2]
                 angle = rng.vonmises(
                     angle_coefs['type{}'.format(angle_type)]['theta0'],
-                    angle_coefs['type{}'.format(angle_type)]['K']
+                    angle_coefs['type{}'.format(angle_type)]['K'] / kT
                 )
             # Resample the dihedral angle (if desired)
             if j == 2 or dihedral_coefs is None:
@@ -426,10 +424,7 @@ def generate_polymers(n, polymer_length, bond_length, angle_types, angle_coefs,
                 #
                 # Note that these correspond to the entries angle_types[i, j - 3]
                 # and angle_types[i, j - 2], respectively
-                if angle_types[i, j - 3] == 2 or angle_types[i, j - 2] == 2:
-                    dihedral = rng.vonmises(np.pi / 2, dihedral_coefs['type2']['K'])
-                else:
-                    dihedral = rng.vonmises(np.pi, dihedral_coefs['type1']['K'])
+                dihedral = rng.vonmises(np.pi, dihedral_coefs['K'] / kT)
                 p = generate_next_atom_dihedral(
                     polymer_i.coords[j-3, :], polymer_i.coords[j-2, :],
                     polymer_i.coords[j-1, :], bond_length, angle, 

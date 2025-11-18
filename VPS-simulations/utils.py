@@ -6,7 +6,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    10/10/2025
+    11/18/2025
 """
 import numpy as np
 from polymers import Polymer, AtomicCrosslinker, TetrahedralCrosslinker
@@ -657,7 +657,7 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
             0 if dihedral_coefs is None else n_polymers * (polymer_length - 3)
         )
         n_angle_types = int(np.max(polymer_angle_types))
-        n_dihedral_types = (0 if dihedral_coefs is None else len(dihedral_coefs))
+        n_dihedral_types = (0 if dihedral_coefs is None else 1)
         text += (
             '1 atom types\n1 bond types\n{} angle types\n{} dihedral types\n'
             '0 improper types\n\n'.format(n_angle_types, n_dihedral_types)
@@ -751,10 +751,7 @@ def write_init_config(polymers, crosslinkers, bond_length, crosslinker_style,
     # A dict of coefficients should be present for every angle type
     if dihedral_coefs is not None:
         text += 'Dihedral Coeffs\n\n'
-        for i in range(len(dihedral_coefs)):
-            text += write_dihedral_coefs(
-                i + 1, dihedral_coefs['type{}'.format(i + 1)], write_style=False
-            )
+        text += write_dihedral_coefs(1, dihedral_coefs, write_style=False)
         text += '\n'
 
     # Write atomic coordinates, bonds, and angles  

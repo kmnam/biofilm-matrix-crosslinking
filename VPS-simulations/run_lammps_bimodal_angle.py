@@ -6,7 +6,7 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    11/6/2025
+    11/18/2025
 """
 
 import sys
@@ -58,18 +58,14 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
     zmin = params['zmin']
     zmax = params['zmax']
 
-    # Try parsing the dihedral potential coefficients, if (1) they were given
-    # and (2) the angle potential is cosine/delta
-    if angle_coefs['type'] == 'cosine/delta':
-        try:
-            dihedral_coefs = params['dihedral_coefs']
-            for key in dihedral_coefs:
-                if 'n' not in dihedral_coefs[key]:
-                    dihedral_coefs[key]['n'] = 1
-                dihedral_coefs[key]['d'] = 1
-        except KeyError:
-            dihedral_coefs = None
-    else:
+    # Try parsing the dihedral potential coefficients, if they were given
+    #
+    # Assume an equilibrium dihedral angle of 180 degrees 
+    try:
+        dihedral_coefs = params['dihedral_coefs']
+        dihedral_coefs['n'] = 1
+        dihedral_coefs['d'] = 1
+    except KeyError:
         dihedral_coefs = None
 
     # Parse optional input parameters
@@ -91,7 +87,6 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
         n_types = len([
             k for k in angle_coefs if k.startswith('type') and k[4:].isdigit()
         ])
-        print(n_types)
         angle_probs = [
             angle_coefs['type{}'.format(i + 1)]['prob'] for i in range(n_types)
         ]
@@ -132,19 +127,7 @@ def generate_init_config_polymers(json_filename, init_filename, pdf_filename,
     plt.savefig(pdf_filename)
 
     # Define dihedral angle types 
-    dihedral_types = np.zeros((n_polymers, polymer_length - 3), dtype=np.int64)
-    for i in range(n_polymers):
-        for j in range(polymer_length - 3):
-            # The (i, j)-th entry here is the dihedral angle along the segment
-            # j-(j+1)-(j+2)-(j+3), which is determined by the angle types at 
-            # j + 1 and j + 2
-            #
-            # Note that these entries correspond to angle_types[i, j] and 
-            # angle_types[i, j + 1], respectively
-            if angle_types[i, j] == 2 or angle_types[i, j + 1] == 2:
-                dihedral_types[i, j] = 2
-            else:
-                dihedral_types[i, j] = 1
+    dihedral_types = np.ones((n_polymers, polymer_length - 3), dtype=np.int64)
 
     # Write initial configuration to file
     crosslinkers = []
