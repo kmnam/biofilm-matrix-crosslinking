@@ -1,0 +1,42 @@
+{
+    "n_polymers": 1,
+    "polymer_length": 2200,
+    "bond_length": 1.8,
+    "monomer_mass": 0.001262009691,
+    "lj_coefs": {
+        "eps": 4.141947,
+        "sigma": 1.8652849741,
+        "cutoff": 2.0937115927
+    },
+    "fene_coefs": {
+        "K": 37.277523,
+        "R0": 2.7979274611,
+        "eps": 4.141947,
+        "sigma": 1.8652849741
+    },
+    "angle_coefs": {
+        "type": "gaussian",
+        "n": 2,
+        "A_1": 0.9,
+        "w_1": 0.4472135955,
+        "theta0_1": 2.7925268032,
+        "A_2": 0.1,
+        "w_2": 0.4472135955,
+        "theta0_2": 1.5707963268
+    },
+	"dihedral_coefs": {
+		"K": 41.41947
+	},
+    "inter_molecule_mindist": 1.8,
+    "intra_polymer_mindist": 1.8,
+    "xmin": -300.0,
+    "xmax": 300.0,
+    "ymin": -300.0,
+    "ymax": 300.0,
+    "zmin": -300.0,
+    "zmax": 300.0,
+    "dt": 1e-6,
+    "damp": 0.0003046899661,
+    "t_final": 1000.0,
+    "dt_per_dump": 0.1
+}
