@@ -760,7 +760,6 @@ class PolymerConfiguration
     private:
         int length; 
         Matrix<T, Dynamic, 3> r;
-        T kT; 
 
         /**
          * Get the energy arising from all interactions between the given
@@ -1095,6 +1094,8 @@ class PolymerConfiguration
         } 
 
     public:
+        T kT;     // Boltzmann's constant times temperature
+
         /**
          * Default constructor.
          *
