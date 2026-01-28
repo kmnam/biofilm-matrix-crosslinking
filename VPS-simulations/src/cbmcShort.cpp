@@ -44,7 +44,8 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
                                      std::unordered_map<std::string, T>& dihedral_params,
                                      const Ref<const Matrix<T, 3, 1> >& r0,
                                      const T collision_threshold, 
-                                     const int max_tries_per_atom,  
+                                     const int max_tries_per_atom,
+                                     const int max_n_backtracks,  
                                      boost::random::mt19937& rng,
                                      boost::random::uniform_01<>& uniform_dist,
                                      const Units units = Units::NANO,
@@ -123,7 +124,8 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
     config.appendAtomToTail(new_atom); 
 
     // Add the remaining atoms ...
-    int curr_idx = 3;  
+    int curr_idx = 3;
+    int n_backtracks = 0;  
     while (curr_idx < K)
     {
         Matrix<T, 3, 1> r1 = coords.row(curr_idx - 3); 
@@ -164,7 +166,8 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
         else if (curr_idx > 3) 
         {
             config.popAtomFromTail(); 
-            curr_idx--;  
+            curr_idx--; 
+            n_backtracks++;  
         }
         else
         {
@@ -172,6 +175,16 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
                 "Sampling procedure backtracked into first 3 atoms; try "
                 "sampling more positions per atom"
             ); 
+        }
+
+        // If we have exceeded the maximum number of backtracks, raise 
+        // an exception 
+        if (n_backtracks > max_n_backtracks)
+        {
+            throw std::runtime_error(
+                "Sampling procedure exceeded maximum number of backtracks; try "
+                "sampling more positions per atom"
+            );
         } 
     }
 
@@ -196,12 +209,13 @@ int main(int argc, char** argv)
     angle_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
     dihedral_params["K"] = 10 * kT;
     double collision_threshold = 1;
-    int max_tries_per_atom = 50; 
+    int max_tries_per_atom = 50;
+    int max_n_backtracks = 50;  
 
     PolymerConfiguration<double> config = generateKMer<double, 10>(
         lj_params, fene_params, AngleMode::COSINE, angle_params,
-        dihedral_params, r0, collision_threshold, max_tries_per_atom, rng,
-        uniform_dist, Units::NANO, 300
+        dihedral_params, r0, collision_threshold, max_tries_per_atom, 
+        max_n_backtracks, rng, uniform_dist, Units::NANO, 300
     );
     std::cout << config.getSegment(0, 10) << std::endl; 
 
