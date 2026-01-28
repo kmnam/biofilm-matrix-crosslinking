@@ -11,6 +11,7 @@
 
 #include <stdexcept>
 #include <cmath>
+#include <string>
 #include <limits>
 #include <unordered_map>
 #include <functional>
@@ -49,7 +50,13 @@ enum Units
 {
     MICRO,
     NANO
-}; 
+};
+
+enum AngleMode
+{
+    COSINE,
+    GAUSSIAN
+};
 
 /**
  * Sample a value from the standard normal distribution with the Box-Muller
@@ -773,12 +780,11 @@ class PolymerConfiguration
          * @param neighbor_threshold Distance threshold for identifying
          *                           neighboring (non-bonded) atoms. 
          * @param fene_params FENE parameters. 
+         * @param angle_mode Angle potential type.  
          * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0)
-         *                     or the dual Gaussian mixture potential 
-         *                     parameters (A1, A2, w1, w2, theta1, theta2), 
-         *                     in addition to a "mode" entry that specifies
-         *                     which potential is being used. 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
          * @param dihedral_params Dihedral angle potential parameters. 
          * @returns Interaction energy between segment and polymer.  
          */
@@ -786,7 +792,8 @@ class PolymerConfiguration
                                       const int idx,
                                       std::unordered_map<std::string, T>& lj_params,  
                                       const T neighbor_threshold, 
-                                      std::unordered_map<std::string, T>& fene_params, 
+                                      std::unordered_map<std::string, T>& fene_params,
+                                      const AngleMode angle_mode, 
                                       std::unordered_map<std::string, T>& angle_params,
                                       std::unordered_map<std::string, T>& dihedral_params)
         {
@@ -855,7 +862,7 @@ class PolymerConfiguration
             // ----------------------------------------------------------- //
             // Define angle potential function, depending on the parameters
             std::function<T(const T)> potential;  
-            if (angle_params["mode"] == "gaussian")
+            if (angle_mode == AngleMode::GAUSSIAN)
             {
                 potential = [this, &angle_params](const T theta) -> T
                 {
@@ -867,7 +874,7 @@ class PolymerConfiguration
                     ); 
                 }; 
             }
-            else if (angle_params["mode"] == "cosine")
+            else if (angle_mode == AngleMode::COSINE)
             {
                 potential = [&angle_params](const T theta) -> T
                 {
@@ -1453,21 +1460,21 @@ class PolymerConfiguration
          * Get the energetic contributions of the bond angles to the energy 
          * of the current polymer configuration.
          *
+         * @param angle_mode Angle potential type.  
          * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0)
-         *                     or the dual Gaussian mixture potential 
-         *                     parameters (A1, A2, w1, w2, theta1, theta2), 
-         *                     in addition to a "mode" entry that specifies
-         *                     which potential is being used. 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
          * @returns Bond angle energy. 
          */
-        T getBondAngleEnergy(std::unordered_map<std::string, T>& angle_params) const
+        T getBondAngleEnergy(const AngleMode angle_mode, 
+                             std::unordered_map<std::string, T>& angle_params) const
         {
             T energy = 0.0;
 
             // Define angle potential function, depending on the parameters
             std::function<T(const T)> potential;  
-            if (angle_params["mode"] == "gaussian")
+            if (angle_mode == AngleMode::GAUSSIAN)
             {
                 potential = [this, &angle_params](const T theta) -> T
                 {
@@ -1478,7 +1485,7 @@ class PolymerConfiguration
                     ); 
                 }; 
             }
-            else if (angle_params["mode"] == "cosine")
+            else if (angle_mode == AngleMode::COSINE)
             {
                 potential = [&angle_params](const T theta) -> T
                 {
@@ -1539,12 +1546,11 @@ class PolymerConfiguration
          * @param neighbor_threshold Distance threshold for identifying
          *                           neighboring (non-bonded) atoms. 
          * @param fene_params FENE parameters. 
+         * @param angle_mode Angle potential type.  
          * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0)
-         *                     or the dual Gaussian mixture potential 
-         *                     parameters (A1, A2, w1, w2, theta1, theta2), 
-         *                     in addition to a "mode" entry that specifies
-         *                     which potential is being used. 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
          * @param dihedral_params Dihedral angle potential parameters. 
          * @returns Energy difference due to segment replacement. 
          */
@@ -1552,7 +1558,8 @@ class PolymerConfiguration
                                                 const int idx,
                                                 std::unordered_map<std::string, T>& lj_params,  
                                                 const T neighbor_threshold, 
-                                                std::unordered_map<std::string, T>& fene_params, 
+                                                std::unordered_map<std::string, T>& fene_params,
+                                                const AngleMode angle_mode,  
                                                 std::unordered_map<std::string, T>& angle_params,
                                                 std::unordered_map<std::string, T>& dihedral_params)
         {
@@ -1563,11 +1570,11 @@ class PolymerConfiguration
             // Get the energy difference 
             T energy_curr = this->getSegmentInteractionEnergy(
                 segment_curr, idx, lj_params, neighbor_threshold, fene_params, 
-                angle_params, dihedral_params
+                angle_mode, angle_params, dihedral_params
             ); 
             T energy_new = this->getSegmentInteractionEnergy(
                 segment, idx, lj_params, neighbor_threshold, fene_params, 
-                angle_params, dihedral_params
+                angle_mode, angle_params, dihedral_params
             ); 
             return energy_new - energy_curr; 
         } 
@@ -1582,12 +1589,11 @@ class PolymerConfiguration
          * @param neighbor_threshold Distance threshold for identifying
          *                           neighboring (non-bonded) atoms. 
          * @param fene_params FENE parameters. 
+         * @param angle_mode Angle potential type.  
          * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0)
-         *                     or the dual Gaussian mixture potential 
-         *                     parameters (A1, A2, w1, w2, theta1, theta2), 
-         *                     in addition to a "mode" entry that specifies
-         *                     which potential is being used. 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
          * @param dihedral_params Dihedral angle potential parameters. 
          * @returns Metropolis-Hastings acceptance probability of switching
          *          in the given segment into the polymer.  
@@ -1596,7 +1602,8 @@ class PolymerConfiguration
                                       const int idx,
                                       std::unordered_map<std::string, T>& lj_params,  
                                       const T neighbor_threshold, 
-                                      std::unordered_map<std::string, T>& fene_params, 
+                                      std::unordered_map<std::string, T>& fene_params,
+                                      const AngleMode angle_mode, 
                                       std::unordered_map<std::string, T>& angle_params,
                                       std::unordered_map<std::string, T>& dihedral_params) const
         {
@@ -1605,13 +1612,13 @@ class PolymerConfiguration
             Matrix<T, Dynamic, 3> segment_curr = this->r(Eigen::seqN(idx, n), Eigen::all);
             const T energy_curr = this->getSegmentInteractionEnergy(
                 segment_curr, idx, lj_params, neighbor_threshold, fene_params, 
-                angle_params, dihedral_params
+                angle_mode, angle_params, dihedral_params
             ); 
 
             // Get the energy of the proposed polymer configuration 
             const T energy_new = this->getSegmentInteractionEnergy(
                 segment, idx, lj_params, neighbor_threshold, fene_params, 
-                angle_params, dihedral_params
+                angle_mode, angle_params, dihedral_params
             );
 
             // Calculate the Metropolis acceptance probability
