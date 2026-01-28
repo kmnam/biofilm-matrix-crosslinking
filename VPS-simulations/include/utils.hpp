@@ -1208,6 +1208,17 @@ class PolymerConfiguration
         }
 
         /**
+         * Get the minimum distance between the given atom and the polymer. 
+         *
+         * @param p Input atomic coordinates. 
+         * @returns Minimum distance between the atom and the polymer. 
+         */
+        T getMinDist(const Ref<const Matrix<T, 3, 1> >& p) const 
+        {
+            return (this->r.rowwise() - p.transpose()).rowwise().norm().minCoeff(); 
+        }
+
+        /**
          * Replace the segment starting from atom `idx` within the polymer
          * with the given segment. 
          *
@@ -1230,6 +1241,18 @@ class PolymerConfiguration
         }
 
         /**
+         * Append the given atom onto the tail of the polymer. 
+         *
+         * @param r Atom coordinates for the new atom. 
+         */
+        void appendAtomToTail(const Ref<const Matrix<T, 3, 1> >& r)
+        {
+            this->length++; 
+            this->r.conservativeResize(this->length, 3); 
+            this->r.row(this->length - 1) = r; 
+        }
+
+        /**
          * Append the given atom onto the head of the polymer. 
          *
          * @param r Atom coordinates for the new atom. 
@@ -1241,18 +1264,6 @@ class PolymerConfiguration
             this->r(Eigen::seqN(1, this->length - 1))
                 = this->r(Eigen::seqN(0, this->length - 1)).eval();  
             this->r.row(0) = r; 
-        }
-
-        /**
-         * Append the given atom onto the tail of the polymer. 
-         *
-         * @param r Atom coordinates for the new atom. 
-         */
-        void appendAtomToTail(const Ref<const Matrix<T, 3, 1> >& r)
-        {
-            this->length++; 
-            this->r.conservativeResize(this->length, 3); 
-            this->r.row(this->length - 1) = r; 
         }
 
         /**
@@ -1287,6 +1298,30 @@ class PolymerConfiguration
             // Append the segment onto the head of the polymer 
             for (int i = 0; i < n; ++i)
                 this->r.row(i) = segment.row(i); 
+        }
+
+        /**
+         * Append the given atom onto the tail of the polymer. 
+         *
+         * @param r Atom coordinates for the new atom. 
+         */
+        void popAtomFromTail()
+        {
+            this->r.conservativeResize(this->length - 1, 3);
+            this->length--; 
+        }
+
+        /**
+         * Append the given atom onto the head of the polymer. 
+         *
+         * @param r Atom coordinates for the new atom. 
+         */
+        void popAtomFromHead()
+        {
+            this->r(Eigen::seqN(1, this->length - 1))
+                = this->r(Eigen::seqN(0, this->length - 1)).eval(); 
+            this->r.conservativeResize(this->length, 3);
+            this->length--;
         }
 
         /**
