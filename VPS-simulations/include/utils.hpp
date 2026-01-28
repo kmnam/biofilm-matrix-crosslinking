@@ -1230,6 +1230,32 @@ class PolymerConfiguration
         }
 
         /**
+         * Append the given atom onto the head of the polymer. 
+         *
+         * @param r Atom coordinates for the new atom. 
+         */
+        void appendAtomToHead(const Ref<const Matrix<T, 3, 1> >& r)
+        {
+            this->length++; 
+            this->r.conservativeResize(this->length, 3);
+            this->r(Eigen::seqN(1, this->length - 1))
+                = this->r(Eigen::seqN(0, this->length - 1)).eval();  
+            this->r.row(0) = r; 
+        }
+
+        /**
+         * Append the given atom onto the tail of the polymer. 
+         *
+         * @param r Atom coordinates for the new atom. 
+         */
+        void appendAtomToTail(const Ref<const Matrix<T, 3, 1> >& r)
+        {
+            this->length++; 
+            this->r.conservativeResize(this->length, 3); 
+            this->r.row(this->length - 1) = r; 
+        }
+
+        /**
          * Append the given segment onto the tail of the polymer. 
          *
          * @param segment Array of atom coordinates for the new segment. 
