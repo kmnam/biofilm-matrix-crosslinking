@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     1/27/2026
+ *     1/29/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -800,7 +800,7 @@ class PolymerConfiguration
             // Check that the specified polymer indices to slice out of the 
             // polymer are valid
             const int n = segment.rows(); 
-            if (idx + n - 1 >= this->length)
+            if (idx < 0 || idx + n - 1 >= this->length)
                 throw std::runtime_error(
                     "Specified segment cannot be inserted into polymer at specified index"
                 ); 
@@ -813,8 +813,8 @@ class PolymerConfiguration
             const int n1 = idx; 
             const int n2 = this->length - idx - n; 
             Matrix<T, Dynamic, 3> r_sub(n1 + n2, 3);
-            r_sub(Eigen::seqN(0, n1), 3) = this->r(Eigen::seqN(0, n1), 3); 
-            r_sub(Eigen::seqN(n1, n2), 3) = this->r(Eigen::seqN(idx + n, n2), 3);  
+            r_sub(Eigen::seqN(0, n1), Eigen::all) = this->r(Eigen::seqN(0, n1), Eigen::all); 
+            r_sub(Eigen::seqN(n1, n2), Eigen::all) = this->r(Eigen::seqN(idx + n, n2), Eigen::all); 
             Matrix<T, Dynamic, 3> neighbors = getNeighbors<T>(
                 r_sub, segment, neighbor_threshold
             );
@@ -839,7 +839,7 @@ class PolymerConfiguration
 
             // Identify adjacent atoms to the segment along the polymer
             int n_adj_bonds = 0; 
-            Array<T, Dynamic, 3> adj_bonds(n_adj_bonds, 3);
+            Matrix<T, Dynamic, 3> adj_bonds(n_adj_bonds, 3);
             if (idx > 0)
             {
                 n_adj_bonds++; 
@@ -904,7 +904,7 @@ class PolymerConfiguration
             // There are then four possible bond angles: P-P-S, P-S-S, S-S-P, S-P-P,
             // depending on the placement of the segment along the polymer 
             int n_adj_angles = 0;
-            Array<T, Dynamic, 6> adj_angles(n_adj_angles, 6);
+            Matrix<T, Dynamic, 6> adj_angles(n_adj_angles, 6);
             if (idx > 1)
             {
                 n_adj_angles++; 
@@ -970,7 +970,7 @@ class PolymerConfiguration
             //
             // Here, it is assumed that the segment length is >= 2
             int n_adj_dihedrals = 0; 
-            Array<T, Dynamic, 12> adj_dihedrals(n_adj_dihedrals, 12);
+            Matrix<T, Dynamic, 12> adj_dihedrals(n_adj_dihedrals, 12);
 
             // If the segment length is 2, then there are five possible dihedrals:
             // P-P-P-S, P-P-S-S, P-S-S-P, S-S-P-P, S-P-P-P, depending on the 
@@ -981,46 +981,46 @@ class PolymerConfiguration
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 3); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 2);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = this->r.row(idx - 1);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = segment.row(0); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 3); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 2);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx - 1);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(0); 
                 }
                 if (idx > 1)    // P-P-S-S
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 2); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 1);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = segment.row(0);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = segment.row(1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 1);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(0);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(1); 
                 }
                 if (idx > 0)    // P-S-S-P
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 1); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = segment.row(0); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = segment.row(1);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(0); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(1);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 2); 
                 }
-                if (idx + n < this->length)       // S-S-P-P
+                if (idx + n < this->length - 1)      // S-S-P-P
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = segment.row(0); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = segment.row(1); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = this->r.row(idx + 2); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 3); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(0); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx + 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 3); 
                 }
-                if (idx + n + 1 < this->length)   // S-P-P-P
+                if (idx + n < this->length - 2)      // S-P-P-P
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = segment.row(1); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = this->r.row(idx + 2); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = this->r.row(idx + 3); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 4); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx + 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx + 3); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 4); 
                 }
             }
             // If the segment length is > 2, then there are six possible dihedrals:
@@ -1032,55 +1032,55 @@ class PolymerConfiguration
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 3); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 2);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = this->r.row(idx - 1);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = segment.row(0); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 3); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 2);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx - 1);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(0); 
                 }
                 if (idx > 1)    // P-P-S-S
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 2); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 1);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = segment.row(0);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = segment.row(1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 1);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(0);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(1); 
                 }
                 if (idx > 0)    // P-S-S-S
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 1); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = segment.row(0); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = segment.row(1);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = segment.row(2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(0); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(1);
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(2); 
                 }
                 if (idx + n < this->length)       // S-S-S-P
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = segment.row(n - 3); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = segment.row(n - 2); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = segment.row(n - 1); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(n - 3); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(n - 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(n - 1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n); 
                 }
-                if (idx + n + 1 < this->length)   // S-S-P-P
+                if (idx + n < this->length - 1)   // S-S-P-P
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = segment.row(n - 2); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = segment.row(n - 1); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = this->r.row(idx + n); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n + 1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(n - 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(n - 1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx + n); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n + 1); 
                 }
-                if (idx + n + 2 < this->length)   // S-P-P-P
+                if (idx + n < this->length - 2)   // S-P-P-P
                 {
                     n_adj_dihedrals++; 
                     adj_dihedrals.conservativeResize(n_adj_dihedrals, 12);
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(0, 3)) = segment.row(n - 1); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(3, 3)) = this->r.row(idx + n); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(6, 3)) = this->r.row(idx + n + 1); 
-                    adj_dihedrals(n_adj_angles - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n + 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(n - 1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx + n); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx + n + 1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n + 2); 
                 }
             }
             for (int i = 0; i < n_adj_dihedrals; ++i)
@@ -1118,9 +1118,9 @@ class PolymerConfiguration
 
             // Set kT according to the given choice of units 
             if (units == Units::NANO)
-                this->kT = static_cast<T>(1.380649e-8) * temp;
+                this->kT = static_cast<T>(1.380649e-2) * temp;
             else if (units == Units::MICRO)
-                this->kT = static_cast<T>(1.380649e-2) * temp; 
+                this->kT = static_cast<T>(1.380649e-8) * temp; 
         }
 
         /**
