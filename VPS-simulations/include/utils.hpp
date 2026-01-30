@@ -767,6 +767,7 @@ class PolymerConfiguration
     private:
         int length; 
         Matrix<T, Dynamic, 3> r;
+        T temp; 
 
         /**
          * Get the energy arising from all interactions between the given
@@ -1114,7 +1115,8 @@ class PolymerConfiguration
                              const Units units, const T temp)
         {
             this->length = r.rows(); 
-            this->r = r; 
+            this->r = r;
+            this->temp = temp;  
 
             // Set kT according to the given choice of units 
             if (units == Units::NANO)
@@ -1623,6 +1625,140 @@ class PolymerConfiguration
 
             // Calculate the Metropolis acceptance probability
             return min(1, exp(-(energy_new - energy_curr) / this->kT));  
+        }
+
+        /**
+         * Write the polymer configuration to file in LAMMPS data format.
+         *
+         * @param filename Output filename. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @param fene_params FENE parameters. 
+         * @param angle_mode Angle potential type.  
+         * @param angle_params Angle potential parameters. Must include the 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
+         * @param dihedral_params Dihedral angle potential parameters.
+         * @param header Header string. 
+         * @param xmin, xmax Domain limits along x-axis.
+         * @param ymin, ymax Domain limits along y-axis. 
+         * @param zmin, zmax Domain limits along z-axis.
+         * @param mass Atom mass.  
+         */
+        void writeLammps(const std::string& filename,
+                         std::unordered_map<std::string, T>& lj_params, 
+                         std::unordered_map<std::string, T>& fene_params, 
+                         const AngleMode angle_mode,  
+                         std::unordered_map<std::string, T>& angle_params, 
+                         std::unordered_map<std::string, T>& dihedral_params, 
+                         const std::string& header, const T xmin, const T xmax,
+                         const T ymin, const T ymax, const T zmin, const T zmax,
+                         const T mass)
+        {
+            std::ofstream outfile(filename);
+            outfile << std::setprecision(10);  
+
+            // Write header 
+            outfile << header << "\n\n"; 
+
+            // Write numbers of atoms, bonds, angles, and dihedrals 
+            outfile << this->length << " atoms\n"
+                    << this->length - 1 << " bonds\n"
+                    << this->length - 2 << " angles\n"
+                    << this->length - 3 << " dihedrals\n"
+                    << "0 impropers\n\n"; 
+
+            // Write numbers of atom, bond, angle, and dihedral types
+            outfile << "1 atom types\n1 bond types\n1 angle types\n"
+                    << "1 dihedral types\n0 improper types\n\n";
+
+            // Write box dimensions 
+            outfile << xmin << " " << xmax << " xlo xhi\n"
+                    << ymin << " " << ymax << " ylo yhi\n"
+                    << zmin << " " << zmax << " zlo zhi\n\n"; 
+
+            // Write atom masses 
+            outfile << "Masses\n\n"
+                    << "1 " << mass << "\n\n";
+
+            // Write Lennard-Jones parameters
+            outfile << "PairIJ Coeffs\n\n"
+                    << "1 1 " << lj_params["eps"] << " "
+                    << lj_params["sigma"] << " "
+                    << pow(2, 1. / 6.) * lj_params["sigma"] << "\n\n";
+
+            // Write FENE parameters
+            outfile << "Bond Coeffs\n\n"
+                    << "1 " << fene_params["K"] << " "
+                    << fene_params["R0"] << " "
+                    << lj_params["eps"] << " "
+                    << lj_params["sigma"] << "\n\n"; 
+
+            // Write angle potential parameters
+            if (angle_mode == AngleMode::COSINE)
+            {
+                outfile << "Angle Coeffs\n\n"
+                        << "1 " << angle_params["K"] << " "
+                        << 180 * angle_params["theta0"] / boost::math::constants::pi<T>() << "\n\n"; 
+            }
+            else if (angle_mode == AngleMode::GAUSSIAN)
+            {
+                outfile << "Angle Coeffs\n\n"
+                        << "1 " << this->temp << " "
+                        << "2 " << angle_params["A1"] << " "
+                        << angle_params["w1"] << " "
+                        << 180 * angle_params["theta1"] / boost::math::constants::pi<T>() << " "
+                        << angle_params["A2"] << " "
+                        << angle_params["w2"] << " "
+                        << 180 * angle_params["theta2"] / boost::math::constants::pi<T>() << "\n\n"; 
+            }
+
+            // Write dihedral potential parameters
+            outfile << "Dihedral Coeffs\n\n"
+                    << "1 " << dihedral_params["K"] << " " 
+                    << dihedral_params["d"] << " "
+                    << dihedral_params["n"] << "\n\n";
+
+            // Write atom coordinates 
+            outfile << "Atoms\n\n";
+            for (int i = 0; i < this->length; ++i)
+            {
+                // Atom ID, molecule ID, atom type, x, y, z
+                outfile << i << " 1 1 " << this->coords(i, 0) << " "
+                        << this->coords(i, 1) << " "
+                        << this->coords(i, 2) << std::endl; 
+            }
+            outfile << std::endl; 
+
+            // Write bonds 
+            outfile << "Bonds\n\n"; 
+            for (int i = 0; i < this->length - 1; ++i)
+            {
+                // Bond ID, bond type, atom i, atom j
+                outfile << i << " 1 " << i << " " << i + 1 << std::endl; 
+            }
+            outfile << std::endl; 
+
+            // Write angles 
+            outfile << "Angles\n\n"; 
+            for (int i = 0; i < this->length - 2; ++i)
+            {
+                // Angle ID, angle type, atom i, atom j, atom k
+                outfile << i << " 1 " << i << " " << i + 1 << " " << i + 2 << std::endl; 
+            }
+            outfile << std::endl; 
+
+            // Write dihedrals 
+            outfile << "Dihedrals\n\n"; 
+            for (int i = 0; i < this->length - 3; ++i)
+            {
+                // Dihedral ID, dihedral type, atom i, atom j, atom k, atom l
+                outfile << i << " 1 " << i << " " << i + 1 << " "
+                        << i + 2 << " " << i + 3 << std::endl; 
+            }
+            outfile << std::endl; 
         }
 };
 
