@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     1/29/2026
+ *     1/30/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -1624,6 +1624,200 @@ class PolymerConfiguration
             // Calculate the Metropolis acceptance probability
             return min(1, exp(-(energy_new - energy_curr) / this->kT));  
         }
-}; 
+};
+
+/**
+ * Generate a random K-mer in which the inter-atom distances, bond lengths, 
+ * bond angles, and dihedral angles follow the given potentials. 
+ *
+ * The inter-atom distances also obey a minimum distance criterion.
+ *
+ * This procedure extends the K-mer one atom at a time from a given position
+ * for the 0-th atom (r0), by sampling bond lengths, angles, and dihedrals 
+ * and testing whether the new atom is not too close to the existing atoms. 
+ * If this sampling fails to generate a new atomic position within a given 
+ * number of attempts (max_tries_per_atom), the procedure backtracks by 
+ * deleting the previous atom and generating a new position for that atom.
+ * The procedure terminates prematurely if it exceeds the maximum number of 
+ * backtracks (max_n_backtracks).  
+ *
+ * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+ * @param neighbor_threshold Distance threshold for identifying
+ *                           neighboring (non-bonded) atoms. 
+ * @param fene_params FENE parameters. 
+ * @param angle_mode Angle potential type.  
+ * @param angle_params Angle potential parameters. Must include the 
+ *                     cosine potential parameters (K and theta0) or
+ *                     the dual Gaussian mixture potential parameters
+ *                     (A1, A2, w1, w2, theta1, theta2). 
+ * @param dihedral_params Dihedral angle potential parameters. 
+ * @param r0 Position of 0-th atom. 
+ * @param collision_threshold Distance threshold for identifying atoms that 
+ *                            are too close to each other. 
+ * @param max_tries_per_atom Maximum number of attempts to place each atom
+ *                           before backtracking. 
+ * @param max_n_backtracks Maximum number of backtracks. 
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution. 
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin). 
+ * @returns Resulting polymer configuration.  
+ */
+template <typename T, size_t K>
+PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_params,
+                                     std::unordered_map<std::string, T>& fene_params,
+                                     const AngleMode angle_mode,  
+                                     std::unordered_map<std::string, T>& angle_params, 
+                                     std::unordered_map<std::string, T>& dihedral_params,
+                                     const Ref<const Matrix<T, 3, 1> >& r0,
+                                     const T collision_threshold, 
+                                     const int max_tries_per_atom,
+                                     const int max_n_backtracks,  
+                                     boost::random::mt19937& rng,
+                                     boost::random::uniform_01<>& uniform_dist,
+                                     const Units units = Units::NANO,
+                                     const T temp = 300)
+{
+    const T kT = (
+        units == Units::MICRO ? static_cast<T>(1.380649e-8) * temp : 
+        static_cast<T>(1.380649e-2) * temp
+    ); 
+
+    // Define the angle sampling function  
+    std::function<T(boost::random::mt19937&)> sample_angle;
+    if (angle_mode == AngleMode::COSINE)
+    {
+        sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleAngleCosine<T>(
+                angle_params["K"], angle_params["theta0"], kT, rng_, 
+                uniform_dist, 50
+            );
+        };
+    } 
+    else if (angle_mode == AngleMode::GAUSSIAN)
+    {
+        sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleAngleDualGaussianMixture<T>(
+                angle_params["A1"], angle_params["A2"], angle_params["w1"],
+                angle_params["w2"], angle_params["theta1"], angle_params["theta2"],
+                kT, rng_, uniform_dist, 50
+            );
+        };
+    }
+    else 
+    {
+        throw std::runtime_error("Invalid angle potential mode specified"); 
+    }
+
+    // Sample an initial bond length 
+    T length = sampleFene<T>(
+        lj_params["eps"], lj_params["sigma"], fene_params["K"],
+        fene_params["R0"], kT, rng, uniform_dist, 50 
+    );
+    T angle, dihedral;  
+
+    // Generate a PolymerConfiguration<T> instance with the first 2 atoms 
+    Matrix<T, Dynamic, 3> coords(K, 3); 
+    coords.row(0) = r0; 
+    coords(1, 0) = length; 
+    coords(1, 1) = 0; 
+    coords(1, 2) = 0;
+    PolymerConfiguration<T> config(coords(Eigen::seqN(0, 2), Eigen::all), units, temp); 
+
+    // Define a collision function 
+    auto collision = [&collision_threshold](PolymerConfiguration<T>& config, const Ref<const Matrix<T, 3, 1> >& r) -> bool
+    {
+        return (config.getMinDist(r) < collision_threshold);
+    };  
+
+    // Add a 3rd atom ...
+    //
+    // Keep generating a new atom until no collision is detected 
+    Matrix<T, 3, 1> new_atom;
+    bool found_collision = true;  
+    while (found_collision)
+    {
+        length = sampleFene<T>(
+            lj_params["eps"], lj_params["sigma"], fene_params["K"],
+            fene_params["R0"], config.kT, rng, uniform_dist, 50 
+        );
+        angle = sample_angle(rng); 
+        new_atom = generateNextAtom<T>(
+            coords.row(0), coords.row(1), length, angle, rng, uniform_dist
+        );
+        found_collision = collision(config, new_atom);  
+    }
+    coords.row(2) = new_atom; 
+    config.appendAtomToTail(new_atom); 
+
+    // Add the remaining atoms ...
+    int curr_idx = 3;
+    int n_backtracks = 0;  
+    while (curr_idx < K)
+    {
+        Matrix<T, 3, 1> r1 = coords.row(curr_idx - 3); 
+        Matrix<T, 3, 1> r2 = coords.row(curr_idx - 2); 
+        Matrix<T, 3, 1> r3 = coords.row(curr_idx - 1); 
+
+        // Keep generating a new atom until no collision is detected or 
+        // the maximum number of iterations is reached  
+        int n_tries = 0;
+        found_collision = true; 
+        while (found_collision && n_tries < max_tries_per_atom)
+        { 
+            length = sampleFene<T>(
+                lj_params["eps"], lj_params["sigma"], fene_params["K"],
+                fene_params["R0"], config.kT, rng, uniform_dist, 50 
+            );
+            angle = sample_angle(rng);
+            dihedral = sampleDihedralHarmonic<T>(
+                dihedral_params["K"], config.kT, rng, uniform_dist
+            );
+            new_atom = generateNextAtomDihedral<T>(
+                r1, r2, r3, length, angle, dihedral, rng, uniform_dist 
+            );
+            found_collision = collision(config, new_atom); 
+            n_tries++; 
+        }
+
+        // If the maximum number of iterations has been reached, move onto
+        // the next atom 
+        if (!found_collision)
+        {
+            coords.row(curr_idx) = new_atom; 
+            config.appendAtomToTail(new_atom);
+            curr_idx++;
+        } 
+        // Otherwise, backtrack to the previous atom unless doing so
+        // encroaches into the first 3 atoms 
+        else if (curr_idx > 3) 
+        {
+            config.popAtomFromTail(); 
+            curr_idx--; 
+            n_backtracks++;  
+        }
+        else
+        {
+            throw std::runtime_error(
+                "Sampling procedure backtracked into first 3 atoms; try "
+                "sampling more positions per atom"
+            ); 
+        }
+
+        // If we have exceeded the maximum number of backtracks, raise 
+        // an exception 
+        if (n_backtracks > max_n_backtracks)
+        {
+            throw std::runtime_error(
+                "Sampling procedure exceeded maximum number of backtracks; try "
+                "sampling more positions per atom"
+            );
+        } 
+    }
+
+    return config;  
+}
 
 #endif
