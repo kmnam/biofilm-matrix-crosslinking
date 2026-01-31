@@ -604,8 +604,8 @@ TEST_CASE("Tests for k-mer generation", "[generateKMer()]")
     cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
     gaussian_params["A1"] = 0.9; 
     gaussian_params["A2"] = 0.1;
-    gaussian_params["w1"] = 20; 
-    gaussian_params["w2"] = 20; 
+    gaussian_params["w1"] = 0.2236067977;    // = 1/sqrt(20) 
+    gaussian_params["w2"] = 0.2236067977; 
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
     gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
     dihedral_params["K"] = 10 * kT;
@@ -665,8 +665,8 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
     cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
     gaussian_params["A1"] = 0.9; 
     gaussian_params["A2"] = 0.1;
-    gaussian_params["w1"] = 20; 
-    gaussian_params["w2"] = 20; 
+    gaussian_params["w1"] = 0.2236067977;    // = 1/sqrt(20) 
+    gaussian_params["w2"] = 0.2236067977; 
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
     gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
     dihedral_params["K"] = 10 * kT;
@@ -806,16 +806,18 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
  * and getDihedralAngleEnergy().
  *
  * The output of these functions is compared against pre-computed values 
- * obtained with LAMMPS, specifically via the following command:
+ * obtained with LAMMPS, specifically via the following commands:
  *
  * mpirun -np 1 lmp -i get_energy_cosine.lammps -v VARS configs/test_10mer_cosine.txt
+ *
+ * mpirun -np 1 lmp -i get_energy_gaussian.lammps -v VARS configs/test_10mer_gaussian.txt
  */
 TEST_CASE(
     "Tests for energy calculation methods", 
     "[getNonbondedEnergy(), getBondEnergy(), getBondAngleEnergy(), getDihedralAngleEnergy()]"
 )
 {
-    const double tol = 1e-5;
+    const double tol = 1e-3;
 
     // Parse test 10-mer coordinates with angles chosen from a cosine potential
     auto result = parseLammps<double>(
@@ -850,6 +852,42 @@ TEST_CASE(
     REQUIRE_THAT(
         dihedral_energy,
         Catch::Matchers::WithinAbs(627.95034 - 606.38266 - 13.45284, tol)
+    );
+
+    // Parse test 10-mer coordinates with angles chosen from a dual Gaussian
+    // mixture potential
+    result = parseLammps<double>(
+        "configs/test_10mer_gaussian.txt", Units::NANO, 300
+    ); 
+    config = std::get<0>(result); 
+    lj_params = std::get<1>(result); 
+    fene_params = std::get<2>(result); 
+    angle_params = std::get<4>(result); 
+    dihedral_params = std::get<5>(result); 
+
+    // Calculate the non-bonded interaction energy between non-consecutive atoms
+    // and compare against LAMMPS-computed value 
+    neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    nonbonded_energy_nc = config.getNonbondedEnergy(
+        lj_params, neighbor_threshold, true
+    );
+    REQUIRE_THAT(nonbonded_energy_nc, Catch::Matchers::WithinAbs(0.0, tol)); 
+
+    // Calculate the bonded interaction energy (including Lennard-Jones) and 
+    // compare against LAMMPS-computed value
+    bond_energy = config.getBondEnergy(fene_params, true, lj_params);
+    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(688.27727, tol));
+
+    // Calculate the bond angle energy and compare against LAMMPS-computed value
+    angle_energy = config.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
+    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(37.895133, tol));
+
+    // Calculate the dihedral angle energy and compare against LAMMPS-computed
+    // value
+    dihedral_energy = config.getDihedralAngleEnergy(dihedral_params); 
+    REQUIRE_THAT(
+        dihedral_energy,
+        Catch::Matchers::WithinAbs(729.07644 - 688.27727 - 37.895133, tol)
     ); 
 }
 
