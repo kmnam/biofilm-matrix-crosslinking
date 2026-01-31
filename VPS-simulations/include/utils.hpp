@@ -60,6 +60,12 @@ enum AngleMode
     GAUSSIAN
 };
 
+enum ReptationDirection
+{
+    HEAD,
+    TAIL
+};
+
 /**
  * Sample a value from the standard normal distribution with the Box-Muller
  * method. 
@@ -1574,6 +1580,315 @@ class PolymerConfiguration
 
             return energy; 
         }
+
+        /**
+         * Get the *non-bonded* energy difference between the current polymer
+         * configuration and the configuration that would arise from reptating
+         * the polymer in the given direction by adding the given atom.
+         *
+         * This function omits the non-bonded energetic contribution between
+         * the old/new terminal atoms and their bonded neighbors.  
+         *
+         * @param direction Reptation direction. 
+         * @param r_new Position of new atom. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @param fene_params FENE parameters. 
+         * @param angle_mode Angle potential type.  
+         * @param angle_params Angle potential parameters. Must include the 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
+         * @param dihedral_params Dihedral angle potential parameters. 
+         * @returns Nonbonded energy difference due to reptation. 
+         */
+        T getReptationNonbondedEnergyDifference(const ReptationDirection direction, 
+                                                const Ref<const Matrix<T, 3, 1> >& r_new,
+                                                std::unordered_map<std::string, T>& lj_params,  
+                                                const T neighbor_threshold) const
+        {
+            const int n = this->length; 
+            T energy_curr = 0; 
+            T energy_new = 0; 
+            if (direction == ReptationDirection::HEAD)
+            {
+                // Get the non-bonded energy contribution from atom (n - 1)
+                // in the current configuration 
+                for (int i = 0; i < n - 2; ++i)    // Omit atom (n - 2)
+                {
+                    T dij = (this->r.row(i) - this->r.row(n - 1)).norm(); 
+                    if (dij < neighbor_threshold)
+                        energy_curr += lj<T>(
+                            dij, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Get the energy contribution that would arise from
+                // introducing the new atom at the head and removing atom 
+                // (n - 1)
+                for (int i = 1; i < n - 1; ++i)    // Omit atoms 0 and (n - 1)
+                {
+                    T dij = (this->r.row(i) - r_new.transpose()).norm();
+                    if (dij < neighbor_threshold)
+                        energy_new += lj<T>(
+                            dij, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+            }
+            else 
+            {
+                // Get the energy contribution from atom 0 in the current 
+                // configuration 
+                for (int i = 2; i < n; ++i)        // Omit atom 1
+                {
+                    T dij = (this->r.row(i) - this->r.row(0)).norm(); 
+                    if (dij < neighbor_threshold)
+                        energy_curr += lj<T>(
+                            dij, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Get the energy contribution that would arise from
+                // introducing the new atom at the tail and removing atom 0
+                for (int i = 1; i < n - 1; ++i)    // Omit atoms 0 and (n - 1)
+                {
+                    T dij = (this->r.row(i) - r_new.transpose()).norm(); 
+                    if (dij < neighbor_threshold)
+                        energy_new += lj<T>(
+                            dij, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+            }
+
+            // Return the energy difference 
+            return energy_new - energy_curr; 
+        }
+
+        /**
+         * Get the total energy difference between the current polymer
+         * configuration and the configuration that would arise from reptating
+         * the polymer in the given direction by adding the given atom. 
+         *
+         * @param direction Reptation direction. 
+         * @param r_new Position of new atom. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @param fene_params FENE parameters. 
+         * @param angle_mode Angle potential type.  
+         * @param angle_params Angle potential parameters. Must include the 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
+         * @param dihedral_params Dihedral angle potential parameters. 
+         * @returns Energy difference due to reptation.
+         */
+        T getReptationEnergyDifference(const ReptationDirection direction, 
+                                       const Ref<const Matrix<T, 3, 1> >& r_new,
+                                       std::unordered_map<std::string, T>& lj_params,  
+                                       const T neighbor_threshold, 
+                                       std::unordered_map<std::string, T>& fene_params,
+                                       const AngleMode angle_mode,  
+                                       std::unordered_map<std::string, T>& angle_params,
+                                       std::unordered_map<std::string, T>& dihedral_params) const
+        {
+            const int n = this->length; 
+            T energy_curr = 0; 
+            T energy_new = 0; 
+            if (direction == ReptationDirection::HEAD)
+            {
+                // Get the non-bonded energy contribution from atom (n - 1)
+                // in the current configuration 
+                for (int i = 0; i < n - 2; ++i)    // Omit atom (n - 2)
+                {
+                    T dij = (this->r.row(i) - this->r.row(n - 1)).norm(); 
+                    if (dij < neighbor_threshold)
+                        energy_curr += lj<T>(
+                            dij, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Then get the bond energy between atoms (n - 2) and (n - 1)
+                Matrix<T, 3, 1> u1 = this->r.row(n - 2) - this->r.row(n - 1); 
+                T d1 = u1.norm(); 
+                energy_curr += lj<T>(d1, lj_params["eps"], lj_params["sigma"], true); 
+                energy_curr += bondFene<T>(d1, fene_params["K"], fene_params["R0"]);
+
+                // Then get the bond angle energy between atoms (n - 3), 
+                // (n - 2), and (n - 1)
+                Matrix<T, 3, 1> n1 = u1 / d1; 
+                Matrix<T, 3, 1> u2 = this->r.row(n - 3) - this->r.row(n - 2); 
+                Matrix<T, 3, 1> n2 = u2 / u2.norm();
+                T theta = acosSafe<T>((-n1).dot(n2)); 
+                if (angle_mode == AngleMode::COSINE)
+                    energy_curr += angleCosine<T>(
+                        theta, angle_params["K"], angle_params["theta0"]
+                    ); 
+                else 
+                    energy_curr += angleDualGaussianMixture<T>(
+                        theta, angle_params["A1"], angle_params["A2"], 
+                        angle_params["w1"], angle_params["w2"],
+                        angle_params["theta1"], angle_params["theta2"],
+                        this->kT 
+                    );
+
+                // Then get the dihedral angle energy between atoms (n - 4),
+                // (n - 3), (n - 2), (n - 1)
+                T phi = getDihedral<T>(
+                    this->r.row(n - 4), this->r.row(n - 3), this->r.row(n - 2),
+                    this->r.row(n - 1)
+                ); 
+                energy_curr += dihedralHarmonic<T>(
+                    phi, dihedral_params["K"], dihedral_params["d"],
+                    dihedral_params["n"]
+                );
+
+                // Move onto the new configuration ...
+                //
+                // Get the energy contribution that would arise from
+                // introducing the new atom at the head and removing atom 
+                // (n - 1)
+                for (int i = 1; i < n - 1; ++i)    // Omit atoms 0 and (n - 1)
+                {
+                    T dij = (this->r.row(i) - r_new.transpose()).norm(); 
+                    if (dij < neighbor_threshold)
+                        energy_new += lj<T>(
+                            dij, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Then get the bond energy between the new atom and atom 0
+                u1 = this->r.row(0) - r_new.transpose();
+                d1 = u1.norm(); 
+                energy_new += lj<T>(d1, lj_params["eps"], lj_params["sigma"], true); 
+                energy_new += bondFene<T>(d1, fene_params["K"], fene_params["R0"]);
+
+                // Then get the bond angle energy between the new atom, atom 0,
+                // and atom 1
+                n1 = u1 / d1; 
+                u2 = this->r.row(1) - this->r.row(0); 
+                n2 = u2 / u2.norm();
+                theta = acosSafe<T>((-n1).dot(n2)); 
+                if (angle_mode == AngleMode::COSINE)
+                    energy_new += angleCosine<T>(
+                        theta, angle_params["K"], angle_params["theta0"]
+                    ); 
+                else 
+                    energy_new += angleDualGaussianMixture<T>(
+                        theta, angle_params["A1"], angle_params["A2"], 
+                        angle_params["w1"], angle_params["w2"],
+                        angle_params["theta1"], angle_params["theta2"],
+                        this->kT 
+                    );
+
+                // Then get the dihedral angle energy between the new atom, 
+                // atom 0, atom 1, and atom 2
+                phi = getDihedral<T>(
+                    r_new, this->r.row(0), this->r.row(1), this->r.row(2)
+                );
+                energy_new += dihedralHarmonic<T>(
+                    phi, dihedral_params["K"], dihedral_params["d"],
+                    dihedral_params["n"]
+                );
+            }
+            else 
+            {
+                // Get the energy contribution from atom 0 in the current 
+                // configuration 
+                for (int i = 2; i < n; ++i)        // Omit atom 1
+                {
+                    T dij = (this->r.row(i) - this->r.row(0)).norm(); 
+                    if (dij < neighbor_threshold)
+                        energy_curr += lj<T>(
+                            dij, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Then get the bond energy between atoms 0 and 1
+                Matrix<T, 3, 1> u1 = this->r.row(1) - this->r.row(0);
+                T d1 = u1.norm(); 
+                energy_curr += lj<T>(d1, lj_params["eps"], lj_params["sigma"], true); 
+                energy_curr += bondFene<T>(d1, fene_params["K"], fene_params["R0"]);
+
+                // Then get the bond angle energy between atoms 0, 1, 2
+                Matrix<T, 3, 1> n1 = u1 / d1; 
+                Matrix<T, 3, 1> u2 = this->r.row(2) - this->r.row(1);
+                Matrix<T, 3, 1> n2 = u2 / u2.norm();
+                T theta = acosSafe<T>((-n1).dot(n2)); 
+                if (angle_mode == AngleMode::COSINE)
+                    energy_curr += angleCosine<T>(
+                        theta, angle_params["K"], angle_params["theta0"]
+                    ); 
+                else 
+                    energy_curr += angleDualGaussianMixture<T>(
+                        theta, angle_params["A1"], angle_params["A2"], 
+                        angle_params["w1"], angle_params["w2"],
+                        angle_params["theta1"], angle_params["theta2"],
+                        this->kT 
+                    );
+
+                // Then get the dihedral angle energy between atoms 0, 1, 2, 3
+                T phi = getDihedral<T>(
+                    this->r.row(0), this->r.row(1), this->r.row(2), this->r.row(3)
+                ); 
+                energy_curr += dihedralHarmonic<T>(
+                    phi, dihedral_params["K"], dihedral_params["d"],
+                    dihedral_params["n"]
+                );
+
+                // Move onto the new configuration ... 
+                //
+                // Get the energy contribution that would arise from
+                // introducing the new atom at the tail and removing atom 0
+                for (int i = 1; i < n - 1; ++i)    // Omit atoms 0 and (n - 1)
+                {
+                    T dij = (this->r.row(i) - r_new.transpose()).norm(); 
+                    if (dij < neighbor_threshold)
+                        energy_new += lj<T>(
+                            dij, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Then get the bond energy between the new atom and atom (n - 1)
+                u1 = this->r.row(n - 1) - r_new.transpose();
+                d1 = u1.norm(); 
+                energy_new += lj<T>(d1, lj_params["eps"], lj_params["sigma"], true); 
+                energy_new += bondFene<T>(d1, fene_params["K"], fene_params["R0"]);
+
+                // Then get the bond angle energy between the new atom, atom
+                // (n - 1), and atom (n - 2)
+                n1 = u1 / d1; 
+                u2 = this->r.row(n - 2) - this->r.row(n - 1);
+                n2 = u2 / u2.norm();
+                theta = acosSafe<T>((-n1).dot(n2)); 
+                if (angle_mode == AngleMode::COSINE)
+                    energy_new += angleCosine<T>(
+                        theta, angle_params["K"], angle_params["theta0"]
+                    ); 
+                else 
+                    energy_new += angleDualGaussianMixture<T>(
+                        theta, angle_params["A1"], angle_params["A2"], 
+                        angle_params["w1"], angle_params["w2"],
+                        angle_params["theta1"], angle_params["theta2"],
+                        this->kT 
+                    );
+
+                // Then get the dihedral angle energy between the new atom,
+                // atom (n - 1), atom (n - 2), atom (n - 3)
+                phi = getDihedral<T>(
+                    this->r.row(n - 3), this->r.row(n - 2), this->r.row(n - 1),
+                    r_new
+                ); 
+                energy_new += dihedralHarmonic<T>(
+                    phi, dihedral_params["K"], dihedral_params["d"],
+                    dihedral_params["n"]
+                );
+            }
+
+            // Return the energy difference 
+            return energy_new - energy_curr;
+        } 
 
         /**
          * Get the energy difference between the current polymer configuration 
