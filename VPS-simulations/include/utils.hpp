@@ -13,6 +13,7 @@
 #include <cmath>
 #include <string>
 #include <limits>
+#include <regex>
 #include <unordered_map>
 #include <functional>
 #include <Eigen/Dense>
@@ -1716,19 +1717,28 @@ class PolymerConfiguration
             }
 
             // Write dihedral potential parameters
+            T dihedral_d, dihedral_n;
+            if (dihedral_params.find("d") == dihedral_params.end())
+                dihedral_d = 1; 
+            else 
+                dihedral_d = dihedral_params["d"]; 
+            if (dihedral_params.find("n") == dihedral_params.end())
+                dihedral_n = 1; 
+            else 
+                dihedral_n = dihedral_params["n"]; 
             outfile << "Dihedral Coeffs\n\n"
                     << "1 " << dihedral_params["K"] << " " 
-                    << dihedral_params["d"] << " "
-                    << dihedral_params["n"] << "\n\n";
+                    << dihedral_d << " "
+                    << dihedral_n << "\n\n";
 
             // Write atom coordinates 
             outfile << "Atoms\n\n";
             for (int i = 0; i < this->length; ++i)
             {
                 // Atom ID, molecule ID, atom type, x, y, z
-                outfile << i << " 1 1 " << this->coords(i, 0) << " "
-                        << this->coords(i, 1) << " "
-                        << this->coords(i, 2) << std::endl; 
+                outfile << i << " 1 1 " << this->r(i, 0) << " "
+                        << this->r(i, 1) << " "
+                        << this->r(i, 2) << std::endl; 
             }
             outfile << std::endl; 
 
@@ -1761,6 +1771,182 @@ class PolymerConfiguration
             outfile << std::endl; 
         }
 };
+
+/**
+ * Parse the given LAMMPS data file. 
+ *
+ * @param filename Input filename.
+ * @param units Units used in the LAMMPS file. 
+ * @param temp Temperature.  
+ * @returns Polymer configuration in the given file, along with all potential
+ *          parameters.  
+ */
+template <typename T>
+std::tuple<PolymerConfiguration<T>,
+           std::unordered_map<std::string, T>,
+           std::unordered_map<std::string, T>,
+           AngleMode,
+           std::unordered_map<std::string, T>,
+           std::unordered_map<std::string, T> > parseLammps(const std::string& filename,
+                                                            const Units units, 
+                                                            const T temp)
+{
+    std::ifstream infile(filename);
+
+    // Begin parsing the file ... 
+    std::stringstream ss; 
+    std::string line, token;
+    int length = 0; 
+    std::regex pattern("([0-9]+) atoms");
+    std::smatch matches;  
+    while (std::getline(infile, line))
+    {
+        // Skip to the line with the number of atoms
+        if (std::regex_match(line, matches, pattern))
+        {
+            length = std::stoi(matches[1].str());
+            break
+        }
+    } 
+    Matrix<T, Dynamic, 3> coords = Matrix<T, Dynamic, 3>::Zero(length, 3);
+
+    // Keep parsing the file until we encounter the Lennard-Jones parameters 
+    int coords = 0;
+    bool found_potentials = false; 
+    while (std::getline(infile, line))
+    {
+        if (line == "PairIJ Coeffs")
+        {
+            found_potentials = true;
+            break; 
+        }
+    } 
+
+    // Parse the Lennard-Jones parameters
+    std::unordered_map<std::string, T> lj_params; 
+    std::getline(infile, line);    // Skip blank line
+    std::getline(infile, line);
+    ss << line;  
+    std::getline(ss, token, ' ');    // Skip first two entries in the line 
+    std::getline(ss, token, ' ');
+    std::getline(ss, token, ' ');    // Epsilon
+    lj_params["eps"] = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' ');    // Sigma (no need to parse last parameter)
+    lj_params["sigma"] = static_cast<T>(std::stod(token)); 
+
+    // Parse the FENE parameters
+    std::unordered_map<std::string, T> fene_params; 
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    std::getline(infile, line);
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line; 
+    std::getline(ss, token, ' ');    // Skip first entry in the line 
+    std::getline(ss, token, ' ');    // K
+    fene_params["K"] = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' ');    // R0 (no need to parse remaining parameters)
+    fene_params["R0"] = static_cast<T>(std::stod(token)); 
+
+    // Parse the angle potential parameters
+    AngleMode angle_mode;  
+    std::unordered_map<std::string, T> angle_params; 
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    std::getline(infile, line);
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line;
+    
+    // First parse the number of parameters in the line 
+    int n_params = 0; 
+    while (std::getline(ss, token, ' '))
+        n_params++; 
+
+    // Distinguish between the two possible potentials 
+    if (n_params == 3)
+    {
+        angle_mode = AngleMode::COSINE; 
+        ss.clear(); 
+        ss.str(std::string()); 
+        ss << line; 
+        std::getline(ss, token, ' ');    // Skip first entry in the line 
+        std::getline(ss, token, ' ');    // K
+        angle_params["K"] = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // theta0 
+        angle_params["theta0"] = static_cast<T>(std::stod(token));
+    }
+    else     // n_params == 9
+    {
+        angle_mode = AngleMode::GAUSSIAN; 
+        ss.clear(); 
+        ss.str(std::string()); 
+        ss << line; 
+        std::getline(ss, token, ' ');    // Skip first three entries in the line
+        std::getline(ss, token, ' ');
+        std::getline(ss, token, ' ');
+        std::getline(ss, token, ' ');    // A1
+        angle_params["A1"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // w1
+        angle_params["w1"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // theta1
+        angle_params["theta1"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // A2
+        angle_params["A2"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // w2
+        angle_params["w2"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // theta2
+        angle_params["theta2"] = static_cast<T>(std::stod(token));
+    }
+
+    // Parse the dihedral potential parameters
+    std::unordered_map<std::string, T> dihedral_params; 
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    std::getline(infile, line);
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line;
+    std::getline(ss, token, ' ');    // Skip first entry in the line 
+    std::getline(ss, token, ' ');    // K
+    dihedral_params["K"] = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' ');    // d
+    dihedral_params["d"] = static_cast<T>(std::stod(token));
+    std::getline(ss, token, ' ');    // n
+    dihedral_params["n"] = static_cast<T>(std::stod(token)); 
+ 
+    // Parse the atomic coordinates
+    std::unordered_map<std::string, T> dihedral_params; 
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    while (int i = 0; i < length; ++i)
+    { 
+        std::getline(infile, line);
+        ss.clear(); 
+        ss.str(std::string()); 
+        ss << line;
+        std::getline(ss, token, ' ');    // Skip first three entries in the line
+        std::getline(ss, token, ' '); 
+        std::getline(ss, token, ' '); 
+        std::getline(ss, token, ' ');    // x-coordinate
+        coords(i, 0) = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // y-coordinate
+        coords(i, 1) = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // z-coordinate
+        coords(i, 2) = static_cast<T>(std::stod(token)); 
+    }
+
+    // Generate polymer configuration and return 
+    PolymerConfiguration<T> config(coords, units, temp); 
+    return std::make_tuple(
+        config, lj_params, fene_params, angle_mode, angle_params,
+        dihedral_params
+    ); 
+}
 
 /**
  * Generate a random K-mer in which the inter-atom distances, bond lengths, 
