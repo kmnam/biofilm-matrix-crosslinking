@@ -767,7 +767,8 @@ Matrix<T, Dynamic, 3> getNeighbors(const Ref<const Matrix<T, Dynamic, 3> >& r1,
 } 
 
 /**
- * A class for storing and manipulating linear polymer configurations. 
+ * A class for storing, manipulating, analyzing, and comparing linear polymer
+ * configurations. 
  */
 template <typename T>
 class PolymerConfiguration 
@@ -775,7 +776,83 @@ class PolymerConfiguration
     private:
         int length; 
         Matrix<T, Dynamic, 3> r;
-        T temp; 
+        T temp;
+
+        /**
+         * Get the energy arising from all *non-bonded* interactions between
+         * the given segment and the atoms along the polymer with indices
+         * [0, ..., idx - 1] and [idx + n, ..., N - 1], where n is the segment
+         * length and N is the polymer length.
+         *
+         * This method omits the non-bonded interactions between bonded atoms.
+         *
+         * @param segment Input segment. 
+         * @param idx Index demarcating the polymer atoms to consider. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @returns Non-bonded interaction energy between segment and polymer.  
+         */
+        T getSegmentNonbondedInteractionEnergy(const Ref<const Matrix<T, Dynamic, 3> >& segment,
+                                               const int idx,
+                                               std::unordered_map<std::string, T>& lj_params,  
+                                               const T neighbor_threshold) const
+        {
+            // Check that the specified polymer indices to slice out of the 
+            // polymer are valid
+            const int n = segment.rows(); 
+            if (idx < 0 || idx + n - 1 >= this->length)
+                throw std::runtime_error(
+                    "Specified segment cannot be inserted into polymer at specified index"
+                ); 
+
+            // Get the non-bonded interaction energy ...
+            //
+            // First identify all pairs of neighboring atoms within the segment
+            Matrix<T, Dynamic, 3> neighbors_within = getNeighbors<T>(
+                segment, neighbor_threshold
+            );
+
+            // Then identify all pairs of neighboring atoms (p, q), where p
+            // lies within the entire polymer and q lies within the segment
+            const int n1 = idx; 
+            const int n2 = this->length - idx - n; 
+            Matrix<T, Dynamic, 3> r_sub(n1 + n2, 3);
+            r_sub(Eigen::seqN(0, n1), Eigen::all) = this->r(Eigen::seqN(0, n1), Eigen::all); 
+            r_sub(Eigen::seqN(n1, n2), Eigen::all) = this->r(Eigen::seqN(idx + n, n2), Eigen::all); 
+            Matrix<T, Dynamic, 3> neighbors_between = getNeighbors<T>(
+                r_sub, segment, neighbor_threshold
+            );
+
+            // Calculate the non-bonded interaction energy, omitting bonded 
+            // pairs 
+            T energy_curr = 0; 
+            for (int i = 0; i < neighbors_within.rows(); ++i)
+            {
+                int j = neighbors_within(i, 0); 
+                int k = neighbors_within(i, 1); 
+                if (abs(j - k) > 1)
+                {
+                    energy_curr += lj<T>(
+                        neighbors_within(i, 2), lj_params["eps"], lj_params["sigma"],
+                        true
+                    );
+                }
+            }
+            for (int i = 0; i < neighbors_between.rows(); ++i)
+            {
+                int j = neighbors_between(i, 0);    // Atom in polymer 
+                int k = neighbors_between(i, 1);    // Atom in segment
+                bool adjacent = ((k == 0 && j == idx - 1) || (k == n - 1 && j == idx + n));
+                if (!adjacent)
+                    energy_curr += lj<T>(
+                        neighbors_between(i, 2), lj_params["eps"], lj_params["sigma"],
+                        true
+                    );
+            }
+
+            return energy_curr; 
+        } 
 
         /**
          * Get the energy arising from all interactions between the given
@@ -1888,6 +1965,47 @@ class PolymerConfiguration
 
             // Return the energy difference 
             return energy_new - energy_curr;
+        }
+
+        /**
+         * Get the *non-bonded* energy difference between the current polymer
+         * configuration and the configuration that would arise from replacing
+         * the current segment at the given index with the given segment.
+         *
+         * This function omits the non-bonded energetic contribution between
+         * all bonded pairs of atoms. 
+         *
+         * @param segment Input segment. 
+         * @param idx Index demarcating the polymer atoms to consider. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @param fene_params FENE parameters. 
+         * @param angle_mode Angle potential type.  
+         * @param angle_params Angle potential parameters. Must include the 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
+         * @param dihedral_params Dihedral angle potential parameters. 
+         * @returns Energy difference due to segment replacement. 
+         */
+        T getSegmentReplacementNonbondedEnergyDifference(const Ref<const Matrix<T, Dynamic, 3> >& segment,
+                                                         const int idx,
+                                                         std::unordered_map<std::string, T>& lj_params,  
+                                                         const T neighbor_threshold) const 
+        {
+            // Get the current segment 
+            const int n = segment.rows(); 
+            Matrix<T, Dynamic, 3> segment_curr = this->getSegment(idx, n);
+
+            // Get the energy difference 
+            T energy_curr = this->getSegmentNonbondedInteractionEnergy(
+                segment_curr, idx, lj_params, neighbor_threshold
+            ); 
+            T energy_new = this->getSegmentNonbondedInteractionEnergy(
+                segment, idx, lj_params, neighbor_threshold
+            ); 
+            return energy_new - energy_curr; 
         } 
 
         /**
