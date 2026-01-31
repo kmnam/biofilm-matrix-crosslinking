@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     1/27/2026
+ *     1/30/2026
  */
 
 #include <iostream>
@@ -20,7 +20,7 @@ using namespace Eigen;
  * Tests for getDihedral(), generateNextAtom(), and generateNextAtomDihedral().  
  */
 TEST_CASE(
-    "Tests for chain generation",
+    "Tests for dihedral angle calculation and next-atom generation",
     "[getDihedral(), generateNextAtom(), generateNextAtomDihedral()]"
 )
 {
@@ -579,3 +579,158 @@ TEST_CASE(
         );
     }
 }
+
+/**
+ * Tests for generateKMer(). 
+ */
+TEST_CASE("Tests for k-mer generation", "[generateKMer()]")
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+
+    // Set up potential and sampling parameters
+    Matrix<double, 3, 1> r0 = Matrix<double, 3, 1>::Zero();
+    std::unordered_map<std::string, double> lj_params, 
+                                            fene_params, 
+                                            cosine_params,
+                                            gaussian_params,
+                                            dihedral_params;
+    double kT = 1.380649e-2 * 300;
+    lj_params["eps"] = kT; 
+    lj_params["sigma"] = 0.9;
+    fene_params["K"] = 30 * kT; 
+    fene_params["R0"] = 1.5;
+    cosine_params["K"] = 20 * kT;
+    cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
+    gaussian_params["A1"] = 0.9; 
+    gaussian_params["A2"] = 0.1;
+    gaussian_params["w1"] = 20; 
+    gaussian_params["w2"] = 20; 
+    gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
+    gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
+    dihedral_params["K"] = 10 * kT;
+    const double collision_threshold = 0.1;
+    const int max_tries_per_atom = 50;
+    const int max_n_backtracks = 50;  
+
+    // Generate a 10-mer
+    PolymerConfiguration<double> config = generateKMer<double, 10>(
+        lj_params, fene_params, AngleMode::COSINE, cosine_params, dihedral_params,
+        r0, collision_threshold, max_tries_per_atom, max_n_backtracks, rng, 
+        uniform_dist
+    );
+    REQUIRE(config.getLength() == 10); 
+
+    // Check that none of the atoms are within the collision threshold
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10);  
+    for (int i = 0; i < 10; ++i)
+    {
+        for (int j = i + 1; j < 10; ++j)
+        {
+            double dij = (coords.row(i) - coords.row(j)).norm(); 
+            REQUIRE(dij > collision_threshold); 
+        }
+    } 
+     
+    // Check that none of the bond lengths exceed R0 
+    for (int i = 0; i < coords.rows() - 1; ++i)
+    {
+        double dij = (coords.row(i + 1) - coords.row(i)).norm(); 
+        REQUIRE(dij < fene_params["R0"]);
+    } 
+}
+
+/**
+ * Tests for parseLammps() and writeLammps(). 
+ */
+TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammps()]")
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+    const double tol = 1e-8; 
+
+    // Set up potential and sampling parameters
+    Matrix<double, 3, 1> r0 = Matrix<double, 3, 1>::Zero();
+    std::unordered_map<std::string, double> lj_params, 
+                                            fene_params, 
+                                            cosine_params,
+                                            gaussian_params,
+                                            dihedral_params;
+    double kT = 1.380649e-2 * 300;
+    lj_params["eps"] = kT; 
+    lj_params["sigma"] = 0.9;
+    fene_params["K"] = 30 * kT; 
+    fene_params["R0"] = 1.5;
+    cosine_params["K"] = 20 * kT;
+    cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
+    gaussian_params["A1"] = 0.9; 
+    gaussian_params["A2"] = 0.1;
+    gaussian_params["w1"] = 20; 
+    gaussian_params["w2"] = 20; 
+    gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
+    gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
+    dihedral_params["K"] = 10 * kT;
+    const double collision_threshold = 0.1;
+    const int max_tries_per_atom = 50;
+    const int max_n_backtracks = 50;  
+
+    // Generate a 10-mer
+    PolymerConfiguration<double> config = generateKMer<double, 10>(
+        lj_params, fene_params, AngleMode::COSINE, cosine_params, dihedral_params,
+        r0, collision_threshold, max_tries_per_atom, max_n_backtracks, rng, 
+        uniform_dist
+    );
+    REQUIRE(config.getLength() == 10);
+
+    // Write the 10-mer coordinates to file 
+    config.writeLammps(
+        "configs/test_10mer.txt", lj_params, fene_params, AngleMode::COSINE, 
+        cosine_params, dihedral_params, "Test configuration", -100, 100, 
+        -100, 100, -100, 100, 1
+    ); 
+
+    // Parse the 10-mer coordinates 
+    auto result = parseLammps<double>("configs/test_10mer.txt", Units::NANO, 300); 
+    PolymerConfiguration<double> config2 = std::get<0>(result); 
+    std::unordered_map<std::string, double> lj_params2 = std::get<1>(result); 
+    std::unordered_map<std::string, double> fene_params2 = std::get<2>(result); 
+    AngleMode angle_mode2 = std::get<3>(result); 
+    std::unordered_map<std::string, double> angle_params2 = std::get<4>(result); 
+    std::unordered_map<std::string, double> dihedral_params2 = std::get<5>(result); 
+
+    // Check the atomic coordinates 
+    REQUIRE(config2.getLength() == config.getLength()); 
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10); 
+    Matrix<double, Dynamic, 3> coords2 = config2.getSegment(0, 10); 
+    for (int i = 0; i < 10; ++i)
+    {
+        for (int j = 0; j < 3; ++j)
+        {
+            REQUIRE_THAT(
+                coords(i, j) - coords2(i, j), Catch::Matchers::WithinAbs(0.0, tol)
+            );
+        } 
+    }
+
+    // Check the potential parameters
+    REQUIRE(lj_params2.find("eps") != lj_params2.end()); 
+    REQUIRE_THAT(lj_params2["eps"], Catch::Matchers::WithinAbs(lj_params["eps"], tol));
+    REQUIRE(lj_params2.find("sigma") != lj_params2.end()); 
+    REQUIRE_THAT(lj_params2["sigma"], Catch::Matchers::WithinAbs(lj_params["sigma"], tol));
+    REQUIRE(fene_params2.find("K") != fene_params2.end()); 
+    REQUIRE_THAT(fene_params2["K"], Catch::Matchers::WithinAbs(fene_params["K"], tol)); 
+    REQUIRE(fene_params2.find("R0") != fene_params2.end()); 
+    REQUIRE_THAT(fene_params2["R0"], Catch::Matchers::WithinAbs(fene_params["R0"], tol)); 
+    REQUIRE(angle_mode2 == AngleMode::COSINE); 
+    REQUIRE(angle_params2.find("K") != angle_params2.end()); 
+    REQUIRE_THAT(angle_params2["K"], Catch::Matchers::WithinAbs(cosine_params["K"], tol)); 
+    REQUIRE(angle_params2.find("theta0") != angle_params2.end()); 
+    REQUIRE_THAT(angle_params2["theta0"], Catch::Matchers::WithinAbs(cosine_params["theta0"], tol)); 
+    REQUIRE(dihedral_params2.find("K") != dihedral_params2.end()); 
+    REQUIRE_THAT(dihedral_params2["K"], Catch::Matchers::WithinAbs(dihedral_params["K"], tol)); 
+    REQUIRE(dihedral_params2.find("d") != dihedral_params2.end()); 
+    REQUIRE_THAT(dihedral_params2["d"], Catch::Matchers::WithinAbs(1, tol)); 
+    REQUIRE(dihedral_params2.find("n") != dihedral_params2.end()); 
+    REQUIRE_THAT(dihedral_params2["n"], Catch::Matchers::WithinAbs(1, tol)); 
+}
+
