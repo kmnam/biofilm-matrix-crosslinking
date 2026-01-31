@@ -105,7 +105,6 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
     const ReptationDirection direction = (
         uniform_dist(rng) < 0.5 ? ReptationDirection::HEAD : ReptationDirection::TAIL
     );
-    T energy_curr = 0;
 
     // Generate two sets of bond lengths, bond angles, and dihedral angles 
     Matrix<T, Dynamic, 2> lengths(n_tries, 2), angles(n_tries, 2), dihedrals(n_tries, 2); 
@@ -180,7 +179,6 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
     // chosen candidate move 
     PolymerConfiguration<T> config_chosen(config);
     Matrix<T, Dynamic, 3> coords_chosen, tries_reverse(n_tries, 3);
-    T energy_chosen = energy_curr + forward_diffs(move_idx);  
     if (direction == ReptationDirection::HEAD)    // Reptate towards the head
     { 
         config_chosen.reptateTowardsHead(move);
@@ -339,7 +337,6 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
 
     // Identify whether to move the terminal segment at the head or the tail 
     const bool head = (uniform_dist(rng) < 0.5);
-    T energy_curr = 0;
 
     // Generate two sets of bond lengths, bond angles, and dihedral angles 
     Matrix<T, Dynamic, Dynamic> lengths_forward(n_tries, SegmentLength),
@@ -499,7 +496,6 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
     PolymerConfiguration<T> config_chosen(config);
     Matrix<T, Dynamic, 3> coords_chosen; 
     Matrix<T, Dynamic, 3 * SegmentLength> tries_reverse(n_tries, 3 * SegmentLength);
-    T energy_chosen = energy_curr + forward_diffs(move_idx);  
     if (head)    // Move the terminal segment at the head 
     { 
         config_chosen.replaceSegment(move, 0); 
