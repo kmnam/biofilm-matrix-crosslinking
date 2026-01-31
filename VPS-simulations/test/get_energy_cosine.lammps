@@ -1,0 +1,68 @@
+# ====================================================================== #
+# Get the energy of a polymer configuration. 
+#
+# Authors:
+#     Kee-Myoung Nam
+#
+# Last updated:
+#     1/30/2026
+# ====================================================================== #
+# INPUT VARIABLES
+# ===============
+variable init_filename string ${VARS}
+print ${init_filename}
+
+# ====================================================================== #
+# INITIALIZATION
+# ==============
+# Use nano units (nm, ag, ns, K; 1 kT = 4.141947 ag*nm^2/ns^2) in 3 dimensions
+units nano
+dimension 3
+
+# Use FENE bonds for polymeric bonds
+atom_style molecular 
+bond_style fene
+
+# Subject polymeric bond angles to a cosine angle potential 
+angle_style cosine/delta
+
+# Subject polymeric dihedral angles to a harmonic potential
+dihedral_style harmonic 
+
+# Use Lennard-Jones potentials between unbonded molecules
+#
+# Note that the 2.5 * \sigma cutoff ratio is re-written below when the initial
+# configuration file is parsed
+pair_style lj/cut 4.4544935907
+
+# Use periodic boundary conditions in all 3 dimensions 
+boundary p p p
+
+# Maintain neighbor lists with given additional "skin" distance
+#
+# Skin distance is set to 0.3 * \sigma, where \sigma = 2 nm / (2^(1/6))
+neighbor 0.5345392309 bin
+
+# Build neighbor lists at every timestep 
+neigh_modify every 1 delay 1
+
+# ====================================================================== #
+# PARSE INPUT MOLECULES
+# =====================
+read_data ${init_filename}
+pair_modify shift yes
+
+# - Exclude Lennard-Jones potential contributions between FENE-bonded atoms
+# - Weight Lennard-Jones potential contributions between 1-3 atoms with angles
+special_bonds fene angle no
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
+# ===================================================
+thermo_style custom step temp press vol pxx pyy pzz pe etotal epair ebond eangle
+thermo 1
+
+# ====================================================================== #
+# MINIMIZE (FOR JUST ONE ITERATION)
+# =================================
+minimize 0 0 1 1
