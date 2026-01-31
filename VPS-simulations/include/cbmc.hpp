@@ -373,148 +373,62 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
      
     if (head)    // Move the terminal segment at the head 
     {
-        // Get the energy contribution from the segment with the rest of 
-        // the polymer 
-        //
-        // Only the non-bonded energy should be calculated here, since 
-        // the bond energy is used to generate candidate moves
-        //
-        // Start with interactions between the segment and the rest of the
-        // polymer  
-        for (int i = SegmentLength; i < n; ++i)
-        {
-            for (int j = 0; j < SegmentLength; ++j)
-            {
-                // Omit the pair of atoms at the junction 
-                if (i > j + 1)
-                {
-                    T r = (coords.row(i) - coords.row(j)).norm(); 
-                    if (r < neighbor_threshold)
-                        energy_curr += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                }
-            } 
-        }
-
-        // Then add in non-bonded interactions between non-consecutive pairs
-        // of atoms along the segment
-        for (int i = 0; i < SegmentLength; ++i)
-        {
-            for (int j = i + 2; j < SegmentLength; ++j)
-            {
-                T r = (coords.row(i) - coords.row(j)).norm(); 
-                if (r < neighbor_threshold)
-                    energy_curr += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-            }
-        }
-
-        // Generate new candidate atomic positions for the head segment 
+        // Generate new candidate atomic positions for the head segment
         for (int i = 0; i < n_tries; ++i)
         {
+            Matrix<T, Dynamic, 3> segment_i(SegmentLength, 3); 
+
+            // Move backwards from atom (SegmentLength) in the polymer  
             for (int j = 0; j < SegmentLength; ++j)
             {
                 Matrix<T, 3, 1> r1, r2, r3; 
-                if (j == 0)
+                if (j == 0)         // Last atom in the segment (closest to the polymer)
                 {
                     r1 = coords.row(SegmentLength + 2);
                     r2 = coords.row(SegmentLength + 1); 
                     r3 = coords.row(SegmentLength);  
                 }
-                else if (j == 1)
+                else if (j == 1)    // Second-to-last
                 {
                     r1 = coords.row(SegmentLength + 1); 
                     r2 = coords.row(SegmentLength); 
-                    r3 = tries(i, Eigen::seqN(0, 3));  
+                    r3 = segment_i.row(SegmentLength - 1);  
                 }
-                else if (j == 2)
+                else if (j == 2)    // Third-to-last
                 {
                     r1 = coords.row(SegmentLength); 
-                    r2 = tries(i, Eigen::seqN(0, 3)); 
-                    r3 = tries(i, Eigen::seqN(3, 3));  
+                    r2 = segment_i.row(SegmentLength - 2);
+                    r3 = segment_i.row(SegmentLength - 1); 
                 }
                 else 
                 {
-                    r1 = tries(i, Eigen::seqN(3 * (j - 3), 3)); 
-                    r2 = tries(i, Eigen::seqN(3 * (j - 2), 3)); 
-                    r3 = tries(i, Eigen::seqN(3 * (j - 1), 3));  
+                    r1 = segment_i.row(SegmentLength - 3); 
+                    r2 = segment_i.row(SegmentLength - 2); 
+                    r3 = segment_i.row(SegmentLength - 1);  
                 }
-                tries(i, Eigen::seqN(3 * j, 3)) = generateNextAtomDihedral<T>(
+                int idx = SegmentLength - 1 - j;
+                segment_i.row(idx) = generateNextAtomDihedral<T>(
                     r1, r2, r3, lengths_forward(i, j), angles_forward(i, j),
                     dihedrals_forward(i, j), rng, uniform_dist, 
                     (dihedrals_forward(i, j) > 0 ? 1 : -1)
                 );
+                tries(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
             }
 
-            // Get the energy due to non-bonded interactions between this segment
-            // and the rest of the polymer
-            T energy_new = 0;  
-            for (int j = SegmentLength; j < n; ++j)
-            {
-                for (int k = 0; k < SegmentLength; ++k)
-                {
-                    // Omit the pair of atoms at the junction 
-                    if (j > k + 1)
-                    {
-                        T r = (tries(i, Eigen::seqN(3 * k, 3)) - coords.row(j)).norm(); 
-                        if (r < neighbor_threshold)
-                            energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                    }
-                } 
-            }
-            // Add in the energy due to non-bonded interactions between non-
-            // consecutive atoms along the segment 
-            for (int j = 0; j < SegmentLength; ++j)
-            {
-                for (int k = j + 2; k < SegmentLength; ++k)
-                {
-                    Matrix<T, 3, 1> rj = tries(i, Eigen::seqN(3 * j, 3)); 
-                    Matrix<T, 3, 1> rk = tries(i, Eigen::seqN(3 * k, 3));  
-                    T r = (rj - rk).norm(); 
-                    if (r < neighbor_threshold)
-                        energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                }
-            }
-            forward_diffs(i) = energy_new - energy_curr; 
+            // Get the non-bonded energy difference due to segment replacement
+            forward_diffs(i) = config.getSegmentReplacementNonbondedEnergyDifference(
+                segment_i, 0, lj_params, neighbor_threshold
+            ); 
         }
     }
     else        // Move the terminal segment at the tail 
     {
-        // Get the energy contribution from the segment with the rest of 
-        // the polymer 
-        //
-        // Only the non-bonded energy should be calculated here, since 
-        // the bond energy is used to generate candidate moves
-        //
-        // Start with interactions between the segment and the rest of the
-        // polymer  
-        for (int i = 0; i < n - SegmentLength; ++i)
-        {
-            for (int j = n - SegmentLength; j < n; ++j)
-            {
-                // Omit the pair of atoms at the junction
-                if (i + 1 < j)
-                {
-                    T r = (coords.row(i) - coords.row(j)).norm(); 
-                    if (r < neighbor_threshold)
-                        energy_curr += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                }
-            } 
-        }
-
-        // Then add in non-bonded interactions between non-consecutive pairs
-        // of atoms along the segment
-        for (int i = n - SegmentLength; i < n; ++i)
-        {
-            for (int j = i + 2; j < n; ++j)
-            {
-                T r = (coords.row(i) - coords.row(j)).norm(); 
-                if (r < neighbor_threshold)
-                    energy_curr += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-            }
-        }
-
         // Generate new candidate atomic positions for the tail segment
         for (int i = 0; i < n_tries; ++i)
         {
+            Matrix<T, Dynamic, 3> segment_i(SegmentLength, 3); 
+
+            // Move forward from atom (n - SegmentLength) in the polymer 
             for (int j = 0; j < SegmentLength; ++j)
             {
                 Matrix<T, 3, 1> r1, r2, r3; 
@@ -528,61 +442,32 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
                 {
                     r1 = coords.row(n - SegmentLength - 2); 
                     r2 = coords.row(n - SegmentLength - 1); 
-                    r3 = tries(i, Eigen::seqN(0, 3));  
+                    r3 = segment_i.row(0); 
                 }
                 else if (j == 2)
                 {
                     r1 = coords.row(n - SegmentLength - 1); 
-                    r2 = tries(i, Eigen::seqN(0, 3)); 
-                    r3 = tries(i, Eigen::seqN(3, 3));  
+                    r2 = segment_i.row(0); 
+                    r3 = segment_i.row(1);
                 }
                 else 
                 {
-                    r1 = tries(i, Eigen::seqN(3 * (j - 3), 3)); 
-                    r2 = tries(i, Eigen::seqN(3 * (j - 2), 3)); 
-                    r3 = tries(i, Eigen::seqN(3 * (j - 1), 3));  
+                    r1 = segment_i.row(0);
+                    r2 = segment_i.row(1); 
+                    r3 = segment_i.row(2); 
                 }
-                tries(i, Eigen::seqN(3 * j, 3)) = generateNextAtomDihedral<T>(
+                segment_i.row(j) = generateNextAtomDihedral<T>(
                     r1, r2, r3, lengths_forward(i, j), angles_forward(i, j),
                     dihedrals_forward(i, j), rng, uniform_dist,
                     (dihedrals_forward(i, j) > 0 ? 1 : -1)
                 );
+                tries(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
             }
 
-            // Get the energy due to non-bonded interactions between this segment
-            // and the rest of the polymer
-            T energy_new = 0;  
-            for (int j = 0; j < n - SegmentLength; ++j)
-            {
-                for (int k = 0; k < SegmentLength; ++k)
-                {
-                    // Omit the pair of atoms at the junction
-                    int j_ = j;
-                    int k_ = n - SegmentLength + k;
-                    Matrix<T, 3, 1> rj = coords.row(j);
-                    Matrix<T, 3, 1> rk = tries(i, Eigen::seqN(3 * k, 3));  
-                    if (j_ > k_ + 1)
-                    {
-                        T r = (rj - rk).norm(); 
-                        if (r < neighbor_threshold)
-                            energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                    }
-                } 
-            }
-            // Add in the energy due to non-bonded interactions between non-
-            // consecutive atoms along the segment 
-            for (int j = 0; j < SegmentLength; ++j)
-            {
-                for (int k = j + 2; k < SegmentLength; ++k)
-                {
-                    Matrix<T, 3, 1> rj = tries(i, Eigen::seqN(3 * j, 3)); 
-                    Matrix<T, 3, 1> rk = tries(i, Eigen::seqN(3 * k, 3));  
-                    T r = (rj - rk).norm(); 
-                    if (r < neighbor_threshold)
-                        energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                }
-            }
-            forward_diffs(i) = energy_new - energy_curr; 
+            // Get the non-bonded energy difference due to segment replacement
+            forward_diffs(i) = config.getSegmentReplacementNonbondedEnergyDifference(
+                segment_i, n - SegmentLength, lj_params, neighbor_threshold
+            ); 
         }
     }
 
@@ -628,77 +513,57 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
             if (i == move_idx)
             {
                 for (int j = 0; j < SegmentLength; ++j)
-                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = coords.row(j); 
+                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = coords.row(j);
+                reverse_diffs(i) = -forward_diffs(i);  
             }
             // Otherwise, we must generate a new reverse move, with new
             // atomic positions for the head segment  
             else
             {
+                Matrix<T, Dynamic, 3> segment_i(SegmentLength, 3); 
+
+                // Move backwards from atom (SegmentLength) in the polymer  
                 for (int j = 0; j < SegmentLength; ++j)
                 {
                     Matrix<T, 3, 1> r1, r2, r3; 
-                    if (j == 0)
+                    if (j == 0)         // Last atom in the second (closest to the polymer)
                     {
-                        r1 = coords.row(SegmentLength + 2);
-                        r2 = coords.row(SegmentLength + 1); 
-                        r3 = coords.row(SegmentLength);  
+                        r1 = coords_chosen.row(SegmentLength + 2);
+                        r2 = coords_chosen.row(SegmentLength + 1); 
+                        r3 = coords_chosen.row(SegmentLength);  
                     }
-                    else if (j == 1)
+                    else if (j == 1)    // Second-to-last
                     {
-                        r1 = coords.row(SegmentLength + 1); 
-                        r2 = coords.row(SegmentLength); 
-                        r3 = tries_reverse(i, Eigen::seqN(0, 3));  
+                        r1 = coords_chosen.row(SegmentLength + 1); 
+                        r2 = coords_chosen.row(SegmentLength); 
+                        r3 = segment_i.row(SegmentLength - 1); 
                     }
                     else if (j == 2)
                     {
-                        r1 = coords.row(SegmentLength); 
-                        r2 = tries_reverse(i, Eigen::seqN(0, 3)); 
-                        r3 = tries_reverse(i, Eigen::seqN(3, 3));  
+                        r1 = coords_chosen.row(SegmentLength); 
+                        r2 = segment_i.row(SegmentLength - 2);
+                        r3 = segment_i.row(SegmentLength - 1); 
                     }
                     else 
                     {
-                        r1 = tries_reverse(i, Eigen::seqN(3 * (j - 3), 3)); 
-                        r2 = tries_reverse(i, Eigen::seqN(3 * (j - 2), 3)); 
-                        r3 = tries_reverse(i, Eigen::seqN(3 * (j - 1), 3));  
+                        r1 = segment_i.row(SegmentLength - 3); 
+                        r2 = segment_i.row(SegmentLength - 2); 
+                        r3 = segment_i.row(SegmentLength - 1);  
                     }
-                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = generateNextAtomDihedral<T>(
+                    int idx = SegmentLength - 1 - j;
+                    segment_i.row(idx) = generateNextAtomDihedral<T>(
                         r1, r2, r3, lengths_reverse(i, j), angles_reverse(i, j),
-                        dihedrals_reverse(i, j), rng, uniform_dist,
+                        dihedrals_reverse(i, j), rng, uniform_dist, 
                         (dihedrals_reverse(i, j) > 0 ? 1 : -1)
                     );
+                    tries_reverse(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
                 }
-            }
 
-            // Get the energy due to non-bonded interactions between this segment
-            // and the rest of the polymer
-            T energy_new = 0;  
-            for (int j = SegmentLength; j < n; ++j)
-            {
-                for (int k = 0; k < SegmentLength; ++k)
-                {
-                    // Omit the pair of atoms at the junction 
-                    if (j > k + 1)
-                    {
-                        T r = (tries_reverse(i, Eigen::seqN(3 * k, 3)) - coords.row(j)).norm(); 
-                        if (r < neighbor_threshold)
-                            energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                    }
-                } 
+                // Get the non-bonded energy difference due to segment replacement
+                reverse_diffs(i) = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
+                    segment_i, 0, lj_params, neighbor_threshold
+                ); 
             }
-            // Add in the energy due to non-bonded interactions between non-
-            // consecutive atoms along the segment 
-            for (int j = 0; j < SegmentLength; ++j)
-            {
-                for (int k = j + 2; k < SegmentLength; ++k)
-                {
-                    Matrix<T, 3, 1> rj = tries_reverse(i, Eigen::seqN(3 * j, 3)); 
-                    Matrix<T, 3, 1> rk = tries_reverse(i, Eigen::seqN(3 * k, 3));  
-                    T r = (rj - rk).norm(); 
-                    if (r < neighbor_threshold)
-                        energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                }
-            }
-            reverse_diffs(i) = energy_new - energy_chosen;  
         }
     }
     else        // Move the terminal segment at the tail 
@@ -714,81 +579,56 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
             if (i == move_idx)
             {
                 for (int j = 0; j < SegmentLength; ++j)
-                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = coords.row(j); 
+                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = coords.row(j);
+                reverse_diffs(i) = -forward_diffs(i);  
             }
             // Otherwise, we must generate a new reverse move, with new
             // atomic positions for the tail segment 
             else
             {
+                Matrix<T, Dynamic, 3> segment_i(SegmentLength, 3); 
+
+                // Move forward from atom (n - SegmentLength) in the polymer 
                 for (int j = 0; j < SegmentLength; ++j)
                 {
                     Matrix<T, 3, 1> r1, r2, r3; 
                     if (j == 0)
                     {
-                        r1 = coords.row(n - SegmentLength - 3);
-                        r2 = coords.row(n - SegmentLength - 2); 
-                        r3 = coords.row(n - SegmentLength - 1);  
+                        r1 = coords_chosen.row(n - SegmentLength - 3);
+                        r2 = coords_chosen.row(n - SegmentLength - 2); 
+                        r3 = coords_chosen.row(n - SegmentLength - 1);  
                     }
                     else if (j == 1)
                     {
-                        r1 = coords.row(n - SegmentLength - 2); 
-                        r2 = coords.row(n - SegmentLength - 1); 
-                        r3 = tries_reverse(i, Eigen::seqN(0, 3));  
+                        r1 = coords_chosen.row(n - SegmentLength - 2); 
+                        r2 = coords_chosen.row(n - SegmentLength - 1); 
+                        r3 = segment_i.row(0); 
                     }
                     else if (j == 2)
                     {
-                        r1 = coords.row(n - SegmentLength - 1); 
-                        r2 = tries_reverse(i, Eigen::seqN(0, 3)); 
-                        r3 = tries_reverse(i, Eigen::seqN(3, 3));  
+                        r1 = coords_chosen.row(n - SegmentLength - 1); 
+                        r2 = segment_i.row(0);
+                        r3 = segment_i.row(1);
                     }
                     else 
                     {
-                        r1 = tries_reverse(i, Eigen::seqN(3 * (j - 3), 3)); 
-                        r2 = tries_reverse(i, Eigen::seqN(3 * (j - 2), 3)); 
-                        r3 = tries_reverse(i, Eigen::seqN(3 * (j - 1), 3));  
+                        r1 = segment_i.row(0);
+                        r2 = segment_i.row(1);
+                        r3 = segment_i.row(2);
                     }
-                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = generateNextAtomDihedral<T>(
+                    segment_i.row(j) = generateNextAtomDihedral<T>(
                         r1, r2, r3, lengths_reverse(i, j), angles_reverse(i, j),
                         dihedrals_reverse(i, j), rng, uniform_dist,
                         (dihedrals_reverse(i, j) > 0 ? 1 : -1)
                     );
+                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
                 }
-            }
 
-            // Get the energy due to non-bonded interactions between this segment
-            // and the rest of the polymer
-            T energy_new = 0;  
-            for (int j = 0; j < n - SegmentLength; ++j)
-            {
-                for (int k = 0; k < SegmentLength; ++k)
-                {
-                    // Omit the pair of atoms at the junction
-                    int j_ = j;
-                    int k_ = n - SegmentLength + k;
-                    Matrix<T, 3, 1> rj = coords.row(j);
-                    Matrix<T, 3, 1> rk = tries_reverse(i, Eigen::seqN(3 * k, 3));  
-                    if (j_ > k_ + 1)
-                    {
-                        T r = (rj - rk).norm(); 
-                        if (r < neighbor_threshold)
-                            energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                    }
-                } 
+                // Get the non-bonded energy difference due to segment replacement
+                reverse_diffs(i) = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
+                    segment_i, n - SegmentLength, lj_params, neighbor_threshold
+                ); 
             }
-            // Add in the energy due to non-bonded interactions between non-
-            // consecutive atoms along the segment 
-            for (int j = 0; j < SegmentLength; ++j)
-            {
-                for (int k = j + 2; k < SegmentLength; ++k)
-                {
-                    Matrix<T, 3, 1> rj = tries_reverse(i, Eigen::seqN(3 * j, 3)); 
-                    Matrix<T, 3, 1> rk = tries_reverse(i, Eigen::seqN(3 * k, 3));  
-                    T r = (rj - rk).norm(); 
-                    if (r < neighbor_threshold)
-                        energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true);
-                }
-            }
-            reverse_diffs(i) = energy_new - energy_chosen; 
         }
     }
 
@@ -802,10 +642,7 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
     }
 
     // Calculate the Metropolis acceptance probability
-    T prob_accept = min(
-        1.0, forward_rosenbluth / reverse_rosenbluth
-        //exp(-forward_weights(move_idx)) * (forward_rosenbluth / reverse_rosenbluth)
-    );
+    T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
 
     // Change the polymer configuration according to that probability
     T r = uniform_dist(rng); 
