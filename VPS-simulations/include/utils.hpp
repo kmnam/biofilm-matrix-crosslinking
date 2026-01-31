@@ -451,7 +451,7 @@ T angleDualGaussianMixture(const T theta, const T A1, const T A2, const T w1,
     prob += A1 * exp(-2 * dtheta1 * dtheta1 / (w1 * w1)) / (w1 * sqrt(boost::math::constants::half_pi<T>()));
     prob += A2 * exp(-2 * dtheta2 * dtheta2 / (w2 * w2)) / (w2 * sqrt(boost::math::constants::half_pi<T>()));
     
-    return -kT * prob;  
+    return -kT * log(prob);  
 }
 
 /**
