@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     1/30/2026
+ *     1/31/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -102,7 +102,9 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
     }
 
     // Identify whether to reptate towards the head or the tail
-    const bool head = (uniform_dist(rng) < 0.5);
+    const ReptationDirection direction = (
+        uniform_dist(rng) < 0.5 ? ReptationDirection::HEAD : ReptationDirection::TAIL
+    );
     T energy_curr = 0;
 
     // Generate two sets of bond lengths, bond angles, and dihedral angles 
@@ -122,19 +124,8 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
         }
     }
      
-    if (head)    // Reptate towards the head 
+    if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
     {
-        // Get the energy contribution from the (n - 1)-th atom in the polymer
-        //
-        // Only the non-bonded energy should be calculated here, since 
-        // the bond energy is used to generate candidate moves 
-        for (int i = 0; i < n - 1; ++i)
-        {
-            T r = (coords.row(i) - coords.row(n - 1)).norm(); 
-            if (r < neighbor_threshold)
-                energy_curr += lj<T>(r, lj_params["eps"], lj_params["sigma"], true); 
-        }
-
         // Generate new candidate atomic positions at the head
         for (int i = 0; i < n_tries; ++i)
         {
@@ -144,31 +135,14 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
                 (dihedrals(i, 0) > 0 ? 1 : -1)
             );
 
-            // Get the non-bonded energy difference due to reptation (removing
-            // the (n - 1)-th atom and adding a new atom to the head)
-            T energy_new = 0;
-            for (int j = 0; j < n - 1; ++j)
-            {
-                T r = (coords.row(j) - tries.row(i)).norm(); 
-                if (r < neighbor_threshold)
-                    energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true); 
-            }
-            forward_diffs(i) = energy_new - energy_curr; 
+            // Get the non-bonded energy difference due to reptation
+            forward_diffs(i) = config.getReptationNonbondedEnergyDifference(
+                ReptationDirection::HEAD, tries.row(i), lj_params, neighbor_threshold
+            ); 
         }
     }
     else        // Reptate towards the tail 
     {
-        // Get the energy contribution from the 0-th atom in the polymer
-        //
-        // Only the non-bonded energy should be calculated here, since 
-        // the bond energy is used to generate candidate moves 
-        for (int i = 1; i < n; ++i)
-        {
-            T r = (coords.row(i) - coords.row(0)).norm(); 
-            if (r < neighbor_threshold)
-                energy_curr += lj<T>(r, lj_params["eps"], lj_params["sigma"], true); 
-        }
-
         // Generate new candidate atomic positions at the tail 
         for (int i = 0; i < n_tries; ++i)
         {
@@ -178,16 +152,10 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
                 uniform_dist, (dihedrals(i, 0) > 0 ? 1 : -1)
             );
 
-            // Get the non-bonded energy difference due to reptation (removing
-            // the 0-th atom and adding a new atom to the tail)
-            T energy_new = 0;
-            for (int j = 1; j < n; ++j)
-            {
-                T r = (coords.row(j) - tries.row(i)).norm(); 
-                if (r < neighbor_threshold)
-                    energy_new += lj<T>(r, lj_params["eps"], lj_params["sigma"], true); 
-            }
-            forward_diffs(i) = energy_new - energy_curr; 
+            // Get the non-bonded energy difference due to reptation
+            forward_diffs(i) = config.getReptationNonbondedEnergyDifference(
+                ReptationDirection::TAIL, tries.row(i), lj_params, neighbor_threshold
+            ); 
         }
     }
 
@@ -213,7 +181,7 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
     PolymerConfiguration<T> config_chosen(config);
     Matrix<T, Dynamic, 3> coords_chosen, tries_reverse(n_tries, 3);
     T energy_chosen = energy_curr + forward_diffs(move_idx);  
-    if (head)    // Reptate towards the head
+    if (direction == ReptationDirection::HEAD)    // Reptate towards the head
     { 
         config_chosen.reptateTowardsHead(move);
         coords_chosen = config_chosen.getSegment(0, n); 
@@ -239,16 +207,11 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
                 );
             }
 
-            // Get the non-bonded energy difference due to reptation (removing
-            // the 0-th atom and adding a new atom to the tail)
-            T energy_reverse = 0;
-            for (int j = 1; j < n; ++j)
-            {
-                T r = (coords_chosen.row(j) - tries_reverse.row(i)).norm(); 
-                if (r < neighbor_threshold)
-                    energy_reverse += lj<T>(r, lj_params["eps"], lj_params["sigma"], true); 
-            }
-            reverse_diffs(i) = energy_reverse - energy_chosen; 
+            // Get the non-bonded energy difference due to reptation
+            reverse_diffs(i) = config_chosen.getReptationNonbondedEnergyDifference(
+                ReptationDirection::TAIL, tries_reverse.row(i), lj_params,
+                neighbor_threshold
+            ); 
         }
     }
     else         // Reptate towards the tail 
@@ -277,16 +240,11 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
                 );
             }
 
-            // Get the non-bonded energy difference due to reptation (removing
-            // the (n - 1)-th atom and adding a new atom to the head)
-            T energy_reverse = 0;
-            for (int j = 0; j < n - 1; ++j)
-            {
-                T r = (coords_chosen.row(j) - tries_reverse.row(i)).norm(); 
-                if (r < neighbor_threshold)
-                    energy_reverse += lj<T>(r, lj_params["eps"], lj_params["sigma"], true); 
-            }
-            reverse_diffs(i) = energy_reverse - energy_chosen; 
+            // Get the non-bonded energy difference due to reptation
+            reverse_diffs(i) = config_chosen.getReptationNonbondedEnergyDifference(
+                ReptationDirection::HEAD, tries_reverse.row(i), lj_params,
+                neighbor_threshold
+            ); 
         }
     }
 
@@ -300,18 +258,15 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
     }
 
     // Calculate the Metropolis acceptance probability
-    T prob_accept = min(
-        1.0, forward_rosenbluth / reverse_rosenbluth
-        //exp(-forward_weights(move_idx)) * (forward_rosenbluth / reverse_rosenbluth)
-    );
+    T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
 
     // Change the polymer configuration according to that probability
     T r = uniform_dist(rng); 
     if (r < prob_accept)
     {
-        if (head)    // Reptate towards the head
+        if (direction == ReptationDirection::HEAD)    // Reptate towards the head
             config.reptateTowardsHead(move); 
-        else         // Reptate towards the tail 
+        else                                          // Reptate towards the tail 
             config.reptateTowardsTail(move); 
     }
 }
