@@ -9,6 +9,7 @@
 #ifndef POLYMER_UTILS_HPP 
 #define POLYMER_UTILS_HPP 
 
+#include <fstream>
 #include <stdexcept>
 #include <cmath>
 #include <string>
@@ -1805,21 +1806,16 @@ std::tuple<PolymerConfiguration<T>,
         if (std::regex_match(line, matches, pattern))
         {
             length = std::stoi(matches[1].str());
-            break
+            break;
         }
     } 
     Matrix<T, Dynamic, 3> coords = Matrix<T, Dynamic, 3>::Zero(length, 3);
 
     // Keep parsing the file until we encounter the Lennard-Jones parameters 
-    int coords = 0;
-    bool found_potentials = false; 
     while (std::getline(infile, line))
     {
         if (line == "PairIJ Coeffs")
-        {
-            found_potentials = true;
             break; 
-        }
     } 
 
     // Parse the Lennard-Jones parameters
@@ -1919,11 +1915,10 @@ std::tuple<PolymerConfiguration<T>,
     dihedral_params["n"] = static_cast<T>(std::stod(token)); 
  
     // Parse the atomic coordinates
-    std::unordered_map<std::string, T> dihedral_params; 
     std::getline(infile, line);    // Skip header and blank lines
     std::getline(infile, line);
     std::getline(infile, line);
-    while (int i = 0; i < length; ++i)
+    for (int i = 0; i < length; ++i)
     { 
         std::getline(infile, line);
         ss.clear(); 
