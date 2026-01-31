@@ -1871,8 +1871,10 @@ std::tuple<PolymerConfiguration<T>,
         std::getline(ss, token, ' ');    // Skip first entry in the line 
         std::getline(ss, token, ' ');    // K
         angle_params["K"] = static_cast<T>(std::stod(token));
-        std::getline(ss, token, ' ');    // theta0 
-        angle_params["theta0"] = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // theta0 (convert to radians)
+        angle_params["theta0"] = (
+            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
+        );
     }
     else     // n_params == 9
     {
@@ -1887,14 +1889,18 @@ std::tuple<PolymerConfiguration<T>,
         angle_params["A1"] = static_cast<T>(std::stod(token)); 
         std::getline(ss, token, ' ');    // w1
         angle_params["w1"] = static_cast<T>(std::stod(token)); 
-        std::getline(ss, token, ' ');    // theta1
-        angle_params["theta1"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // theta1 (convert to radians)
+        angle_params["theta1"] = (
+            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
+        ); 
         std::getline(ss, token, ' ');    // A2
         angle_params["A2"] = static_cast<T>(std::stod(token)); 
         std::getline(ss, token, ' ');    // w2
         angle_params["w2"] = static_cast<T>(std::stod(token)); 
-        std::getline(ss, token, ' ');    // theta2
-        angle_params["theta2"] = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // theta2 (convert to radians)
+        angle_params["theta2"] = (
+            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
+        );
     }
 
     // Parse the dihedral potential parameters
