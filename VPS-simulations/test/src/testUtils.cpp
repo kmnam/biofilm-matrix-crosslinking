@@ -684,13 +684,15 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
 
     // Write the 10-mer coordinates to file 
     config.writeLammps(
-        "configs/test_10mer.txt", lj_params, fene_params, AngleMode::COSINE, 
+        "configs/test_10mer_cosine.txt", lj_params, fene_params, AngleMode::COSINE, 
         cosine_params, dihedral_params, "Test configuration", -100, 100, 
         -100, 100, -100, 100, 1
     ); 
 
     // Parse the 10-mer coordinates 
-    auto result = parseLammps<double>("configs/test_10mer.txt", Units::NANO, 300); 
+    auto result = parseLammps<double>(
+        "configs/test_10mer_cosine.txt", Units::NANO, 300
+    ); 
     PolymerConfiguration<double> config2 = std::get<0>(result); 
     std::unordered_map<std::string, double> lj_params2 = std::get<1>(result); 
     std::unordered_map<std::string, double> fene_params2 = std::get<2>(result); 
@@ -730,5 +732,57 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
     REQUIRE_THAT(dihedral_params2["d"], Catch::Matchers::WithinAbs(1, tol)); 
     REQUIRE(dihedral_params2.find("n") != dihedral_params2.end()); 
     REQUIRE_THAT(dihedral_params2["n"], Catch::Matchers::WithinAbs(1, tol)); 
+}
+
+/**
+ * Tests for getNonbondedEnergy(), getBondEnergy(), getBondAngleEnergy(), 
+ * and getDihedralAngleEnergy().
+ *
+ * The output of these functions is compared against pre-computed values 
+ * obtained with LAMMPS, specifically via the following command:
+ *
+ * mpirun -np 1 lmp -i get_energy_cosine.lammps -v VARS configs/test_10mer_cosine.txt
+ */
+TEST_CASE(
+    "Tests for energy calculation methods", 
+    "[getNonbondedEnergy(), getBondEnergy(), getBondAngleEnergy(), getDihedralAngleEnergy()]"
+)
+{
+    const double tol = 1e-5;
+
+    // Parse test 10-mer coordinates with angles chosen from a cosine potential
+    auto result = parseLammps<double>(
+        "configs/test_10mer_cosine.txt", Units::NANO, 300
+    ); 
+    PolymerConfiguration<double> config = std::get<0>(result); 
+    std::unordered_map<std::string, double> lj_params = std::get<1>(result); 
+    std::unordered_map<std::string, double> fene_params = std::get<2>(result); 
+    std::unordered_map<std::string, double> angle_params = std::get<4>(result); 
+    std::unordered_map<std::string, double> dihedral_params = std::get<5>(result); 
+
+    // Calculate the non-bonded interaction energy between non-consecutive atoms
+    // and compare against LAMMPS-computed value 
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    double nonbonded_energy_nc = config.getNonbondedEnergy(
+        lj_params, neighbor_threshold, true
+    );
+    REQUIRE_THAT(nonbonded_energy_nc, Catch::Matchers::WithinAbs(0.0, tol)); 
+
+    // Calculate the bonded interaction energy (including Lennard-Jones) and 
+    // compare against LAMMPS-computed value
+    double bond_energy = config.getBondEnergy(fene_params, true, lj_params);
+    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(606.38266, tol));
+
+    // Calculate the bond angle energy and compare against LAMMPS-computed value
+    double angle_energy = config.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(13.45284, tol));
+
+    // Calculate the dihedral angle energy and compare against LAMMPS-computed
+    // value
+    double dihedral_energy = config.getDihedralAngleEnergy(dihedral_params); 
+    REQUIRE_THAT(
+        dihedral_energy,
+        Catch::Matchers::WithinAbs(627.95034 - 606.38266 - 13.45284, tol)
+    ); 
 }
 
