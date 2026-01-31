@@ -706,9 +706,7 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
     {
         for (int j = 0; j < 3; ++j)
         {
-            REQUIRE_THAT(
-                coords(i, j) - coords2(i, j), Catch::Matchers::WithinAbs(0.0, tol)
-            );
+            REQUIRE_THAT(coords2(i, j), Catch::Matchers::WithinAbs(coords(i, j), tol)); 
         } 
     }
 
