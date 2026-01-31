@@ -1410,11 +1410,14 @@ class PolymerConfiguration
          *
          * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
+         *                           neighboring (non-bonded) atoms.
+         * @param nonconsecutive If true, omit interactions between consecutive
+         *                       atoms.  
          * @returns Non-bonded interaction energy. 
          */
         T getNonbondedEnergy(std::unordered_map<std::string, T>& lj_params, 
-                             const T neighbor_threshold) const
+                             const T neighbor_threshold,
+                             const bool nonconsecutive = false) const
         {
             T energy = 0.0; 
 
@@ -1423,9 +1426,16 @@ class PolymerConfiguration
 
             // Calculate all non-bonded interaction energies 
             for (int i = 0; i < neighbors.rows(); ++i)
-                energy += lj<T>(
-                    neighbors(i, 2), lj_params["eps"], lj_params["sigma"], true
-                );
+            {
+                // Skip over non-consecutive pairs if desired
+                int j = static_cast<int>(neighbors(i, 0)); 
+                int k = static_cast<int>(neighbors(i, 1)); 
+                if (!nonconsecutive || (nonconsecutive && abs(k - j) > 1)) 
+                    energy += lj<T>(
+                        neighbors(i, 2), lj_params["eps"], lj_params["sigma"],
+                        true
+                    );
+            }
 
             return energy; 
         } 
@@ -1434,13 +1444,19 @@ class PolymerConfiguration
          * Get the energetic contributions of the bonded interactions between
          * consecutive atoms to the energy of the current polymer configuration.
          *
-         * This function ignores the energetic contributions of non-bonded 
-         * interactions between consecutive atoms.  
+         * The energetic contributions of repulsive Lennard-Jones interactions 
+         * between consecutive atoms is also included, if desired. 
          *
-         * @param fene_params FENE parameters. 
+         * @param fene_params FENE parameters.
+         * @param include_lj If true, include the energetic contributions of 
+         *                   repulsive Lennard-Jones interactions between 
+         *                   consecutive atoms. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @returns Bonded interaction energy. 
          */
-        T getBondEnergy(std::unordered_map<std::string, T>& fene_params) const
+        T getBondEnergy(std::unordered_map<std::string, T>& fene_params,
+                        const bool include_lj = false, 
+                        std::unordered_map<std::string, T>& lj_params = {}) const
         {
             T energy = 0.0; 
 
@@ -1452,9 +1468,18 @@ class PolymerConfiguration
 
                 // If the i-th bond energy is infinite, just return infinity 
                 if (isinf(bond_energy))
-                    return std::numeric_limits<T>::infinity(); 
-                else 
-                    energy += bond_energy;  
+                {
+                    return std::numeric_limits<T>::infinity();
+                } 
+                else
+                {
+                    // Add the Lennard-Jones energy if desired
+                    if (include_lj)
+                        bond_energy += lj<T>(
+                            u.norm(), lj_params["eps"], lj_params["sigma"], true
+                        );
+                    energy += bond_energy; 
+                } 
             }
 
             return energy; 
@@ -1737,7 +1762,9 @@ class PolymerConfiguration
             for (int i = 0; i < this->length; ++i)
             {
                 // Atom ID, molecule ID, atom type, x, y, z
-                outfile << i << " 1 1 " << this->r(i, 0) << " "
+                //
+                // Atom IDs must be 1-indexed
+                outfile << i + 1 << " 1 1 " << this->r(i, 0) << " "
                         << this->r(i, 1) << " "
                         << this->r(i, 2) << std::endl; 
             }
@@ -1748,7 +1775,9 @@ class PolymerConfiguration
             for (int i = 0; i < this->length - 1; ++i)
             {
                 // Bond ID, bond type, atom i, atom j
-                outfile << i << " 1 " << i << " " << i + 1 << std::endl; 
+                //
+                // Atom IDs and bond IDs must be 1-indexed
+                outfile << i + 1 << " 1 " << i + 1 << " " << i + 2 << std::endl; 
             }
             outfile << std::endl; 
 
@@ -1757,7 +1786,10 @@ class PolymerConfiguration
             for (int i = 0; i < this->length - 2; ++i)
             {
                 // Angle ID, angle type, atom i, atom j, atom k
-                outfile << i << " 1 " << i << " " << i + 1 << " " << i + 2 << std::endl; 
+                //
+                // Atom IDs and angle IDs must be 1-indexed
+                outfile << i + 1 << " 1 " << i + 1 << " " << i + 2 << " "
+                        << i + 3 << std::endl; 
             }
             outfile << std::endl; 
 
@@ -1766,8 +1798,10 @@ class PolymerConfiguration
             for (int i = 0; i < this->length - 3; ++i)
             {
                 // Dihedral ID, dihedral type, atom i, atom j, atom k, atom l
-                outfile << i << " 1 " << i << " " << i + 1 << " "
-                        << i + 2 << " " << i + 3 << std::endl; 
+                //
+                // Atom IDs and dihedral IDs must be 1-indexed
+                outfile << i + 1 << " 1 " << i + 1 << " " << i + 2 << " "
+                        << i + 3 << " " << i + 4 << std::endl; 
             }
             outfile << std::endl; 
         }
