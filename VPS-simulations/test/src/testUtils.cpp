@@ -891,3 +891,216 @@ TEST_CASE(
     ); 
 }
 
+/**
+ * Tests for getSegmentReplacementEnergyDifference(). 
+ */
+TEST_CASE(
+    "Tests for segment replacement energy difference calculation",
+    "[getSegmentReplacementEnergyDifference()]"
+)
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+    const double tol = 1e-8;
+
+    // Parse test 10-mer coordinates with angles chosen from a cosine potential
+    auto result = parseLammps<double>(
+        "configs/test_10mer_cosine.txt", Units::NANO, 300
+    ); 
+    PolymerConfiguration<double> config = std::get<0>(result); 
+    std::unordered_map<std::string, double> lj_params = std::get<1>(result); 
+    std::unordered_map<std::string, double> fene_params = std::get<2>(result); 
+    std::unordered_map<std::string, double> angle_params = std::get<4>(result); 
+    std::unordered_map<std::string, double> dihedral_params = std::get<5>(result);
+
+    // Randomly perturb the last 3 atoms in this configuration
+    int length = config.getLength(); 
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, length); 
+    Matrix<double, Dynamic, 3> coords2(coords); 
+    for (int i = 0; i < 3; ++i)
+    {
+        for (int j = 0; j < 3; ++j)
+        {
+            double r = -0.01 + 0.02 * uniform_dist(rng);  
+            coords2(length - i - 1, j) += r;
+        }
+    } 
+    PolymerConfiguration<double> config2(coords2, Units::NANO, 300);
+
+    // Calculate the segment replacement energy difference
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    double replace_energy_12 = config.getSegmentReplacementEnergyDifference(
+        coords2(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        angle_params, dihedral_params
+    );
+
+    // Calculate the reverse segment replacement energy difference
+    double replace_energy_21 = config2.getSegmentReplacementEnergyDifference(
+        coords(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        angle_params, dihedral_params
+    );
+    REQUIRE_THAT(replace_energy_12, Catch::Matchers::WithinAbs(-replace_energy_21, tol)); 
+
+    // Calculate the total energy of the two configurations 
+    double energy1_nonbonded = config.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy1_bond = config.getBondEnergy(fene_params); 
+    double energy1_angle = config.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy1_dihedral = config.getDihedralAngleEnergy(dihedral_params); 
+    double energy2_nonbonded = config2.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy2_bond = config2.getBondEnergy(fene_params); 
+    double energy2_angle = config2.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy2_dihedral = config2.getDihedralAngleEnergy(dihedral_params);
+    double energy1_total = energy1_nonbonded + energy1_bond + energy1_angle + energy1_dihedral;
+    double energy2_total = energy2_nonbonded + energy2_bond + energy2_angle + energy2_dihedral;
+
+    // Check that the segment replacement energy difference is equal to the
+    // energy difference between the two configurations 
+    REQUIRE_THAT(
+        replace_energy_12,
+        Catch::Matchers::WithinAbs(energy2_total - energy1_total, tol)
+    ); 
+
+    // Randomly perturb atoms 2, 3, 4, 5 in the original configuration 
+    Matrix<double, Dynamic, 3> coords3(coords); 
+    for (int i = 2; i < 6; ++i)
+    {
+        for (int j = 0; j < 3; ++j)
+        {
+            double r = -0.01 + 0.02 * uniform_dist(rng);  
+            coords3(i, j) += r; 
+        }
+    }
+    PolymerConfiguration<double> config3(coords3, Units::NANO, 300);
+
+    // Calculate the segment replacement energy difference
+    double replace_energy_13 = config.getSegmentReplacementEnergyDifference(
+        coords3(Eigen::seqN(2, 4), Eigen::all), 2, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        angle_params, dihedral_params
+    );
+
+    // Calculate the reverse segment replacement energy difference
+    double replace_energy_31 = config3.getSegmentReplacementEnergyDifference(
+        coords(Eigen::seqN(2, 4), Eigen::all), 2, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        angle_params, dihedral_params
+    );
+    REQUIRE_THAT(replace_energy_13, Catch::Matchers::WithinAbs(-replace_energy_31, tol)); 
+
+    // Calculate the total energy of the two configurations 
+    double energy3_nonbonded = config3.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy3_bond = config3.getBondEnergy(fene_params); 
+    double energy3_angle = config3.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy3_dihedral = config3.getDihedralAngleEnergy(dihedral_params);
+    double energy3_total = energy3_nonbonded + energy3_bond + energy3_angle + energy3_dihedral;
+
+    // Check that the segment replacement energy difference is equal to the
+    // energy difference between the two configurations 
+    REQUIRE_THAT(
+        replace_energy_13,
+        Catch::Matchers::WithinAbs(energy3_total - energy1_total, tol)
+    ); 
+
+    // Parse test 10-mer coordinates with angles chosen from a Gaussian potential
+    result = parseLammps<double>(
+        "configs/test_10mer_gaussian.txt", Units::NANO, 300
+    ); 
+    PolymerConfiguration<double> config4 = std::get<0>(result); 
+    lj_params = std::get<1>(result); 
+    fene_params = std::get<2>(result); 
+    angle_params = std::get<4>(result); 
+    dihedral_params = std::get<5>(result);
+
+    // Randomly perturb the last 3 atoms in this configuration
+    length = config.getLength(); 
+    Matrix<double, Dynamic, 3> coords4 = config4.getSegment(0, length); 
+    Matrix<double, Dynamic, 3> coords5(coords4); 
+    for (int i = 0; i < 3; ++i)
+    {
+        for (int j = 0; j < 3; ++j)
+        {
+            double r = -0.01 + 0.02 * uniform_dist(rng);  
+            coords5(length - i - 1, j) += r;
+        }
+    } 
+    PolymerConfiguration<double> config5(coords5, Units::NANO, 300);
+
+    // Calculate the segment replacement energy difference
+    neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    double replace_energy_45 = config4.getSegmentReplacementEnergyDifference(
+        coords5(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        angle_params, dihedral_params
+    );
+
+    // Calculate the reverse segment replacement energy difference
+    double replace_energy_54 = config5.getSegmentReplacementEnergyDifference(
+        coords4(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        angle_params, dihedral_params
+    );
+    REQUIRE_THAT(replace_energy_45, Catch::Matchers::WithinAbs(-replace_energy_54, tol)); 
+
+    // Calculate the total energy of the two configurations 
+    double energy4_nonbonded = config4.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy4_bond = config4.getBondEnergy(fene_params); 
+    double energy4_angle = config4.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy4_dihedral = config4.getDihedralAngleEnergy(dihedral_params); 
+    double energy5_nonbonded = config5.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy5_bond = config5.getBondEnergy(fene_params); 
+    double energy5_angle = config5.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy5_dihedral = config5.getDihedralAngleEnergy(dihedral_params);
+    double energy4_total = energy4_nonbonded + energy4_bond + energy4_angle + energy4_dihedral;
+    double energy5_total = energy5_nonbonded + energy5_bond + energy5_angle + energy5_dihedral;
+
+    // Check that the segment replacement energy difference is equal to the
+    // energy difference between the two configurations 
+    REQUIRE_THAT(
+        replace_energy_45,
+        Catch::Matchers::WithinAbs(energy5_total - energy4_total, tol)
+    ); 
+
+    // Randomly perturb atoms 2, 3, 4, 5 in the original configuration 
+    Matrix<double, Dynamic, 3> coords6(coords4); 
+    for (int i = 2; i < 6; ++i)
+    {
+        for (int j = 0; j < 3; ++j)
+        {
+            double r = -0.01 + 0.02 * uniform_dist(rng);  
+            coords6(i, j) += r; 
+        }
+    }
+    PolymerConfiguration<double> config6(coords6, Units::NANO, 300);
+
+    // Calculate the segment replacement energy difference
+    double replace_energy_46 = config4.getSegmentReplacementEnergyDifference(
+        coords6(Eigen::seqN(2, 4), Eigen::all), 2, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        angle_params, dihedral_params
+    );
+
+    // Calculate the reverse segment replacement energy difference
+    double replace_energy_64 = config6.getSegmentReplacementEnergyDifference(
+        coords4(Eigen::seqN(2, 4), Eigen::all), 2, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        angle_params, dihedral_params
+    );
+    REQUIRE_THAT(replace_energy_46, Catch::Matchers::WithinAbs(-replace_energy_64, tol)); 
+
+    // Calculate the total energy of the two configurations 
+    double energy6_nonbonded = config6.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy6_bond = config6.getBondEnergy(fene_params); 
+    double energy6_angle = config6.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy6_dihedral = config6.getDihedralAngleEnergy(dihedral_params);
+    double energy6_total = energy6_nonbonded + energy6_bond + energy6_angle + energy6_dihedral;
+
+    // Check that the segment replacement energy difference is equal to the
+    // energy difference between the two configurations 
+    REQUIRE_THAT(
+        replace_energy_46,
+        Catch::Matchers::WithinAbs(energy6_total - energy4_total, tol)
+    );  
+}
+
