@@ -798,7 +798,7 @@ class PolymerConfiguration
                                       std::unordered_map<std::string, T>& fene_params,
                                       const AngleMode angle_mode, 
                                       std::unordered_map<std::string, T>& angle_params,
-                                      std::unordered_map<std::string, T>& dihedral_params)
+                                      std::unordered_map<std::string, T>& dihedral_params) const
         {
             // Check that the specified polymer indices to slice out of the 
             // polymer are valid
@@ -811,22 +811,33 @@ class PolymerConfiguration
             // ----------------------------------------------------------- //
             // Get the non-bonded interaction energy
             // ----------------------------------------------------------- //
-            // First identify all pairs of neighboring atoms (p, q), where p
+            // First identify all pairs of neighboring atoms within the segment
+            Matrix<T, Dynamic, 3> neighbors_within = getNeighbors<T>(
+                segment, neighbor_threshold
+            );
+
+            // Then identify all pairs of neighboring atoms (p, q), where p
             // lies within the entire polymer and q lies within the segment
             const int n1 = idx; 
             const int n2 = this->length - idx - n; 
             Matrix<T, Dynamic, 3> r_sub(n1 + n2, 3);
             r_sub(Eigen::seqN(0, n1), Eigen::all) = this->r(Eigen::seqN(0, n1), Eigen::all); 
             r_sub(Eigen::seqN(n1, n2), Eigen::all) = this->r(Eigen::seqN(idx + n, n2), Eigen::all); 
-            Matrix<T, Dynamic, 3> neighbors = getNeighbors<T>(
+            Matrix<T, Dynamic, 3> neighbors_between = getNeighbors<T>(
                 r_sub, segment, neighbor_threshold
             );
 
             // Calculate the non-bonded interaction energy 
             T energy_curr = 0; 
-            for (int i = 0; i < neighbors.rows(); ++i)
+            for (int i = 0; i < neighbors_within.rows(); ++i)
                 energy_curr += lj<T>(
-                    neighbors(i, 2), lj_params["eps"], lj_params["sigma"], true
+                    neighbors_within(i, 2), lj_params["eps"], lj_params["sigma"],
+                    true
+                );
+            for (int i = 0; i < neighbors_between.rows(); ++i)
+                energy_curr += lj<T>(
+                    neighbors_between(i, 2), lj_params["eps"], lj_params["sigma"],
+                    true
                 );
 
             // ----------------------------------------------------------- //
@@ -914,8 +925,8 @@ class PolymerConfiguration
                 adj_angles.conservativeResize(n_adj_angles, 6);
                 u = this->r.row(idx - 2) - this->r.row(idx - 1); 
                 v = segment.row(0) - this->r.row(idx - 1);  
-                adj_angles(n_adj_angles - 1, Eigen::seqN(0, 3)) = u;
-                adj_angles(n_adj_angles - 1, Eigen::seqN(3, 3)) = v;  
+                adj_angles(n_adj_angles - 1, Eigen::seqN(0, 3)) = u / u.norm();
+                adj_angles(n_adj_angles - 1, Eigen::seqN(3, 3)) = v / v.norm();  
             }
             if (idx > 0)
             {
@@ -923,8 +934,8 @@ class PolymerConfiguration
                 adj_angles.conservativeResize(n_adj_angles, 6);
                 u = this->r.row(idx - 1) - segment.row(0); 
                 v = segment.row(1) - segment.row(0);
-                adj_angles(n_adj_angles - 1, Eigen::seqN(0, 3)) = u;
-                adj_angles(n_adj_angles - 1, Eigen::seqN(3, 3)) = v;  
+                adj_angles(n_adj_angles - 1, Eigen::seqN(0, 3)) = u / u.norm();
+                adj_angles(n_adj_angles - 1, Eigen::seqN(3, 3)) = v / v.norm();  
             }
             if (idx + n < this->length)
             {
@@ -932,8 +943,8 @@ class PolymerConfiguration
                 adj_angles.conservativeResize(n_adj_angles, 6);
                 u = segment.row(n - 2) - segment.row(n - 1); 
                 v = this->r.row(idx + n) - segment.row(n - 1); 
-                adj_angles(n_adj_angles - 1, Eigen::seqN(0, 3)) = u;
-                adj_angles(n_adj_angles - 1, Eigen::seqN(3, 3)) = v;  
+                adj_angles(n_adj_angles - 1, Eigen::seqN(0, 3)) = u / u.norm();
+                adj_angles(n_adj_angles - 1, Eigen::seqN(3, 3)) = v / v.norm();  
             }
             if (idx + n + 1 < this->length)
             {
@@ -941,14 +952,14 @@ class PolymerConfiguration
                 adj_angles.conservativeResize(n_adj_angles, 6);
                 u = segment.row(n - 1) - this->r.row(idx + n); 
                 v = this->r.row(idx + n + 1) - this->r.row(idx + n); 
-                adj_angles(n_adj_angles - 1, Eigen::seqN(0, 3)) = u;
-                adj_angles(n_adj_angles - 1, Eigen::seqN(3, 3)) = v;  
+                adj_angles(n_adj_angles - 1, Eigen::seqN(0, 3)) = u / u.norm();
+                adj_angles(n_adj_angles - 1, Eigen::seqN(3, 3)) = v / v.norm();  
             }
             for (int i = 0; i < n_adj_angles; ++i)
             {
                 Matrix<T, 3, 1> u = adj_angles(i, Eigen::seqN(0, 3)); 
                 Matrix<T, 3, 1> v = adj_angles(i, Eigen::seqN(3, 3)); 
-                T theta = acosSafe<T>(u.dot(v) / (u.norm() * v.norm())); 
+                T theta = acosSafe<T>(u.dot(v));
                 energy_curr += potential(theta); 
             }
 
@@ -987,7 +998,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 3); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 2);
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx - 1);
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(0); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(0);
                 }
                 if (idx > 1)    // P-P-S-S
                 {
@@ -996,7 +1007,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 2); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 1);
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(0);
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(1);
                 }
                 if (idx > 0)    // P-S-S-P
                 {
@@ -1005,7 +1016,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 1); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(0); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(1);
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 2);
                 }
                 if (idx + n < this->length - 1)      // S-S-P-P
                 {
@@ -1014,7 +1025,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(0); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(1); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx + 2); 
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 3); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 3);
                 }
                 if (idx + n < this->length - 2)      // S-P-P-P
                 {
@@ -1023,7 +1034,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(1); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx + 2); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx + 3); 
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 4); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + 4);
                 }
             }
             // If the segment length is > 2, then there are six possible dihedrals:
@@ -1038,7 +1049,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 3); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 2);
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx - 1);
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(0); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(0);
                 }
                 if (idx > 1)    // P-P-S-S
                 {
@@ -1047,7 +1058,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 2); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx - 1);
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(0);
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(1);
                 }
                 if (idx > 0)    // P-S-S-S
                 {
@@ -1056,7 +1067,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = this->r.row(idx - 1); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(0); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(1);
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = segment.row(2);
                 }
                 if (idx + n < this->length)       // S-S-S-P
                 {
@@ -1065,7 +1076,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(n - 3); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(n - 2); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = segment.row(n - 1); 
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n);
                 }
                 if (idx + n < this->length - 1)   // S-S-P-P
                 {
@@ -1074,7 +1085,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(n - 2); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = segment.row(n - 1); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx + n); 
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n + 1); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n + 1);
                 }
                 if (idx + n < this->length - 2)   // S-P-P-P
                 {
@@ -1083,7 +1094,7 @@ class PolymerConfiguration
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(0, 3)) = segment.row(n - 1); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(3, 3)) = this->r.row(idx + n); 
                     adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(6, 3)) = this->r.row(idx + n + 1); 
-                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n + 2); 
+                    adj_dihedrals(n_adj_dihedrals - 1, Eigen::seqN(9, 3)) = this->r.row(idx + n + 2);
                 }
             }
             for (int i = 0; i < n_adj_dihedrals; ++i)
@@ -1456,7 +1467,7 @@ class PolymerConfiguration
          */
         T getBondEnergy(std::unordered_map<std::string, T>& fene_params,
                         const bool include_lj = false, 
-                        std::unordered_map<std::string, T>& lj_params = {}) const
+                        const std::unordered_map<std::string, T>& lj_params = {}) const
         {
             T energy = 0.0; 
 
@@ -1476,7 +1487,7 @@ class PolymerConfiguration
                     // Add the Lennard-Jones energy if desired
                     if (include_lj)
                         bond_energy += lj<T>(
-                            u.norm(), lj_params["eps"], lj_params["sigma"], true
+                            u.norm(), lj_params.at("eps"), lj_params.at("sigma"), true
                         );
                     energy += bond_energy; 
                 } 
@@ -1590,7 +1601,7 @@ class PolymerConfiguration
                                                 std::unordered_map<std::string, T>& fene_params,
                                                 const AngleMode angle_mode,  
                                                 std::unordered_map<std::string, T>& angle_params,
-                                                std::unordered_map<std::string, T>& dihedral_params)
+                                                std::unordered_map<std::string, T>& dihedral_params) const
         {
             // Get the current segment 
             const int n = segment.rows(); 
