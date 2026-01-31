@@ -1104,3 +1104,125 @@ TEST_CASE(
     );  
 }
 
+/**
+ * Tests for getReptationNonbondedEnergyDifference() and getReptationEnergyDifference(). 
+ */
+TEST_CASE(
+    "Tests for reptation energy difference calculation",
+    "[getReptationNonbondedEnergyDifference(), getReptationEnergyDifference()]"
+)
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+    const double tol = 1e-8;
+
+    // Parse test 10-mer coordinates with angles chosen from a cosine potential
+    auto result = parseLammps<double>(
+        "configs/test_10mer_cosine.txt", Units::NANO, 300
+    ); 
+    PolymerConfiguration<double> config = std::get<0>(result); 
+    std::unordered_map<std::string, double> lj_params = std::get<1>(result); 
+    std::unordered_map<std::string, double> fene_params = std::get<2>(result); 
+    std::unordered_map<std::string, double> angle_params = std::get<4>(result); 
+    std::unordered_map<std::string, double> dihedral_params = std::get<5>(result);
+
+    // Introduce a new atom at the tail
+    int length = config.getLength(); 
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, length);
+    double bond_length = 0.85 * fene_params["R0"];
+    double angle = 1.05 * angle_params["theta0"]; 
+    double dihedral = 0.95 * boost::math::constants::pi<double>(); 
+    Matrix<double, 3, 1> r_tail = generateNextAtomDihedral<double>(
+        coords.row(length - 3), coords.row(length - 2), coords.row(length - 1),
+        bond_length, angle, dihedral, rng, uniform_dist, (dihedral > 0 ? 1 : -1)
+    );
+
+    // Generate a new reptated configuration 
+    PolymerConfiguration<double> config2(config); 
+    config2.reptateTowardsTail(r_tail); 
+
+    // Calculate the reptation energy difference 
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    double reptate_energy_12 = config.getReptationEnergyDifference(
+        ReptationDirection::TAIL, r_tail, lj_params, neighbor_threshold,
+        fene_params, AngleMode::COSINE, angle_params, dihedral_params
+    );
+
+    // Calculate the total energy of the two configurations 
+    double energy1_nonbonded = config.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy1_bond = config.getBondEnergy(fene_params); 
+    double energy1_angle = config.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy1_dihedral = config.getDihedralAngleEnergy(dihedral_params); 
+    double energy2_nonbonded = config2.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy2_bond = config2.getBondEnergy(fene_params); 
+    double energy2_angle = config2.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy2_dihedral = config2.getDihedralAngleEnergy(dihedral_params);
+    double energy1_total = energy1_nonbonded + energy1_bond + energy1_angle + energy1_dihedral;
+    double energy2_total = energy2_nonbonded + energy2_bond + energy2_angle + energy2_dihedral;
+    
+    // Check that the reptation energy difference is equal to the energy 
+    // difference between the two configurations
+    REQUIRE_THAT(
+        reptate_energy_12,
+        Catch::Matchers::WithinAbs(energy2_total - energy1_total, tol)
+    );
+
+    // Generate the reverse reptated configuration 
+    PolymerConfiguration<double> config3(config2); 
+    config3.reptateTowardsHead(coords.row(0));
+
+    // Calculate the reptation energy difference and check that it is the 
+    // negative of the previous reptation energy difference
+    double reptate_energy_23 = config2.getReptationEnergyDifference(
+        ReptationDirection::HEAD, coords.row(0), lj_params, neighbor_threshold,
+        fene_params, AngleMode::COSINE, angle_params, dihedral_params
+    );
+    REQUIRE_THAT(reptate_energy_23, Catch::Matchers::WithinAbs(-reptate_energy_12, tol));
+
+    // Introduce a new atom at the head
+    bond_length = 0.82 * fene_params["R0"];
+    angle = 1.3 * angle_params["theta0"]; 
+    dihedral = 0.87 * boost::math::constants::pi<double>(); 
+    Matrix<double, 3, 1> r_head = generateNextAtomDihedral<double>(
+        coords.row(2), coords.row(1), coords.row(0),
+        bond_length, angle, dihedral, rng, uniform_dist, (dihedral > 0 ? 1 : -1)
+    );
+
+    // Generate a new reptated configuration (from the original) 
+    PolymerConfiguration<double> config4(config); 
+    config4.reptateTowardsHead(r_head); 
+
+    // Calculate the reptation energy difference  
+    double reptate_energy_14 = config.getReptationEnergyDifference(
+        ReptationDirection::HEAD, r_head, lj_params, neighbor_threshold,
+        fene_params, AngleMode::COSINE, angle_params, dihedral_params
+    );
+
+    // Calculate the total energy of the new configuration
+    double energy4_nonbonded = config4.getNonbondedEnergy(lj_params, neighbor_threshold); 
+    double energy4_bond = config4.getBondEnergy(fene_params); 
+    double energy4_angle = config4.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy4_dihedral = config4.getDihedralAngleEnergy(dihedral_params);
+    double energy4_total = energy4_nonbonded + energy4_bond + energy4_angle + energy4_dihedral;
+
+    // Check that the reptation energy difference is equal to the energy 
+    // difference between the two configurations
+    REQUIRE_THAT(
+        reptate_energy_14,
+        Catch::Matchers::WithinAbs(energy4_total - energy1_total, tol)
+    );
+
+    // Generate the reverse reptated configuration 
+    PolymerConfiguration<double> config5(config4); 
+    config5.reptateTowardsTail(coords.row(length - 1));
+
+    // Calculate the reptation energy difference and check that it is the 
+    // negative of the previous reptation energy difference
+    double reptate_energy_45 = config4.getReptationEnergyDifference(
+        ReptationDirection::TAIL, coords.row(length - 1), lj_params,
+        neighbor_threshold, fene_params, AngleMode::COSINE, angle_params,
+        dihedral_params
+    );
+    REQUIRE_THAT(reptate_energy_45, Catch::Matchers::WithinAbs(-reptate_energy_14, tol));
+}
+
