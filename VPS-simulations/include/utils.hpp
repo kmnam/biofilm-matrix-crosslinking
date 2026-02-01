@@ -573,7 +573,10 @@ T sampleAngleCosine(const T K, const T theta0, const T kT,
     {
         // Try sampling the next value from the Boltzmann distribution
         // (minus the Jacobian) 
-        T theta_new = vonMises<T>(theta0, kappa, rng, uniform_dist); 
+        T theta_new = vonMises<T>(theta0, kappa, rng, uniform_dist);
+
+        // The von Mises distribution runs from -\pi to \pi; make all negative
+        // angles positive 
         if (theta_new < 0)
             theta_new *= -1;
 

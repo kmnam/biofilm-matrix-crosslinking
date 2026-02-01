@@ -149,7 +149,7 @@ TEST_CASE(
 
     // Sample bond angles according to the cosine potential ... 
     const double K_angle = 20 * kT;  
-    const double theta0 = 160 * boost::math::constants::pi<double>() / 180;
+    const double theta0 = 140 * boost::math::constants::pi<double>() / 180;
     Array<double, Dynamic, 1> sample_angles_cosine(n); 
     for (int i = 0; i < n; ++i) 
         sample_angles_cosine(i) = sampleAngleCosine<double>(
