@@ -120,7 +120,10 @@ TEST_CASE(
 
 /**
  * Tests for sampleFene(), sampleAngleCosine(), sampleAngleDualGaussianMixture(),
- * and sampleDihedralHarmonic().  
+ * and sampleDihedralHarmonic(). 
+ *
+ * These tests involve a mix of assertions and statistical comparisons between 
+ * empirical and theoretically expected values.  
  */
 TEST_CASE(
     "Tests for bond length, bond angle, and dihedral angle sampling", 
@@ -130,9 +133,7 @@ TEST_CASE(
     // Sample bond lengths ... 
     boost::random::mt19937 rng(1234567890);
     boost::random::uniform_01<> uniform_dist;
-    const int n = 100; 
-    const double tol = 1e-5;
-
+    const int n = 2000; 
     const double kT = 1.380649e-2 * 300; 
     const double eps = kT;
     const double sigma = 0.9;  
@@ -144,7 +145,7 @@ TEST_CASE(
 
     // Check that the bond lengths are within (0, R0)
     REQUIRE((sample_lengths > 0).all());
-    REQUIRE((sample_lengths < R0).all());  
+    REQUIRE((sample_lengths < R0).all()); 
 
     // Sample bond angles according to the cosine potential ... 
     const double K_angle = 20 * kT;  
@@ -157,25 +158,117 @@ TEST_CASE(
 
     // Check that the bond angles are within [0, \pi)
     REQUIRE((sample_angles_cosine >= 0).all()); 
-    REQUIRE((sample_angles_cosine < boost::math::constants::pi<double>()).all());  
+    REQUIRE((sample_angles_cosine < boost::math::constants::pi<double>()).all()); 
+
+    // Estimate the mean of the underlying von Mises distribution
+    double mean_vonmises = 0; 
+    double denom = 0; 
+    for (int i = 0; i < sample_angles_cosine.size(); ++i)
+    {
+        // All angles should be in [0, \pi), so sin(theta) is positive
+        double theta = sample_angles_cosine(i);
+        mean_vonmises += theta / sin(theta); 
+        denom += 1.0 / sin(theta); 
+    }
+    mean_vonmises /= denom; 
+    std::cout << "Empirical vs. theoretical means from angles (cosine potential): "
+              << mean_vonmises << ", " << theta0 << std::endl;
+
+    // Estimate the variance of the underlying von Mises distribution
+    // (= 1 / concentration)
+    //
+    // First calculate sin(theta) for each angle theta
+    Matrix<double, Dynamic, 1> weights(sample_angles_cosine.size()); 
+    for (int i = 0; i < sample_angles_cosine.size(); ++i)
+    {
+        // All angles should be in [0, \pi), so sin(theta) is positive
+        double theta = sample_angles_cosine(i);
+        weights(i) = 1.0 / sin(theta); 
+    }
+
+    // Normalize the weights and calculate the effective sample size 
+    double total_weight = weights.sum();
+    weights /= total_weight; 
+    double effective_size = 1.0 / weights.dot(weights);
+
+    // Then estimate the variance 
+    double var_vonmises = 0;  
+    for (int i = 0; i < sample_angles_cosine.size(); ++i)
+    {
+        double theta = sample_angles_cosine(i);
+        double diff = theta - mean_vonmises; 
+        var_vonmises += weights(i) * diff * diff; 
+    }
+    var_vonmises *= (effective_size / (effective_size - 1));
+    std::cout << "Empirical vs. theoretical variances from angles (cosine potential): "
+              << var_vonmises << ", " << kT / K_angle << std::endl;  
 
     // Sample bond angles according to the dual Gaussian mixture potential ... 
-    const double A1 = 0.7; 
-    const double A2 = 0.3; 
+    double A1 = 0.7; 
+    double A2 = 0.3; 
     const double w1 = sqrt(1 / (10 * kT));
     const double w2 = sqrt(1 / (8 * kT));
     const double theta1 = 160 * boost::math::constants::pi<double>() / 180;
     const double theta2 = boost::math::constants::half_pi<double>(); 
-    Array<double, Dynamic, 1> sample_angles_dual(n); 
+    Array<double, Dynamic, 1> sample_angles_gaussian(n); 
     for (int i = 0; i < n; ++i) 
-        sample_angles_dual(i) = sampleAngleDualGaussianMixture<double>(
+        sample_angles_gaussian(i) = sampleAngleDualGaussianMixture<double>(
             A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist, 50
         );
 
     // Check that the bond angles are within [0, \pi)
-    REQUIRE((sample_angles_dual >= 0).all()); 
-    REQUIRE((sample_angles_dual < boost::math::constants::pi<double>()).all());  
+    REQUIRE((sample_angles_gaussian >= 0).all()); 
+    REQUIRE((sample_angles_gaussian < boost::math::constants::pi<double>()).all()); 
 
+    // Sample from just one Gaussian component
+    A1 = 0.0; 
+    A2 = 1.0; 
+    for (int i = 0; i < n; ++i) 
+        sample_angles_gaussian(i) = sampleAngleDualGaussianMixture<double>(
+            A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist, 50
+        );
+
+    // Divide each sampled angle by sin(theta) and check the mean 
+    double mean_gaussian = 0;
+    denom = 0; 
+    for (int i = 0; i < sample_angles_gaussian.size(); ++i)
+    {
+        double theta = sample_angles_gaussian(i); 
+        mean_gaussian += theta / sin(theta); 
+        denom += 1.0 / sin(theta); 
+    }
+    mean_gaussian /= denom; 
+    std::cout << "Empirical vs. theoretical means from angles (Gaussian potential): "
+              << mean_gaussian << ", " << theta2 << std::endl;
+
+    // Estimate the variance of the underlying von Mises distribution
+    // (= 1 / concentration)
+    //
+    // First calculate sin(theta) for each angle theta
+    for (int i = 0; i < sample_angles_gaussian.size(); ++i)
+    {
+        // All angles should be in [0, \pi), so sin(theta) is positive
+        double theta = sample_angles_gaussian(i);
+        weights(i) = 1.0 / sin(theta); 
+    }
+
+    // Normalize the weights and calculate the effective sample size 
+    total_weight = weights.sum();
+    weights /= total_weight; 
+    effective_size = 1.0 / weights.dot(weights);
+
+    // Then estimate the variance
+    double var_gaussian = 0;  
+    for (int i = 0; i < sample_angles_gaussian.size(); ++i)
+    {
+        double theta = sample_angles_gaussian(i);
+        double diff = theta - mean_gaussian; 
+        var_gaussian += weights(i) * diff * diff; 
+    }
+    var_gaussian *= (effective_size / (effective_size - 1));
+    std::cout << "Empirical vs. theoretical variances from angles (Gaussian potential): "
+              << var_gaussian << ", " << w2 * w2 << std::endl; 
+   
     // Sample dihedral angles ... 
     const double K_dihedral = 10 * kT; 
     Array<double, Dynamic, 1> sample_dihedrals(n); 
@@ -186,7 +279,39 @@ TEST_CASE(
 
     // Check that the dihedral angles are within [-\pi, \pi)
     REQUIRE((sample_dihedrals >= -boost::math::constants::pi<double>()).all()); 
-    REQUIRE((sample_dihedrals < boost::math::constants::pi<double>()).all());  
+    REQUIRE((sample_dihedrals < boost::math::constants::pi<double>()).all()); 
+
+    // Estimate the mean of the underlying von Mises distribution
+    double mean_dihedral = 0; 
+    for (int i = 0; i < sample_dihedrals.size(); ++i)
+    {
+        // If the angle is between -\pi and 0, add 2*\pi plus the angle
+        if (sample_dihedrals(i) < 0)
+            mean_dihedral += boost::math::constants::two_pi<double>() + sample_dihedrals(i); 
+        else 
+            mean_dihedral += sample_dihedrals(i); 
+    }
+    mean_dihedral /= sample_dihedrals.size(); 
+    std::cout << "Empirical vs. theoretical means from dihedrals: " 
+              << mean_dihedral << ", " << boost::math::constants::pi<double>() << std::endl;
+
+    // Estimate the variance of the underlying von Mises distribution
+    // (= 1 / concentration)
+    double var_dihedral = 0; 
+    for (int i = 0; i < sample_dihedrals.size(); ++i)
+    {
+        // If the angle is between -\pi and 0, add 2*\pi plus the angle
+        double theta; 
+        if (sample_dihedrals(i) < 0)
+            theta = boost::math::constants::two_pi<double>() + sample_dihedrals(i); 
+        else 
+            theta = sample_dihedrals(i);
+        double diff = theta - mean_dihedral; 
+        var_dihedral += (diff * diff);  
+    }
+    var_dihedral /= (sample_dihedrals.size() - 1); 
+    std::cout << "Empirical vs. theoretical variances from dihedrals: "
+              << var_dihedral << ", " << kT / K_dihedral << std::endl;  
 }
 
 /**
