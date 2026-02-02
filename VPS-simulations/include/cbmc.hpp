@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/1/2026
+ *     2/2/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -12,6 +12,7 @@
 #include <cmath>
 #include <string>
 #include <utility>
+#include <tuple>
 #include <limits>
 #include <vector>
 #include <unordered_map>
@@ -181,12 +182,15 @@ std::pair<Matrix<T, Dynamic, 3>,
  *                     Gaussian mixture potential parameters (A1, A2, w1, w2,
  *                     theta1, theta2). 
  * @param dihedral_params Dihedral angle potential parameters.
- * @returns The chosen move and reptation direction, along with its Metropolis
- *          acceptance probability and whether the move was taken. 
+ * @returns The reptation direction, the forward and reverse candidate moves, 
+ *          the index of the chosen (forward) move, its Metropolis acceptance
+ *          probability, and whether the move was taken. 
  */
 template <typename T>
 std::tuple<ReptationDirection,
-           Matrix<T, 3, 1>,
+           Matrix<T, Dynamic, 3>,
+           Matrix<T, Dynamic, 3>,
+           int, 
            T,
            bool> reptate(PolymerConfiguration<T>& config, const int n_candidates,
                          boost::random::mt19937& rng,
@@ -281,9 +285,13 @@ std::tuple<ReptationDirection,
             config.reptateTowardsTail(move);
     }
 
-    // Return the reptation direction, new atom, acceptance probability, and
-    // whether the move was taken 
-    return std::make_tuple(direction, move, prob_accept, (r < prob_accept)); 
+    // Return the reptation direction, the candidate forward and reverse moves, 
+    // the chosen new atom, the acceptance probability, and whether the move
+    // was taken 
+    return std::make_tuple(
+        direction, forward_moves, reverse_moves, move_idx, prob_accept,
+        (r < prob_accept)
+    ); 
 }
 
 /** ----------------------------------------------------------------- // 
@@ -491,12 +499,15 @@ std::pair<Matrix<T, Dynamic, 3 * SegmentLength>,
  *                     Gaussian mixture potential parameters (A1, A2, w1, w2,
  *                     theta1, theta2). 
  * @param dihedral_params Dihedral angle potential parameters.
- * @returns The chosen move and terminal segment end, along with its Metropolis
- *          acceptance probability and whether the move was taken. 
+ * @returns The terminal segment end, the forward and reverse candidate moves, 
+ *          the index of the chosen (forward) move, its Metropolis acceptance
+ *          probability, and whether the move was taken. 
  */
 template <typename T, size_t SegmentLength>
 std::tuple<TerminalSegmentEnd,
-           Matrix<T, Dynamic, 3>, 
+           Matrix<T, Dynamic, 3 * SegmentLength>,
+           Matrix<T, Dynamic, 3 * SegmentLength>,
+           int,  
            T,
            bool> moveTerminalSegment(PolymerConfiguration<T>& config,
                                      const int n_candidates,
@@ -612,9 +623,13 @@ std::tuple<TerminalSegmentEnd,
             config.replaceSegment(move, n - SegmentLength); 
     }
 
-    // Return the terminal segment end, new segment, acceptance probability,
-    // and whether the move was taken 
-    return std::make_tuple(direction, move, prob_accept, (r < prob_accept)); 
+    // Return the terminal segment end, the candidate forward and reverse moves, 
+    // the chosen new segment, the acceptance probability, and whether the move
+    // was taken 
+    return std::make_tuple(
+        direction, forward_moves, reverse_moves, move_idx, prob_accept,
+        (r < prob_accept)
+    ); 
 }
 
 /** ------------------------------------------------------------------- // 
