@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     1/30/2026
+ *     2/1/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -48,19 +48,19 @@ using std::isinf;
 
 using namespace Eigen;
 
-enum Units
+enum class Units
 {
     MICRO,
     NANO
 };
 
-enum AngleMode
+enum class AngleMode
 {
     COSINE,
     GAUSSIAN
 };
 
-enum ReptationDirection
+enum class ReptationDirection
 {
     HEAD,
     TAIL
