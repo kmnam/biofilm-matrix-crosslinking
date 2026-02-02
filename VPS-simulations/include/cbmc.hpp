@@ -406,14 +406,14 @@ std::pair<Matrix<T, Dynamic, 3 * SegmentLength>,
                 else if (j == 2)    // Third-to-last
                 {
                     r1 = coords.row(SegmentLength); 
-                    r2 = segment_i.row(SegmentLength - 2);
-                    r3 = segment_i.row(SegmentLength - 1); 
+                    r2 = segment_i.row(SegmentLength - 1);
+                    r3 = segment_i.row(SegmentLength - 2); 
                 }
                 else 
                 {
-                    r1 = segment_i.row(SegmentLength - 3); 
-                    r2 = segment_i.row(SegmentLength - 2); 
-                    r3 = segment_i.row(SegmentLength - 1);  
+                    r1 = segment_i.row(SegmentLength - 1 - j + 3); 
+                    r2 = segment_i.row(SegmentLength - 1 - j + 2); 
+                    r3 = segment_i.row(SegmentLength - 1 - j + 1);  
                 }
                 int idx = SegmentLength - 1 - j;
                 segment_i.row(idx) = generateNextAtomDihedral<T>(
@@ -460,9 +460,9 @@ std::pair<Matrix<T, Dynamic, 3 * SegmentLength>,
                 }
                 else 
                 {
-                    r1 = segment_i.row(0);
-                    r2 = segment_i.row(1); 
-                    r3 = segment_i.row(2); 
+                    r1 = segment_i.row(j - 3);
+                    r2 = segment_i.row(j - 2); 
+                    r3 = segment_i.row(j - 1); 
                 }
                 segment_i.row(j) = generateNextAtomDihedral<T>(
                     r1, r2, r3, lengths(i, j), angles(i, j), dihedrals(i, j),
