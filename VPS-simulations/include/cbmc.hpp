@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     1/31/2026
+ *     2/1/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -27,9 +27,15 @@ using boost::multiprecision::exp;
 using std::isnan; 
 using boost::multiprecision::isnan; 
 using std::isinf; 
-using boost::multiprecision::isinf; 
+using boost::multiprecision::isinf;
 
-enum CBMCMoveType
+enum class TerminalSegmentEnd
+{
+    HEAD,
+    TAIL
+};
+
+enum class CBMCMoveType
 {
     REPTATION,
     TERMINAL_SEGMENT,
@@ -38,13 +44,13 @@ enum CBMCMoveType
 
 /** ----------------------------------------------------------------- // 
  *                              REPTATION                             // 
- *  ----------------------------------------------------------------- */ 
+ *  ----------------------------------------------------------------- */
 /**
- * A configurational-bias Monte Carlo function for reptation of a linear
- * off-lattice polymer.  
+ * Generate possible reptation moves from the given configuration.
  *
  * @param config Current polymer configuration.
- * @param n_tries Number of candidate moves to generate.  
+ * @param direction Reptation direction. 
+ * @param n_candidates Number of candidate moves to generate.  
  * @param rng Random number generator. 
  * @param uniform_dist Pre-defined instance of standard uniform distribution.
  * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
@@ -56,22 +62,28 @@ enum CBMCMoveType
  *                     potential parameters (K and theta0) or the dual
  *                     Gaussian mixture potential parameters (A1, A2, w1, w2,
  *                     theta1, theta2). 
- * @param dihedral_params Dihedral angle potential parameters. 
+ * @param dihedral_params Dihedral angle potential parameters.
+ * @returns Arrays of candidate atomic positions for the new atom and the
+ *          corresponding reptation energy differences.  
  */
 template <typename T>
-void reptate(PolymerConfiguration<T>& config, const int n_tries,
-             boost::random::mt19937& rng, boost::random::uniform_01<>& uniform_dist,
-             std::unordered_map<std::string, T>& lj_params,
-             const T neighbor_threshold, 
-             std::unordered_map<std::string, T>& fene_params,
-             const AngleMode angle_mode, 
-             std::unordered_map<std::string, T>& angle_params, 
-             std::unordered_map<std::string, T>& dihedral_params)
+std::pair<Matrix<T, Dynamic, 3>,
+          Matrix<T, Dynamic, 1> > generateReptationMoves(PolymerConfiguration<T>& config,
+                                                         const ReptationDirection direction, 
+                                                         const int n_candidates,
+                                                         boost::random::mt19937& rng,
+                                                         boost::random::uniform_01<>& uniform_dist,
+                                                         std::unordered_map<std::string, T>& lj_params,
+                                                         const T neighbor_threshold, 
+                                                         std::unordered_map<std::string, T>& fene_params,
+                                                         const AngleMode angle_mode, 
+                                                         std::unordered_map<std::string, T>& angle_params, 
+                                                         std::unordered_map<std::string, T>& dihedral_params)
 {
     const int n = config.getLength(); 
     Matrix<T, Dynamic, 3> coords = config.getSegment(0, n);
-    Matrix<T, Dynamic, 3> tries(n_tries, 3);
-    Matrix<T, Dynamic, 1> forward_diffs(n_tries), reverse_diffs(n_tries);
+    Matrix<T, Dynamic, 3> moves(n_candidates, 3);
+    Matrix<T, Dynamic, 1> energy_diffs(n_candidates); 
 
     // Define the angle sampling function  
     std::function<T(boost::random::mt19937&)> sample_angle;
@@ -85,7 +97,7 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
             );
         };
     } 
-    else if (angle_mode == AngleMode::GAUSSIAN)
+    else     // angle_mode == AngleMode::GAUSSIAN
     {
         sample_angle = [&config, &angle_params, &uniform_dist](boost::random::mt19937& rng_) -> T
         {
@@ -96,21 +108,258 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
             );
         };
     }
-    else 
+
+    // Generate bond lengths, bond angles, and dihedral angles 
+    Matrix<T, Dynamic, 1> lengths(n_candidates),
+                          angles(n_candidates), 
+                          dihedrals(n_candidates);
+    for (int i = 0; i < n_candidates; ++i)
     {
-        throw std::runtime_error("Invalid angle potential mode specified"); 
+        lengths(i) = sampleFene<T>(
+            lj_params["eps"], lj_params["sigma"], fene_params["K"],
+            fene_params["R0"], config.kT, rng, uniform_dist, 50 
+        );
+        angles(i) = sample_angle(rng);
+        dihedrals(i) = sampleDihedralHarmonic<T>(
+            dihedral_params["K"], config.kT, rng, uniform_dist
+        );
     }
+     
+    if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
+    {
+        // Generate new candidate atomic positions at the head
+        for (int i = 0; i < n_candidates; ++i)
+        {
+            moves.row(i) = generateNextAtomDihedral<T>(
+                coords.row(2), coords.row(1), coords.row(0), lengths(i, 0),
+                angles(i, 0), dihedrals(i, 0), rng, uniform_dist,
+                (dihedrals(i, 0) > 0 ? 1 : -1)
+            );
+
+            // Get the non-bonded energy difference due to reptation
+            energy_diffs(i) = config.getReptationNonbondedEnergyDifference(
+                ReptationDirection::HEAD, moves.row(i), lj_params, neighbor_threshold
+            ); 
+        }
+    }
+    else        // Reptate towards the tail 
+    {
+        // Generate new candidate atomic positions at the tail 
+        for (int i = 0; i < n_candidates; ++i)
+        {
+            moves.row(i) = generateNextAtomDihedral<T>(
+                coords.row(n - 3), coords.row(n - 2), coords.row(n - 1),
+                lengths(i, 0), angles(i, 0), dihedrals(i, 0), rng, 
+                uniform_dist, (dihedrals(i, 0) > 0 ? 1 : -1)
+            );
+
+            // Get the non-bonded energy difference due to reptation
+            energy_diffs(i) = config.getReptationNonbondedEnergyDifference(
+                ReptationDirection::TAIL, moves.row(i), lj_params, neighbor_threshold
+            ); 
+        }
+    }
+
+    return std::make_pair(moves, energy_diffs); 
+}
+
+/**
+ * A configurational-bias Monte Carlo function for reptation of a linear
+ * off-lattice polymer.  
+ *
+ * @param config Current polymer configuration.
+ * @param n_candidates Number of candidate moves to generate.  
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+ * @param neighbor_threshold Distance threshold for identifying neighboring
+ *                           (non-bonded) atoms. 
+ * @param fene_params FENE parameters.
+ * @param angle_mode Angle potential type.  
+ * @param angle_params Angle potential parameters. Must include the cosine
+ *                     potential parameters (K and theta0) or the dual
+ *                     Gaussian mixture potential parameters (A1, A2, w1, w2,
+ *                     theta1, theta2). 
+ * @param dihedral_params Dihedral angle potential parameters.
+ * @returns The chosen move and reptation direction, along with its Metropolis
+ *          acceptance probability and whether the move was taken. 
+ */
+template <typename T>
+std::tuple<ReptationDirection,
+           Matrix<T, 3, 1>,
+           T,
+           bool> reptate(PolymerConfiguration<T>& config, const int n_candidates,
+                         boost::random::mt19937& rng,
+                         boost::random::uniform_01<>& uniform_dist,
+                         std::unordered_map<std::string, T>& lj_params,
+                         const T neighbor_threshold, 
+                         std::unordered_map<std::string, T>& fene_params,
+                         const AngleMode angle_mode, 
+                         std::unordered_map<std::string, T>& angle_params, 
+                         std::unordered_map<std::string, T>& dihedral_params)
+{
+    const int n = config.getLength(); 
+    Matrix<T, Dynamic, 3> coords = config.getSegment(0, n);
 
     // Identify whether to reptate towards the head or the tail
     const ReptationDirection direction = (
         uniform_dist(rng) < 0.5 ? ReptationDirection::HEAD : ReptationDirection::TAIL
     );
 
-    // Generate two sets of bond lengths, bond angles, and dihedral angles 
-    Matrix<T, Dynamic, 2> lengths(n_tries, 2), angles(n_tries, 2), dihedrals(n_tries, 2); 
-    for (int i = 0; i < n_tries; ++i)
+    // Generate forward moves 
+    auto forward_result = generateReptationMoves<T>(
+        config, direction, n_candidates, rng, uniform_dist, lj_params,
+        neighbor_threshold, fene_params, angle_mode, angle_params,
+        dihedral_params
+    );
+    Matrix<T, Dynamic, 3> forward_moves = forward_result.first;
+    Matrix<T, Dynamic, 1> forward_diffs = forward_result.second;  
+
+    // Calculate the forward Rosenbluth factor
+    Matrix<T, Dynamic, 1> forward_weights = ((-forward_diffs).array() / config.kT).exp().matrix(); 
+    T forward_rosenbluth = forward_weights.sum(); 
+
+    // Choose a candidate move 
+    std::vector<T> probs; 
+    for (int i = 0; i < n_candidates; ++i)
+        probs.push_back(forward_weights(i) / forward_rosenbluth); 
+    boost::random::discrete_distribution<> dist(probs);  
+    int move_idx = dist(rng);
+    Matrix<T, 3, 1> move = forward_moves.row(move_idx);
+
+    // Generate a copy of the current polymer configuration and swap in the
+    // chosen candidate move 
+    PolymerConfiguration<T> config_chosen(config);
+    if (direction == ReptationDirection::HEAD)
+        config_chosen.reptateTowardsHead(move); 
+    else 
+        config_chosen.reptateTowardsTail(move); 
+    Matrix<T, Dynamic, 3> coords_chosen = config_chosen.getSegment(0, n);
+
+    // Generate reverse moves from the chosen configuration 
+    const ReptationDirection reverse_direction = ( 
+        direction == ReptationDirection::HEAD ? ReptationDirection::TAIL : ReptationDirection::HEAD
+    ); 
+    auto reverse_result = generateReptationMoves<T>(
+        config_chosen, reverse_direction, n_candidates, rng, uniform_dist,
+        lj_params, neighbor_threshold, fene_params, angle_mode, angle_params,
+        dihedral_params
+    );
+    Matrix<T, Dynamic, 3> reverse_moves = reverse_result.first;
+    Matrix<T, Dynamic, 1> reverse_diffs = reverse_result.second;
+
+    // Add in the original configuration as one of the reverse moves
+    if (reverse_direction == ReptationDirection::HEAD)
+    { 
+        reverse_moves.row(move_idx) = coords.row(0); 
+        reverse_diffs(move_idx) = config_chosen.getReptationNonbondedEnergyDifference(
+            ReptationDirection::HEAD, coords.row(0), lj_params, neighbor_threshold
+        );
+    }
+    else 
     {
-        for (int j = 0; j < 2; ++j)
+        reverse_moves.row(move_idx) = coords.row(n - 1); 
+        reverse_diffs(move_idx) = config_chosen.getReptationNonbondedEnergyDifference(
+            ReptationDirection::TAIL, coords.row(n - 1), lj_params, neighbor_threshold
+        ); 
+    } 
+
+    // Calculate the reverse Rosenbluth factor
+    Matrix<T, Dynamic, 1> reverse_weights = ((-reverse_diffs).array() / config_chosen.kT).exp().matrix(); 
+    T reverse_rosenbluth = reverse_weights.sum(); 
+
+    // Calculate the Metropolis acceptance probability
+    T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
+
+    // Change the polymer configuration according to that probability
+    T r = uniform_dist(rng); 
+    if (r < prob_accept)
+    {
+        if (direction == ReptationDirection::HEAD)    // Reptate towards the head
+            config.reptateTowardsHead(move);
+        else                                          // Reptate towards the tail 
+            config.reptateTowardsTail(move);
+    }
+
+    // Return the reptation direction, new atom, acceptance probability, and
+    // whether the move was taken 
+    return std::make_tuple(direction, move, prob_accept, (r < prob_accept)); 
+}
+
+/** ----------------------------------------------------------------- // 
+ *                     MOVES OF TERMINAL SEGMENTS                     // 
+ *  ----------------------------------------------------------------- */
+/**
+ * Generate possible terminal segment moves from the given configuration.
+ *
+ * @param config Current polymer configuration.
+ * @param direction Choice of terminal segment to move. 
+ * @param n_candidates Number of candidate moves to generate.  
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+ * @param neighbor_threshold Distance threshold for identifying neighboring
+ *                           (non-bonded) atoms. 
+ * @param fene_params FENE parameters. 
+ * @param angle_mode Angle potential type.  
+ * @param angle_params Angle potential parameters. Must include the cosine
+ *                     potential parameters (K and theta0) or the dual
+ *                     Gaussian mixture potential parameters (A1, A2, w1, w2,
+ *                     theta1, theta2). 
+ * @param dihedral_params Dihedral angle potential parameters.
+ * @returns Arrays of candidate atomic positions for the new segment and the
+ *          corresponding reptation energy differences.  
+ */
+template <typename T, size_t SegmentLength>
+std::pair<Matrix<T, Dynamic, 3 * SegmentLength>, 
+          Matrix<T, Dynamic, 1> > generateTerminalSegmentMoves(PolymerConfiguration<T>& config,
+                                                               const TerminalSegmentEnd direction,
+                                                               const int n_candidates,
+                                                               boost::random::mt19937& rng,
+                                                               boost::random::uniform_01<>& uniform_dist,
+                                                               std::unordered_map<std::string, T>& lj_params, 
+                                                               const T neighbor_threshold, 
+                                                               std::unordered_map<std::string, T>& fene_params,
+                                                               const AngleMode angle_mode,  
+                                                               std::unordered_map<std::string, T>& angle_params,
+                                                               std::unordered_map<std::string, T>& dihedral_params)
+{
+    const int n = config.getLength(); 
+    Matrix<T, Dynamic, 3> coords = config.getSegment(0, n);
+    Matrix<T, Dynamic, 3 * SegmentLength> moves(n_candidates, 3 * SegmentLength);
+    Matrix<T, Dynamic, 1> energy_diffs(n_candidates); 
+
+    // Define the angle sampling function  
+    std::function<T(boost::random::mt19937&)> sample_angle;
+    if (angle_mode == AngleMode::COSINE)
+    {
+        sample_angle = [&config, &angle_params, &uniform_dist](boost::random::mt19937& rng_) -> T
+        {
+            return sampleAngleCosine<T>(
+                angle_params["K"], angle_params["theta0"], config.kT, rng_, 
+                uniform_dist, 50
+            );
+        };
+    } 
+    else     // angle_mode == AngleMode::GAUSSIAN
+    {
+        sample_angle = [&config, &angle_params, &uniform_dist](boost::random::mt19937& rng_) -> T
+        {
+            return sampleAngleDualGaussianMixture<T>(
+                angle_params["A1"], angle_params["A2"], angle_params["w1"],
+                angle_params["w2"], angle_params["theta1"], angle_params["theta2"],
+                config.kT, rng_, uniform_dist, 50
+            );
+        };
+    }
+
+    // Generate bond lengths, bond angles, and dihedral angles 
+    Matrix<T, Dynamic, Dynamic> lengths(n_candidates, SegmentLength),
+                                angles(n_candidates, SegmentLength),
+                                dihedrals(n_candidates, SegmentLength);
+    for (int i = 0; i < n_candidates; ++i)
+    {
+        for (int j = 0; j < SegmentLength; ++j)
         {
             lengths(i, j) = sampleFene<T>(
                 lj_params["eps"], lj_params["sigma"], fene_params["K"],
@@ -123,255 +372,10 @@ void reptate(PolymerConfiguration<T>& config, const int n_tries,
         }
     }
      
-    if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
-    {
-        // Generate new candidate atomic positions at the head
-        for (int i = 0; i < n_tries; ++i)
-        {
-            tries.row(i) = generateNextAtomDihedral<T>(
-                coords.row(2), coords.row(1), coords.row(0), lengths(i, 0),
-                angles(i, 0), dihedrals(i, 0), rng, uniform_dist,
-                (dihedrals(i, 0) > 0 ? 1 : -1)
-            );
-
-            // Get the non-bonded energy difference due to reptation
-            forward_diffs(i) = config.getReptationNonbondedEnergyDifference(
-                ReptationDirection::HEAD, tries.row(i), lj_params, neighbor_threshold
-            ); 
-        }
-    }
-    else        // Reptate towards the tail 
-    {
-        // Generate new candidate atomic positions at the tail 
-        for (int i = 0; i < n_tries; ++i)
-        {
-            tries.row(i) = generateNextAtomDihedral<T>(
-                coords.row(n - 3), coords.row(n - 2), coords.row(n - 1),
-                lengths(i, 0), angles(i, 0), dihedrals(i, 0), rng, 
-                uniform_dist, (dihedrals(i, 0) > 0 ? 1 : -1)
-            );
-
-            // Get the non-bonded energy difference due to reptation
-            forward_diffs(i) = config.getReptationNonbondedEnergyDifference(
-                ReptationDirection::TAIL, tries.row(i), lj_params, neighbor_threshold
-            ); 
-        }
-    }
-
-    // Calculate the forward Rosenbluth factor
-    Matrix<T, Dynamic, 1> forward_weights(n_tries);
-    T forward_rosenbluth = 0; 
-    for (int i = 0; i < n_tries; ++i)
-    {
-        forward_weights(i) = exp(-forward_diffs(i) / config.kT);
-        forward_rosenbluth += forward_weights(i);  
-    } 
-
-    // Choose a candidate move 
-    std::vector<T> probs; 
-    for (int i = 0; i < n_tries; ++i)
-        probs.push_back(forward_weights(i) / forward_rosenbluth); 
-    boost::random::discrete_distribution<> dist(probs);  
-    int move_idx = dist(rng);
-    Matrix<T, 3, 1> move = tries.row(move_idx);
-
-    // Generate a copy of the current polymer configuration and swap in the
-    // chosen candidate move 
-    PolymerConfiguration<T> config_chosen(config);
-    Matrix<T, Dynamic, 3> coords_chosen, tries_reverse(n_tries, 3);
-    if (direction == ReptationDirection::HEAD)    // Reptate towards the head
-    { 
-        config_chosen.reptateTowardsHead(move);
-        coords_chosen = config_chosen.getSegment(0, n); 
-
-        // Generate new *reverse* candidate atomic positions at the tail
-        for (int i = 0; i < n_tries; ++i)
-        {
-            // If we are reversing the chosen move, then the reverse move 
-            // is reverting to the original configuration
-            if (i == move_idx)
-            {
-                tries_reverse.row(i) = coords.row(n - 1); 
-            }
-            // Otherwise, we must generate a new reverse move, with a new
-            // atomic position for the tail  
-            else
-            {
-                tries_reverse.row(i) = generateNextAtomDihedral<T>(
-                    coords_chosen.row(n - 3), coords_chosen.row(n - 2),
-                    coords_chosen.row(n - 1), lengths(i, 1), angles(i, 1),
-                    dihedrals(i, 1), rng, uniform_dist, 
-                    (dihedrals(i, 1) > 0 ? 1 : -1)
-                );
-            }
-
-            // Get the non-bonded energy difference due to reptation
-            reverse_diffs(i) = config_chosen.getReptationNonbondedEnergyDifference(
-                ReptationDirection::TAIL, tries_reverse.row(i), lj_params,
-                neighbor_threshold
-            ); 
-        }
-    }
-    else         // Reptate towards the tail 
-    {
-        config_chosen.reptateTowardsTail(move);
-        coords_chosen = config_chosen.getSegment(0, n); 
-
-        // Generate new *reverse* candidate atomic positions at the head
-        for (int i = 0; i < n_tries; ++i)
-        {
-            // If we are reversing the chosen move, then the reverse move 
-            // is reverting to the original configuration
-            if (i == move_idx)
-            {
-                tries_reverse.row(i) = coords.row(0); 
-            }
-            // Otherwise, we must generate a new reverse move, with a new
-            // atomic position for the head 
-            else
-            {
-                tries_reverse.row(i) = generateNextAtomDihedral<T>(
-                    coords_chosen.row(2), coords_chosen.row(1),
-                    coords_chosen.row(0), lengths(i, 1), angles(i, 1),
-                    dihedrals(i, 1), rng, uniform_dist, 
-                    (dihedrals(i, 1) > 0 ? 1 : -1)
-                );
-            }
-
-            // Get the non-bonded energy difference due to reptation
-            reverse_diffs(i) = config_chosen.getReptationNonbondedEnergyDifference(
-                ReptationDirection::HEAD, tries_reverse.row(i), lj_params,
-                neighbor_threshold
-            ); 
-        }
-    }
-
-    // Calculate the reverse Rosenbluth factor
-    Matrix<T, Dynamic, 1> reverse_weights(n_tries);
-    T reverse_rosenbluth = 0; 
-    for (int i = 0; i < n_tries; ++i)
-    {
-        reverse_weights(i) = exp(-reverse_diffs(i) / config_chosen.kT);
-        reverse_rosenbluth += reverse_weights(i);  
-    }
-
-    // Calculate the Metropolis acceptance probability
-    T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
-
-    // Change the polymer configuration according to that probability
-    T r = uniform_dist(rng); 
-    if (r < prob_accept)
-    {
-        if (direction == ReptationDirection::HEAD)    // Reptate towards the head
-            config.reptateTowardsHead(move); 
-        else                                          // Reptate towards the tail 
-            config.reptateTowardsTail(move); 
-    }
-}
-
-/** ----------------------------------------------------------------- // 
- *                     MOVES OF TERMINAL SEGMENTS                     // 
- *  ----------------------------------------------------------------- */ 
-/**
- * A configurational-bias Monte Carlo function for movement of terminal 
- * segments in a linear off-lattice polymer.  
- *
- * @param config Current polymer configuration.
- * @param n_tries Number of candidate moves to generate.  
- * @param rng Random number generator. 
- * @param uniform_dist Pre-defined instance of standard uniform distribution.
- * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
- * @param neighbor_threshold Distance threshold for identifying neighboring
- *                           (non-bonded) atoms. 
- * @param fene_params FENE parameters. 
- * @param angle_mode Angle potential type.  
- * @param angle_params Angle potential parameters. Must include the cosine
- *                     potential parameters (K and theta0) or the dual
- *                     Gaussian mixture potential parameters (A1, A2, w1, w2,
- *                     theta1, theta2). 
- * @param dihedral_params Dihedral angle potential parameters. 
- */
-template <typename T, size_t SegmentLength>
-void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
-                                 const int n_tries, boost::random::mt19937& rng,
-                                 boost::random::uniform_01<>& uniform_dist,
-                                 std::unordered_map<std::string, T>& lj_params, 
-                                 const T neighbor_threshold, 
-                                 std::unordered_map<std::string, T>& fene_params,
-                                 const AngleMode angle_mode,  
-                                 std::unordered_map<std::string, T>& angle_params,
-                                 std::unordered_map<std::string, T>& dihedral_params)
-{
-    const int n = config.getLength(); 
-    Matrix<T, Dynamic, 3> coords = config.getSegment(0, n);
-    Matrix<T, Dynamic, 3 * SegmentLength> tries(n_tries, 3 * SegmentLength);
-    Matrix<T, Dynamic, 1> forward_diffs(n_tries), reverse_diffs(n_tries);
-
-    // Define the angle sampling function  
-    std::function<T(boost::random::mt19937&)> sample_angle;
-    if (angle_mode == AngleMode::COSINE)
-    {
-        sample_angle = [&config, &angle_params, &uniform_dist](boost::random::mt19937& rng_) -> T
-        {
-            return sampleAngleCosine<T>(
-                angle_params["K"], angle_params["theta0"], config.kT, rng_, 
-                uniform_dist, 50
-            );
-        };
-    } 
-    else if (angle_mode == AngleMode::GAUSSIAN)
-    {
-        sample_angle = [&config, &angle_params, &uniform_dist](boost::random::mt19937& rng_) -> T
-        {
-            return sampleAngleDualGaussianMixture<T>(
-                angle_params["A1"], angle_params["A2"], angle_params["w1"],
-                angle_params["w2"], angle_params["theta1"], angle_params["theta2"],
-                config.kT, rng_, uniform_dist, 50
-            );
-        };
-    }
-    else 
-    {
-        throw std::runtime_error("Invalid angle potential mode specified"); 
-    }
-
-    // Identify whether to move the terminal segment at the head or the tail 
-    const bool head = (uniform_dist(rng) < 0.5);
-
-    // Generate two sets of bond lengths, bond angles, and dihedral angles 
-    Matrix<T, Dynamic, Dynamic> lengths_forward(n_tries, SegmentLength),
-                                angles_forward(n_tries, SegmentLength),
-                                dihedrals_forward(n_tries, SegmentLength),
-                                lengths_reverse(n_tries, SegmentLength),
-                                angles_reverse(n_tries, SegmentLength), 
-                                dihedrals_reverse(n_tries, SegmentLength); 
-    for (int i = 0; i < n_tries; ++i)
-    {
-        for (int j = 0; j < SegmentLength; ++j)
-        {
-            lengths_forward(i, j) = sampleFene<T>(
-                lj_params["eps"], lj_params["sigma"], fene_params["K"],
-                fene_params["R0"], config.kT, rng, uniform_dist, 50 
-            );
-            lengths_reverse(i, j) = sampleFene<T>(
-                lj_params["eps"], lj_params["sigma"], fene_params["K"],
-                fene_params["R0"], config.kT, rng, uniform_dist, 50 
-            ); 
-            angles_forward(i, j) = sample_angle(rng);
-            angles_reverse(i, j) = sample_angle(rng);  
-            dihedrals_forward(i, j) = sampleDihedralHarmonic<T>(
-                dihedral_params["K"], config.kT, rng, uniform_dist
-            );
-            dihedrals_reverse(i, j) = sampleDihedralHarmonic<T>(
-                dihedral_params["K"], config.kT, rng, uniform_dist
-            );
-        }
-    }
-     
-    if (head)    // Move the terminal segment at the head 
+    if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
     {
         // Generate new candidate atomic positions for the head segment
-        for (int i = 0; i < n_tries; ++i)
+        for (int i = 0; i < n_candidates; ++i)
         {
             Matrix<T, Dynamic, 3> segment_i(SegmentLength, 3); 
 
@@ -405,15 +409,14 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
                 }
                 int idx = SegmentLength - 1 - j;
                 segment_i.row(idx) = generateNextAtomDihedral<T>(
-                    r1, r2, r3, lengths_forward(i, j), angles_forward(i, j),
-                    dihedrals_forward(i, j), rng, uniform_dist, 
-                    (dihedrals_forward(i, j) > 0 ? 1 : -1)
+                    r1, r2, r3, lengths(i, j), angles(i, j), dihedrals(i, j),
+                    rng, uniform_dist, (dihedrals(i, j) > 0 ? 1 : -1)
                 );
-                tries(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
+                moves(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
             }
 
             // Get the non-bonded energy difference due to segment replacement
-            forward_diffs(i) = config.getSegmentReplacementNonbondedEnergyDifference(
+            energy_diffs(i) = config.getSegmentReplacementNonbondedEnergyDifference(
                 segment_i, 0, lj_params, neighbor_threshold
             ); 
         }
@@ -421,7 +424,7 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
     else        // Move the terminal segment at the tail 
     {
         // Generate new candidate atomic positions for the tail segment
-        for (int i = 0; i < n_tries; ++i)
+        for (int i = 0; i < n_candidates; ++i)
         {
             Matrix<T, Dynamic, 3> segment_i(SegmentLength, 3); 
 
@@ -454,188 +457,147 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
                     r3 = segment_i.row(2); 
                 }
                 segment_i.row(j) = generateNextAtomDihedral<T>(
-                    r1, r2, r3, lengths_forward(i, j), angles_forward(i, j),
-                    dihedrals_forward(i, j), rng, uniform_dist,
-                    (dihedrals_forward(i, j) > 0 ? 1 : -1)
+                    r1, r2, r3, lengths(i, j), angles(i, j), dihedrals(i, j),
+                    rng, uniform_dist, (dihedrals(i, j) > 0 ? 1 : -1)
                 );
-                tries(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
+                moves(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
             }
 
             // Get the non-bonded energy difference due to segment replacement
-            forward_diffs(i) = config.getSegmentReplacementNonbondedEnergyDifference(
+            energy_diffs(i) = config.getSegmentReplacementNonbondedEnergyDifference(
                 segment_i, n - SegmentLength, lj_params, neighbor_threshold
             ); 
         }
     }
 
+    return std::make_pair(moves, energy_diffs); 
+}
+
+/**
+ * A configurational-bias Monte Carlo function for movement of terminal 
+ * segments in a linear off-lattice polymer.  
+ *
+ * @param config Current polymer configuration.
+ * @param n_tries Number of candidate moves to generate.  
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+ * @param neighbor_threshold Distance threshold for identifying neighboring
+ *                           (non-bonded) atoms. 
+ * @param fene_params FENE parameters. 
+ * @param angle_mode Angle potential type.  
+ * @param angle_params Angle potential parameters. Must include the cosine
+ *                     potential parameters (K and theta0) or the dual
+ *                     Gaussian mixture potential parameters (A1, A2, w1, w2,
+ *                     theta1, theta2). 
+ * @param dihedral_params Dihedral angle potential parameters.
+ * @returns The chosen move and terminal segment end, along with its Metropolis
+ *          acceptance probability and whether the move was taken. 
+ */
+template <typename T, size_t SegmentLength>
+std::tuple<TerminalSegmentEnd,
+           Matrix<T, Dynamic, 3>, 
+           T,
+           bool> moveTerminalSegment(PolymerConfiguration<T>& config,
+                                     const int n_candidates,
+                                     boost::random::mt19937& rng,
+                                     boost::random::uniform_01<>& uniform_dist,
+                                     std::unordered_map<std::string, T>& lj_params, 
+                                     const T neighbor_threshold, 
+                                     std::unordered_map<std::string, T>& fene_params,
+                                     const AngleMode angle_mode,  
+                                     std::unordered_map<std::string, T>& angle_params,
+                                     std::unordered_map<std::string, T>& dihedral_params)
+{
+    const int n = config.getLength(); 
+    Matrix<T, Dynamic, 3> coords = config.getSegment(0, n);
+
+    // Identify whether to move the terminal segment at the head or the tail 
+    const TerminalSegmentEnd direction = (
+        uniform_dist(rng) < 0.5 ? TerminalSegmentEnd::HEAD : TerminalSegmentEnd::TAIL
+    );
+
+    // Generate forward moves
+    auto forward_result = generateTerminalSegmentMoves<T, SegmentLength>(
+        config, direction, n_candidates, rng, uniform_dist, lj_params,
+        neighbor_threshold, fene_params, angle_mode, angle_params,
+        dihedral_params
+    );
+    Matrix<T, Dynamic, 3 * SegmentLength> forward_moves = forward_result.first;
+    Matrix<T, Dynamic, 1> forward_diffs = forward_result.second;  
+
     // Calculate the forward Rosenbluth factor
-    Matrix<T, Dynamic, 1> forward_weights(n_tries);
-    T forward_rosenbluth = 0; 
-    for (int i = 0; i < n_tries; ++i)
-    {
-        forward_weights(i) = exp(-forward_diffs(i) / config.kT);
-        forward_rosenbluth += forward_weights(i);  
-    } 
+    Matrix<T, Dynamic, 1> forward_weights = ((-forward_diffs).array() / config.kT).exp().matrix(); 
+    T forward_rosenbluth = forward_weights.sum(); 
 
     // Choose a candidate move 
     std::vector<T> probs; 
-    for (int i = 0; i < n_tries; ++i)
+    for (int i = 0; i < n_candidates; ++i)
         probs.push_back(forward_weights(i) / forward_rosenbluth); 
     boost::random::discrete_distribution<> dist(probs);  
     int move_idx = dist(rng);
     Matrix<T, Dynamic, 3> move(SegmentLength, 3); 
     for (int i = 0; i < SegmentLength; ++i)
     {
-        move(i, 0) = tries(move_idx, 3 * i); 
-        move(i, 1) = tries(move_idx, 3 * i + 1); 
-        move(i, 2) = tries(move_idx, 3 * i + 2); 
+        move(i, 0) = forward_moves(move_idx, 3 * i); 
+        move(i, 1) = forward_moves(move_idx, 3 * i + 1); 
+        move(i, 2) = forward_moves(move_idx, 3 * i + 2); 
     }
 
     // Generate a copy of the current polymer configuration and swap in the
     // chosen candidate move 
     PolymerConfiguration<T> config_chosen(config);
-    Matrix<T, Dynamic, 3> coords_chosen; 
-    Matrix<T, Dynamic, 3 * SegmentLength> tries_reverse(n_tries, 3 * SegmentLength);
-    if (head)    // Move the terminal segment at the head 
-    { 
+    if (direction == TerminalSegmentEnd::HEAD)
         config_chosen.replaceSegment(move, 0); 
-        coords_chosen = config_chosen.getSegment(0, n); 
+    else 
+        config_chosen.replaceSegment(move, n - SegmentLength);
+    Matrix<T, Dynamic, 3> coords_chosen = config_chosen.getSegment(0, n);
 
-        // Generate new *reverse* candidate atomic positions at the head 
-        for (int i = 0; i < n_tries; ++i)
-        {
-            // If we are reversing the chosen move, then the reverse move 
-            // is reverting to the original configuration
-            if (i == move_idx)
-            {
-                for (int j = 0; j < SegmentLength; ++j)
-                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = coords.row(j);
-                reverse_diffs(i) = -forward_diffs(i);  
-            }
-            // Otherwise, we must generate a new reverse move, with new
-            // atomic positions for the head segment  
-            else
-            {
-                Matrix<T, Dynamic, 3> segment_i(SegmentLength, 3); 
+    // Generate reverse moves from the chosen configuration 
+    const TerminalSegmentEnd reverse_direction = ( 
+        direction == TerminalSegmentEnd::HEAD ? TerminalSegmentEnd::TAIL : TerminalSegmentEnd::HEAD
+    );
+    auto reverse_result = generateTerminalSegmentMoves<T, SegmentLength>(
+        config_chosen, reverse_direction, n_candidates, rng, uniform_dist,
+        lj_params, neighbor_threshold, fene_params, angle_mode, angle_params,
+        dihedral_params
+    );
+    Matrix<T, Dynamic, 3 * SegmentLength> reverse_moves = reverse_result.first;
+    Matrix<T, Dynamic, 1> reverse_diffs = reverse_result.second;
 
-                // Move backwards from atom (SegmentLength) in the polymer  
-                for (int j = 0; j < SegmentLength; ++j)
-                {
-                    Matrix<T, 3, 1> r1, r2, r3; 
-                    if (j == 0)         // Last atom in the second (closest to the polymer)
-                    {
-                        r1 = coords_chosen.row(SegmentLength + 2);
-                        r2 = coords_chosen.row(SegmentLength + 1); 
-                        r3 = coords_chosen.row(SegmentLength);  
-                    }
-                    else if (j == 1)    // Second-to-last
-                    {
-                        r1 = coords_chosen.row(SegmentLength + 1); 
-                        r2 = coords_chosen.row(SegmentLength); 
-                        r3 = segment_i.row(SegmentLength - 1); 
-                    }
-                    else if (j == 2)
-                    {
-                        r1 = coords_chosen.row(SegmentLength); 
-                        r2 = segment_i.row(SegmentLength - 2);
-                        r3 = segment_i.row(SegmentLength - 1); 
-                    }
-                    else 
-                    {
-                        r1 = segment_i.row(SegmentLength - 3); 
-                        r2 = segment_i.row(SegmentLength - 2); 
-                        r3 = segment_i.row(SegmentLength - 1);  
-                    }
-                    int idx = SegmentLength - 1 - j;
-                    segment_i.row(idx) = generateNextAtomDihedral<T>(
-                        r1, r2, r3, lengths_reverse(i, j), angles_reverse(i, j),
-                        dihedrals_reverse(i, j), rng, uniform_dist, 
-                        (dihedrals_reverse(i, j) > 0 ? 1 : -1)
-                    );
-                    tries_reverse(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
-                }
-
-                // Get the non-bonded energy difference due to segment replacement
-                reverse_diffs(i) = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
-                    segment_i, 0, lj_params, neighbor_threshold
-                ); 
-            }
-        }
-    }
-    else        // Move the terminal segment at the tail 
+    // Add in the original configuration as one of the reverse moves
+    if (reverse_direction == TerminalSegmentEnd::HEAD)
     {
-        config_chosen.replaceSegment(move, n - SegmentLength); 
-        coords_chosen = config_chosen.getSegment(0, n); 
-
-        // Generate new *reverse* candidate atomic positions at the head
-        for (int i = 0; i < n_tries; ++i)
+        Matrix<T, Dynamic, 3> segment = coords(Eigen::seqN(0, SegmentLength), Eigen::all); 
+        for (int i = 0; i < SegmentLength; ++i)
         {
-            // If we are reversing the chosen move, then the reverse move 
-            // is reverting to the original configuration
-            if (i == move_idx)
-            {
-                for (int j = 0; j < SegmentLength; ++j)
-                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = coords.row(j);
-                reverse_diffs(i) = -forward_diffs(i);  
-            }
-            // Otherwise, we must generate a new reverse move, with new
-            // atomic positions for the tail segment 
-            else
-            {
-                Matrix<T, Dynamic, 3> segment_i(SegmentLength, 3); 
-
-                // Move forward from atom (n - SegmentLength) in the polymer 
-                for (int j = 0; j < SegmentLength; ++j)
-                {
-                    Matrix<T, 3, 1> r1, r2, r3; 
-                    if (j == 0)
-                    {
-                        r1 = coords_chosen.row(n - SegmentLength - 3);
-                        r2 = coords_chosen.row(n - SegmentLength - 2); 
-                        r3 = coords_chosen.row(n - SegmentLength - 1);  
-                    }
-                    else if (j == 1)
-                    {
-                        r1 = coords_chosen.row(n - SegmentLength - 2); 
-                        r2 = coords_chosen.row(n - SegmentLength - 1); 
-                        r3 = segment_i.row(0); 
-                    }
-                    else if (j == 2)
-                    {
-                        r1 = coords_chosen.row(n - SegmentLength - 1); 
-                        r2 = segment_i.row(0);
-                        r3 = segment_i.row(1);
-                    }
-                    else 
-                    {
-                        r1 = segment_i.row(0);
-                        r2 = segment_i.row(1);
-                        r3 = segment_i.row(2);
-                    }
-                    segment_i.row(j) = generateNextAtomDihedral<T>(
-                        r1, r2, r3, lengths_reverse(i, j), angles_reverse(i, j),
-                        dihedrals_reverse(i, j), rng, uniform_dist,
-                        (dihedrals_reverse(i, j) > 0 ? 1 : -1)
-                    );
-                    tries_reverse(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
-                }
-
-                // Get the non-bonded energy difference due to segment replacement
-                reverse_diffs(i) = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
-                    segment_i, n - SegmentLength, lj_params, neighbor_threshold
-                ); 
-            }
+            reverse_moves(move_idx, 3 * i) = segment(i, 0); 
+            reverse_moves(move_idx, 3 * i + 1) = segment(i, 1); 
+            reverse_moves(move_idx, 3 * i + 2) = segment(i, 2); 
         }
+        reverse_diffs(move_idx) = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
+            segment, 0, lj_params, neighbor_threshold 
+        );
     }
+    else 
+    {
+        Matrix<T, Dynamic, 3> segment = coords(
+            Eigen::seqN(n - SegmentLength, SegmentLength), Eigen::all
+        );
+        for (int i = 0; i < SegmentLength; ++i)
+        {
+            reverse_moves(move_idx, 3 * i) = segment(i, 0); 
+            reverse_moves(move_idx, 3 * i + 1) = segment(i, 1); 
+            reverse_moves(move_idx, 3 * i + 2) = segment(i, 2); 
+        }
+        reverse_diffs(move_idx) = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
+            segment, n - SegmentLength, lj_params, neighbor_threshold
+        ); 
+    } 
 
     // Calculate the reverse Rosenbluth factor
-    Matrix<T, Dynamic, 1> reverse_weights(n_tries);
-    T reverse_rosenbluth = 0; 
-    for (int i = 0; i < n_tries; ++i)
-    {
-        reverse_weights(i) = exp(-reverse_diffs(i) / config_chosen.kT);
-        reverse_rosenbluth += reverse_weights(i);  
-    }
+    Matrix<T, Dynamic, 1> reverse_weights = ((-reverse_diffs).array() / config_chosen.kT).exp().matrix(); 
+    T reverse_rosenbluth = reverse_weights.sum(); 
 
     // Calculate the Metropolis acceptance probability
     T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
@@ -644,11 +606,15 @@ void generateTerminalSegmentMove(PolymerConfiguration<T>& config,
     T r = uniform_dist(rng); 
     if (r < prob_accept)
     {
-        if (head)    // Move the terminal segment at the head 
+        if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
             config.replaceSegment(move, 0); 
-        else         // Move the terminal segment at the tail 
+        else                                          // Move the terminal segment at the tail 
             config.replaceSegment(move, n - SegmentLength); 
     }
+
+    // Return the terminal segment end, new segment, acceptance probability,
+    // and whether the move was taken 
+    return std::make_tuple(direction, move, prob_accept, (r < prob_accept)); 
 }
 
 /** ------------------------------------------------------------------- // 
@@ -948,10 +914,7 @@ std::pair<Matrix<T, Dynamic, 3>, T> chooseSegmentMove(PolymerConfiguration<T>& c
     T prob_accept = 1; 
     if (reverse_rosenbluth > 0)
     {
-        prob_accept = min(
-            1.0, forward_rosenbluth / reverse_rosenbluth
-            //exp(-forward_weights(move_idx)) * (forward_rosenbluth / reverse_rosenbluth)
-        );
+        prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
     }
     return std::make_pair(segment_new, prob_accept);
 }
@@ -1191,7 +1154,7 @@ Matrix<T, Dynamic, Dynamic> runCBMC(PolymerConfiguration<T>& config,
         }
         else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
         {
-            generateTerminalSegmentMove<T, SegmentLength>(
+            moveTerminalSegment<T, SegmentLength>(
                 config, n_tries, rng, uniform_dist, lj_params, neighbor_threshold, 
                 fene_params, angle_mode, angle_params, dihedral_params
             );  
