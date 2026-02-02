@@ -129,7 +129,7 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
     REQUIRE(config.getLength() == 10);
     REQUIRE(coords.rows() == 10);  
 
-    // Try generating one reptation move at the head 
+    // Try generating 50 reptation moves at the head 
     result = generateReptationMoves<double>(
         config, ReptationDirection::HEAD, n_candidates, rng, uniform_dist,
         lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
@@ -157,7 +157,7 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
             )  
         );
 
-    // Try generating one reptation move at the tail
+    // Try generating 50 reptation moves at the tail
     result = generateReptationMoves<double>(
         config, ReptationDirection::TAIL, n_candidates, rng, uniform_dist,
         lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
