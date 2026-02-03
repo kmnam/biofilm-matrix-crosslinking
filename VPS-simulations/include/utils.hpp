@@ -128,7 +128,7 @@ Matrix<T, 3, 3> getRotation(const Ref<const Matrix<T, 3, 1> >& u, const T theta)
     // Use Rodrigues' formula for axis-angle rotation
     T c1 = cos(theta); 
     T c2 = 1 - c1; 
-    T s = sin_theta; 
+    T s = sin(theta); 
     Matrix<T, 3, 3> rot;  
     rot << c1 + u(0) * u(0) * c2,           // First row
            u(0) * u(1) * c2 - u(2) * s,
