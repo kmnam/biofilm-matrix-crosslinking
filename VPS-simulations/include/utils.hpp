@@ -2147,7 +2147,139 @@ class PolymerConfiguration
                 angle_mode, angle_params, dihedral_params
             ); 
             return energy_new - energy_curr; 
-        } 
+        }
+
+        /**
+         * Get the energy difference between the current polymer configuration 
+         * and the configuration that would arise by rotating the head segment
+         * [0, ..., idx - 1] by the given angle about the given axis, with 
+         * the indicated atom serving as the center. 
+         *
+         * @param idx Index demarcating the head segment to rotate. 
+         * @param theta Angle to rotate the segment by. 
+         * @param u Rotation axis. 
+         * @param idx_center Index of atom serving as the center of rotation. 
+         * @returns Energy difference due to rotation.  
+         */ 
+        T getHeadRotationEnergyDifference(const int idx, const T theta, 
+                                          const Ref<const Matrix<T, 3, 1> >& u, 
+                                          const int idx_center,
+                                          std::unordered_map<std::string, T>& lj_params,
+                                          const T neighbor_threshold,
+                                          const AngleMode angle_mode, 
+                                          std::unordered_map<std::string, T>& angle_params, 
+                                          std::unordered_map<std::string, T>& dihedral_params)
+        {
+            // Get the rotated coordinates of the segment
+            //
+            // Get the rotation matrix 
+            Matrix<T, 3, 3> rot = getRotation<T>(u, theta);
+
+            // For each atom in the segment ...
+            Matrix<T, 3, 1> center = this->r.row(idx_center);
+            Matrix<T, Dynamic, 3> rotated_coords(idx, 3);
+            for (int i = 0; i < idx; ++i)
+            {
+                // Transform the atom according to the rotation 
+                Matrix<T, 3, 1> delta = this->r.row(i) - center; 
+                rotated_coords.row(i) = center + rot * delta; 
+            }
+
+            // Get the non-bonded interaction energy between the atoms in 
+            // the head segment and the atoms in [idx, ..., n], both before
+            // and after the rotation
+            T energy_curr = 0; 
+            T energy_new = 0;  
+            Matrix<T, Dynamic, 3> neighbors_curr = getNeighbors<T>(
+                this->r(Eigen::seq(idx, this->length - 1), Eigen::all), 
+                this->r(Eigen::seq(0, idx - 1), Eigen::all), neighbor_threshold
+            );
+            Matrix<T, Dynamic, 3> neighbors_new = getNeighbors<T>(
+                this->r(Eigen::seq(idx, this->length - 1), Eigen::all), 
+                rotated_coords, neighbor_threshold
+            ); 
+            for (int i = 0; i < neighbors_curr.rows(); ++i)
+                energy_curr += lj<T>(
+                    neighbors_curr(i, 2), lj_params["eps"], lj_params["sigma"],
+                    true
+                );
+            for (int i = 0; i < neighbors_new.rows(); ++i)
+                energy_new += lj<T>(
+                    neighbors_new(i, 2), lj_params["eps"], lj_params["sigma"],
+                    true
+                );
+
+            // There should be no changes in bond lengths 
+            //
+            // Account for the possible change in bond angle at atom idx
+            Matrix<T, 3, 1> u_curr = this->r.row(idx - 1) - this->r.row(idx); 
+            Matrix<T, 3, 1> u_new = rotated_coords.row(idx - 1) - this->r.row(idx); 
+            Matrix<T, 3, 1> v = this->r.row(idx + 1) - this->r.row(idx); 
+            if (angle_mode == AngleMode::COSINE)
+            {
+                energy_curr += angleCosine<T>(
+                    acosSafe<T>(u_curr.dot(v)), angle_params["K"],
+                    angle_params["theta0"]
+                ); 
+                energy_new += angleCosine<T>(
+                    acosSafe<T>(u_new.dot(v)), angle_params["K"],
+                    angle_params["theta0"]
+                );
+            }
+            else    // angle_mode == AngleMode::GAUSSIAN
+            {
+                energy_curr += angleDualGaussianMixture<T>(
+                    acosSafe<T>(u_curr.dot(v)), angle_params["A1"],
+                    angle_params["A2"], angle_params["w1"], angle_params["w2"],
+                    angle_params["theta1"], angle_params["theta2"], this->kT
+                ); 
+                energy_new += angleDualGaussianMixture<T>(
+                    acosSafe<T>(u_new.dot(v)), angle_params["A1"],
+                    angle_params["A2"], angle_params["w1"], angle_params["w2"],
+                    angle_params["theta1"], angle_params["theta2"], this->kT
+                );
+            }
+
+            // Account for the possible change in dihedral angle along atoms
+            // idx - 2, idx - 1, idx, idx + 1
+            T phi1_curr = getDihedral<T>(
+                this->r.row(idx - 2), this->r.row(idx - 1), this->r.row(idx),
+                this->r.row(idx + 1)
+            );
+            T phi1_new = getDihedral<T>(
+                rotated_coords.row(idx - 2), rotated_coords.row(idx - 1),
+                this->r.row(idx), this->r.row(idx + 1)
+            );  
+            energy_curr += dihedralHarmonic<T>(
+                phi1_curr, dihedral_params["K"], dihedral_params["d"], 
+                dihedral_params["n"]
+            ); 
+            energy_new += dihedralHarmonic<T>(
+                phi1_new, dihedral_params["K"], dihedral_params["d"], 
+                dihedral_params["n"]
+            );
+
+            // Account for the possible change in dihedral angle along atoms
+            // idx - 1, idx, idx + 1, idx + 2
+            T phi2_curr = getDihedral<T>(
+                this->r.row(idx - 1), this->r.row(idx), this->r.row(idx + 1),
+                this->r.row(idx + 2)
+            );
+            T phi2_new = getDihedral<T>(
+                rotated_coords.row(idx - 1), this->r.row(idx),
+                this->r.row(idx + 1), this->r.row(idx + 2)
+            );  
+            energy_curr += dihedralHarmonic<T>(
+                phi2_curr, dihedral_params["K"], dihedral_params["d"], 
+                dihedral_params["n"]
+            ); 
+            energy_new += dihedralHarmonic<T>(
+                phi2_new, dihedral_params["K"], dihedral_params["d"], 
+                dihedral_params["n"]
+            );
+
+            return energy_new - energy_curr; 
+        }
 
         /**
          * Get the Metropolis-Hastings acceptance probability of switching
