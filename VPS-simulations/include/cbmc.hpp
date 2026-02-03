@@ -1742,15 +1742,13 @@ class PolymerCBMCSampler
          *            returned sample, to reduce auto-correlation. 
          * @returns Representative sub-sample of sampled configurations.  
          */
-        template <typename T>
-        Matrix<T, Dynamic, Dynamic> runCBMC(const int n_candidates, 
-                                            std::unordered_map<std::string, T>& internal_move_params, 
-                                            const Ref<const Matrix<T, 3, 1> >& move_probs,
-                                            const int terminal_segment_length, 
-                                            const int internal_segment_length,
-                                            const int max_iter,
-                                            const int n_burnin, const int mod, 
-                                            const bool verbose = false)
+        Matrix<T, Dynamic, Dynamic> run(const int n_candidates, 
+                                        std::unordered_map<std::string, T>& internal_move_params, 
+                                        const Ref<const Matrix<T, 3, 1> >& move_probs,
+                                        const int terminal_segment_length, 
+                                        const int internal_segment_length,
+                                        const int max_iter, const int n_burnin,
+                                        const int mod, const bool verbose = false)
         {
             // Keep track of time for intermittent output to stdout
             auto t_curr = std::chrono::high_resolution_clock::now();  
