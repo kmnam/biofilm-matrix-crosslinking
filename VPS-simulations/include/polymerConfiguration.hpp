@@ -799,7 +799,7 @@ class PolymerConfiguration
         {
             // The rotation center should be outside the segment being rotated
             if (idx_center < idx)
-                return std::runtime_error(
+                throw std::runtime_error(
                     "Specified invalid center for rotation of head segment"
                 ); 
 
@@ -832,7 +832,7 @@ class PolymerConfiguration
         {
             // The rotation center should be outside the segment being rotated
             if (idx_center >= idx)
-                return std::runtime_error(
+                throw std::runtime_error(
                     "Specified invalid center for rotation of head segment"
                 ); 
 
