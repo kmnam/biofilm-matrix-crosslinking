@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/1/2026
+ *     2/2/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -134,6 +134,35 @@ T acosSafe(const T& x)
         return boost::math::constants::pi<T>(); 
     else 
         return acos(x);  
+}
+
+/**
+ * Generate the rotation matrix corresponding to rotation about the given 
+ * axis by the given angle. 
+ *
+ * @param u Rotation axis. 
+ * @param theta Angle. 
+ * @returns Rotation matrix.  
+ */
+template <typename T>
+Matrix<T, 3, 3> getRotation(const Ref<const Matrix<T, 3, 1> >& u, const T theta)
+{
+    // Use Rodrigues' formula for axis-angle rotation
+    T c1 = cos(theta); 
+    T c2 = 1 - c1; 
+    T s = sin_theta; 
+    Matrix<T, 3, 3> rot;  
+    rot << c1 + u(0) * u(0) * c2,           // First row
+           u(0) * u(1) * c2 - u(2) * s,
+           u(0) * u(2) * c2 + u(1) * s,
+           u(1) * u(0) * c2 + u(2) * s,     // Second row
+           c1 + u(1) * u(1) * c2,
+           u(1) * u(2) * c2 - u(0) * s,
+           u(2) * u(0) * c2 - u(1) * s,    // Third row 
+           u(2) * u(1) * c2 + u(0) * s,
+           c1 + u(2) * u(2) * c2;
+
+    return rot;  
 }
 
 /**
@@ -1499,6 +1528,71 @@ class PolymerConfiguration
             // Add the new atom  
             this->r.row(0) = r.transpose(); 
         }
+
+        /**
+         * Rotate the segment [0, ..., idx - 1] by the given angle about the 
+         * given axis, with the indicated atom serving as the center.
+         *
+         * @param idx Index demarcating the head segment to rotate. 
+         * @param theta Angle to rotate the segment by. 
+         * @param u Rotation axis. 
+         * @param idx_center Index of atom serving as the center of rotation.
+         */
+        void rotateHeadSegment(const int idx, const T theta,
+                               const Ref<const Matrix<T, 3, 1> >& u, 
+                               const int idx_center)
+        {
+            // The rotation center should be outside the segment being rotated
+            if (idx_center < idx)
+                return std::runtime_error(
+                    "Specified invalid center for rotation of head segment"
+                ); 
+
+            // Get the rotation matrix 
+            Matrix<T, 3, 3> rot = getRotation<T>(u, theta); 
+
+            // For each atom in the segment ...
+            Matrix<T, 3, 1> center = this->r.row(idx_center); 
+            for (int i = 0; i < idx; ++i)
+            {
+                // Transform the atom according to the rotation 
+                Matrix<T, 3, 1> delta = this->r.row(i) - center; 
+                this->r.row(i) = center + rot * delta; 
+            }
+        }
+
+        /**
+         * Rotate the segment [idx, ..., n - 1], where n is the polymer length,
+         * by the given angle about the given axis, with the indicated atom
+         * serving as the center.
+         *
+         * @param idx Index demarcating the head segment to rotate. 
+         * @param theta Angle to rotate the segment by. 
+         * @param u Rotation axis. 
+         * @param idx_center Index of atom serving as the center of rotation.
+         */
+        void rotateTailSegment(const int idx, const T theta,
+                               const Ref<const Matrix<T, 3, 1> >& u, 
+                               const int idx_center)
+        {
+            // The rotation center should be outside the segment being rotated
+            if (idx_center >= idx)
+                return std::runtime_error(
+                    "Specified invalid center for rotation of head segment"
+                ); 
+
+            // Get the rotation matrix 
+            Matrix<T, 3, 3> rot = getRotation<T>(u, theta); 
+
+            // For each atom in the segment ...
+            Matrix<T, 3, 1> center = this->r.row(idx_center); 
+            for (int i = 0; i < idx; ++i)
+            {
+                // Transform the atom according to the rotation 
+                Matrix<T, 3, 1> delta = this->r.row(i) - center; 
+                this->r.row(i) = center + rot * delta; 
+            }
+        } 
 
         /**
          * Get the energetic contributions of the non-bonded (repulsive)
