@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/2/2026
+ *     2/3/2026
  */
 
 #include <iostream>
@@ -13,12 +13,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "../../include/utils.hpp"
+#include "../../include/polymerConfiguration.hpp"
 #include "../../include/cbmc.hpp"
 
 using namespace Eigen;
 
 /**
- * Tests for generateTerminalSegmentMoves(). 
+ * Tests for PolymerCBMCSampler::generateTerminalSegmentMoves(). 
  */
 TEST_CASE("Tests for terminal segment move generation", "[generateTerminalSegmentMoves()]")
 {
@@ -59,19 +60,24 @@ TEST_CASE("Tests for terminal segment move generation", "[generateTerminalSegmen
     );
     Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10);  
     REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10);  
+    REQUIRE(coords.rows() == 10); 
 
+    // Initialize sampler instance
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    PolymerCBMCSampler<double> sampler_cosine(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, dihedral_params, rng
+    );  
+    
     // Try generating 50 3-atom terminal segment moves at the head
     int n_candidates = 50;  
-    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
-    auto result = generateTerminalSegmentMoves<double, 3>(
-        config, TerminalSegmentEnd::HEAD, n_candidates, rng, uniform_dist,
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
-        cosine_params, dihedral_params 
+    auto result = sampler_cosine.generateTerminalSegmentMoves(
+        3, TerminalSegmentEnd::HEAD, n_candidates
     );
-    Matrix<double, Dynamic, 9> r_new = result.first; 
+    Matrix<double, Dynamic, Dynamic> r_new = result.first; 
     Matrix<double, Dynamic, 1> energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates); 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 9);  
     REQUIRE(energy_diffs.size() == n_candidates); 
 
     // Check that each new segment has atoms with valid distances to their 
@@ -105,14 +111,13 @@ TEST_CASE("Tests for terminal segment move generation", "[generateTerminalSegmen
     }
 
     // Try generating 50 3-atom terminal segment moves at the tail 
-    result = generateTerminalSegmentMoves<double, 3>(
-        config, TerminalSegmentEnd::TAIL, n_candidates, rng, uniform_dist,
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
-        cosine_params, dihedral_params 
+    result = sampler_cosine.generateTerminalSegmentMoves(
+        3, TerminalSegmentEnd::TAIL, n_candidates
     );
     r_new = result.first; 
     energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates); 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 9);  
     REQUIRE(energy_diffs.size() == n_candidates); 
 
     // Check that each new segment has atoms with valid distances to their 
@@ -153,17 +158,22 @@ TEST_CASE("Tests for terminal segment move generation", "[generateTerminalSegmen
     );
     coords = config.getSegment(0, 10);  
     REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10);  
+    REQUIRE(coords.rows() == 10); 
+
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_gaussian(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
+        gaussian_params, dihedral_params, rng
+    );  
 
     // Try generating 50 3-atom terminal segment moves at the head
-    result = generateTerminalSegmentMoves<double, 3>(
-        config, TerminalSegmentEnd::HEAD, n_candidates, rng, uniform_dist,
-        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
-        gaussian_params, dihedral_params
+    result = sampler_gaussian.generateTerminalSegmentMoves(
+        3, TerminalSegmentEnd::HEAD, n_candidates
     );
     r_new = result.first; 
     energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates); 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 9);  
     REQUIRE(energy_diffs.size() == n_candidates); 
 
     // Check that each new segment has atoms with valid distances to their 
@@ -197,14 +207,13 @@ TEST_CASE("Tests for terminal segment move generation", "[generateTerminalSegmen
     }
 
     // Try generating 50 3-atom terminal segment moves at the tail 
-    result = generateTerminalSegmentMoves<double, 3>(
-        config, TerminalSegmentEnd::TAIL, n_candidates, rng, uniform_dist,
-        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
-        gaussian_params, dihedral_params
+    result = sampler_gaussian.generateTerminalSegmentMoves(
+        3, TerminalSegmentEnd::TAIL, n_candidates
     );
     r_new = result.first; 
     energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates); 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 9);
     REQUIRE(energy_diffs.size() == n_candidates); 
 
     // Check that each new segment has atoms with valid distances to their 
@@ -239,9 +248,10 @@ TEST_CASE("Tests for terminal segment move generation", "[generateTerminalSegmen
 }
 
 /**
- * Tests for moveTerminalSegment(). 
+ * Tests for terminal segment moves in the PolymerCBMCSampler class via 
+ * moveOnce(). 
  */
-TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
+TEST_CASE("Tests for terminal segment moves", "[moveOnce()]")
 {
     boost::random::mt19937 rng(1234567890);
     boost::random::uniform_01<> uniform_dist;
@@ -280,33 +290,45 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
     );
     Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10);  
     REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10);  
+    REQUIRE(coords.rows() == 10); 
 
-    // Try moving a terminal 3-atom segment
+    // Initialize sampler instance
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    PolymerCBMCSampler<double> sampler_cosine(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, dihedral_params, rng
+    );  
+
+    // Try moving a terminal 3-atom segment by choosing from 50 candidate 
+    // moves 
     int n_candidates = 50; 
-    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"];
-    PolymerConfiguration<double> config2(config), config3(config);  
-    auto result_cosine = moveTerminalSegment<double, 3>(
-        config2, n_candidates, rng, uniform_dist, lj_params, neighbor_threshold, 
-        fene_params, AngleMode::COSINE, cosine_params, dihedral_params
-    );
-    TerminalSegmentEnd direction = std::get<0>(result_cosine);  
-    Matrix<double, Dynamic, 9> forward_moves = std::get<1>(result_cosine); 
-    Matrix<double, Dynamic, 9> reverse_moves = std::get<2>(result_cosine); 
-    int move_idx = std::get<3>(result_cosine); 
-    double prob_accept = std::get<4>(result_cosine); 
-    bool accepted_move = std::get<5>(result_cosine);
+    PolymerConfiguration<double> config_moved(config);
+    auto result_cosine = sampler_cosine.moveOnce(
+        n_candidates, CBMCMoveType::TERMINAL_SEGMENT, 3, {}
+    ); 
+    Matrix<double, Dynamic, Dynamic> forward_moves = std::get<0>(result_cosine); 
+    Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result_cosine); 
+    int move_idx = std::get<2>(result_cosine); 
+    double prob_accept = std::get<3>(result_cosine);
+    bool accepted_move = std::get<4>(result_cosine);
+    TerminalSegmentEnd direction = static_cast<TerminalSegmentEnd>(
+        std::get<5>(result_cosine).at("terminal_end")
+    ); 
+    REQUIRE(forward_moves.rows() == n_candidates);
+    REQUIRE(forward_moves.cols() == 9);  
+    REQUIRE(reverse_moves.rows() == n_candidates);
+    REQUIRE(reverse_moves.cols() == 9); 
+    REQUIRE((move_idx >= 0 && move_idx < n_candidates));
+    REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
+
+    // Generate the modified configuration (in case the move was not accepted)
     Matrix<double, Dynamic, 3> move_segment(3, 3); 
     for (int i = 0; i < 3; ++i)
         move_segment.row(i) = forward_moves(move_idx, Eigen::seqN(3 * i, 3)); 
     if (direction == TerminalSegmentEnd::HEAD)
-        config3.replaceSegment(move_segment, 0); 
+        config_moved.replaceSegment(move_segment, 0); 
     else 
-        config3.replaceSegment(move_segment, 7); 
-    REQUIRE(forward_moves.rows() == n_candidates); 
-    REQUIRE(reverse_moves.rows() == n_candidates);
-    REQUIRE((move_idx >= 0 && move_idx < n_candidates));
-    REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
+        config_moved.replaceSegment(move_segment, 7);
 
     // Check that each new atom has a valid distance to the terminal atom 
     // at the appropriate end 
@@ -333,19 +355,17 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
         reverse_move_segment.row(i) = reverse_moves(move_idx, Eigen::seqN(3 * i, 3)); 
     if (direction == TerminalSegmentEnd::HEAD)
     {
-        // In this case, the reverse move concerns the tail segment 
         for (int i = 0; i < 3; ++i)
             REQUIRE_THAT(
-                (reverse_move_segment.row(i) - coords.row(7 + i)).norm(), 
+                (reverse_move_segment.row(i) - coords.row(i)).norm(), 
                 Catch::Matchers::WithinAbs(0, tol)
             );
     } 
     else 
     {
-        // In this case, the reverse move concerns the head segment
         for (int i = 0; i < 3; ++i)
             REQUIRE_THAT(
-                (reverse_move_segment.row(i) - coords.row(i)).norm(), 
+                (reverse_move_segment.row(i) - coords.row(7 + i)).norm(), 
                 Catch::Matchers::WithinAbs(0, tol)
             );
     }
@@ -365,8 +385,8 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
             forward_segment, (direction == TerminalSegmentEnd::HEAD ? 0 : 7), 
             lj_params, neighbor_threshold
         );
-        double diff2 = config3.getSegmentReplacementNonbondedEnergyDifference(
-            reverse_segment, (direction == TerminalSegmentEnd::HEAD ? 7 : 0),
+        double diff2 = config_moved.getSegmentReplacementNonbondedEnergyDifference(
+            reverse_segment, (direction == TerminalSegmentEnd::HEAD ? 0 : 7),
             lj_params, neighbor_threshold
         );
         weights_forward(i) = exp(-diff1 / kT);
@@ -388,15 +408,15 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
 
     // Check that, if the chosen move was taken, the resulting configuration is
     // as expected
-    Matrix<double, Dynamic, 3> coords2 = config2.getSegment(0, 10);
-    Matrix<double, Dynamic, 3> coords3 = config3.getSegment(0, 10);  
+    Matrix<double, Dynamic, 3> coords_moved = config_moved.getSegment(0, 10); 
+    Matrix<double, Dynamic, 3> coords_result = sampler_cosine.getCoords();  
     if (accepted_move)
     {
         // Move was taken 
         for (int i = 0; i < 10; ++i)
         {
             REQUIRE_THAT(
-                (coords2.row(i) - coords3.row(i)).norm(),
+                (coords_result.row(i) - coords_moved.row(i)).norm(),
                 Catch::Matchers::WithinAbs(0, tol)
             ); 
         } 
@@ -407,45 +427,56 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
         for (int i = 0; i < 10; ++i)
         {
             REQUIRE_THAT(
-                (coords2.row(i) - coords.row(i)).norm(),
+                (coords_result.row(i) - coords.row(i)).norm(),
                 Catch::Matchers::WithinAbs(0, tol)
             ); 
         } 
     } 
-
+    
     // Generate a 10-mer with a dual Gaussian mixture angle potential
-    PolymerConfiguration<double> config4 = generateKMer<double, 10>(
+    PolymerConfiguration<double> config2 = generateKMer<double, 10>(
         lj_params, fene_params, AngleMode::GAUSSIAN, gaussian_params,
         dihedral_params, r0, collision_threshold, max_tries_per_atom,
         max_n_backtracks, rng, uniform_dist
     );
-    Matrix<double, Dynamic, 3> coords4 = config4.getSegment(0, 10);  
-    REQUIRE(config4.getLength() == 10);
-    REQUIRE(coords4.rows() == 10); 
+    Matrix<double, Dynamic, 3> coords2 = config2.getSegment(0, 10);  
+    REQUIRE(config2.getLength() == 10);
+    REQUIRE(coords2.rows() == 10);
+
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_gaussian(
+        config2, lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
+        gaussian_params, dihedral_params, rng
+    );  
 
     // Try moving a terminal 5-atom segment
-    PolymerConfiguration<double> config5(config4), config6(config4);  
-    auto result_gaussian = moveTerminalSegment<double, 5>(
-        config5, n_candidates, rng, uniform_dist, lj_params, neighbor_threshold, 
-        fene_params, AngleMode::GAUSSIAN, gaussian_params, dihedral_params
+    PolymerConfiguration<double> config2_moved(config2);
+    auto result_gaussian = sampler_gaussian.moveOnce(
+        n_candidates, CBMCMoveType::TERMINAL_SEGMENT, 5, {}
     );
-    direction = std::get<0>(result_gaussian);  
-    Matrix<double, Dynamic, 15> forward_moves2 = std::get<1>(result_gaussian); 
-    Matrix<double, Dynamic, 15> reverse_moves2 = std::get<2>(result_gaussian); 
-    move_idx = std::get<3>(result_gaussian); 
-    prob_accept = std::get<4>(result_gaussian); 
-    accepted_move = std::get<5>(result_gaussian);
-    move_segment.resize(5, 3); 
-    for (int i = 0; i < 5; ++i)
-        move_segment.row(i) = forward_moves2(move_idx, Eigen::seqN(3 * i, 3)); 
-    if (direction == TerminalSegmentEnd::HEAD)
-        config6.replaceSegment(move_segment, 0); 
-    else 
-        config6.replaceSegment(move_segment, 5); 
-    REQUIRE(forward_moves2.rows() == n_candidates); 
-    REQUIRE(reverse_moves2.rows() == n_candidates);
+    forward_moves = std::get<0>(result_gaussian); 
+    reverse_moves = std::get<1>(result_gaussian); 
+    move_idx = std::get<2>(result_gaussian); 
+    prob_accept = std::get<3>(result_gaussian); 
+    accepted_move = std::get<4>(result_gaussian);
+    direction = static_cast<TerminalSegmentEnd>(
+        std::get<5>(result_gaussian).at("terminal_end")
+    );
+    REQUIRE(forward_moves.rows() == n_candidates);
+    REQUIRE(forward_moves.cols() == 15);  
+    REQUIRE(reverse_moves.rows() == n_candidates);
+    REQUIRE(reverse_moves.cols() == 15); 
     REQUIRE((move_idx >= 0 && move_idx < n_candidates));
     REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
+
+    // Generate the modified configuration (in case the move was not accepted)
+    move_segment.resize(5, 3); 
+    for (int i = 0; i < 5; ++i)
+        move_segment.row(i) = forward_moves(move_idx, Eigen::seqN(3 * i, 3)); 
+    if (direction == TerminalSegmentEnd::HEAD)
+        config2_moved.replaceSegment(move_segment, 0); 
+    else 
+        config2_moved.replaceSegment(move_segment, 5); 
 
     // Check that each new atom has a valid distance to the terminal atom 
     // at the appropriate end 
@@ -453,7 +484,7 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
     {
         if (direction == TerminalSegmentEnd::HEAD)
         {
-            REQUIRE((move_segment.row(4) - coords4.row(5)).norm() < fene_params["R0"]); 
+            REQUIRE((move_segment.row(4) - coords2.row(5)).norm() < fene_params["R0"]); 
             REQUIRE((move_segment.row(3) - move_segment.row(4)).norm() < fene_params["R0"]); 
             REQUIRE((move_segment.row(2) - move_segment.row(3)).norm() < fene_params["R0"]); 
             REQUIRE((move_segment.row(1) - move_segment.row(2)).norm() < fene_params["R0"]); 
@@ -461,7 +492,7 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
         }
         else 
         {
-            REQUIRE((move_segment.row(0) - coords4.row(4)).norm() < fene_params["R0"]); 
+            REQUIRE((move_segment.row(0) - coords2.row(4)).norm() < fene_params["R0"]); 
             REQUIRE((move_segment.row(1) - move_segment.row(0)).norm() < fene_params["R0"]); 
             REQUIRE((move_segment.row(2) - move_segment.row(1)).norm() < fene_params["R0"]);
             REQUIRE((move_segment.row(3) - move_segment.row(2)).norm() < fene_params["R0"]); 
@@ -473,22 +504,20 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
     // reversion to the original configuration
     reverse_move_segment.resize(5, 3); 
     for (int i = 0; i < 5; ++i)
-        reverse_move_segment.row(i) = reverse_moves2(move_idx, Eigen::seqN(3 * i, 3)); 
+        reverse_move_segment.row(i) = reverse_moves(move_idx, Eigen::seqN(3 * i, 3)); 
     if (direction == TerminalSegmentEnd::HEAD)
     {
-        // In this case, the reverse move concerns the tail segment 
         for (int i = 0; i < 5; ++i)
             REQUIRE_THAT(
-                (reverse_move_segment.row(i) - coords4.row(5 + i)).norm(), 
+                (reverse_move_segment.row(i) - coords2.row(i)).norm(), 
                 Catch::Matchers::WithinAbs(0, tol)
             );
     } 
     else 
     {
-        // In this case, the reverse move concerns the head segment
         for (int i = 0; i < 5; ++i)
             REQUIRE_THAT(
-                (reverse_move_segment.row(i) - coords4.row(i)).norm(), 
+                (reverse_move_segment.row(i) - coords2.row(5 + i)).norm(), 
                 Catch::Matchers::WithinAbs(0, tol)
             );
     }
@@ -499,15 +528,15 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
         Matrix<double, Dynamic, 3> forward_segment(5, 3), reverse_segment(5, 3);
         for (int j = 0; j < 5; ++j)
         {
-            forward_segment.row(j) = forward_moves2(i, Eigen::seqN(3 * j, 3));
-            reverse_segment.row(j) = reverse_moves2(i, Eigen::seqN(3 * j, 3));  
+            forward_segment.row(j) = forward_moves(i, Eigen::seqN(3 * j, 3));
+            reverse_segment.row(j) = reverse_moves(i, Eigen::seqN(3 * j, 3));  
         } 
-        double diff1 = config4.getSegmentReplacementNonbondedEnergyDifference(
+        double diff1 = config2.getSegmentReplacementNonbondedEnergyDifference(
             forward_segment, (direction == TerminalSegmentEnd::HEAD ? 0 : 5), 
             lj_params, neighbor_threshold
         );
-        double diff2 = config6.getSegmentReplacementNonbondedEnergyDifference(
-            reverse_segment, (direction == TerminalSegmentEnd::HEAD ? 5 : 0),
+        double diff2 = config2_moved.getSegmentReplacementNonbondedEnergyDifference(
+            reverse_segment, (direction == TerminalSegmentEnd::HEAD ? 0 : 5),
             lj_params, neighbor_threshold
         );
         weights_forward(i) = exp(-diff1 / kT);
@@ -529,15 +558,15 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
 
     // Check that, if the chosen move was taken, the resulting configuration is
     // as expected
-    Matrix<double, Dynamic, 3> coords5 = config5.getSegment(0, 10);
-    Matrix<double, Dynamic, 3> coords6 = config6.getSegment(0, 10);  
+    Matrix<double, Dynamic, 3> coords2_moved = config2_moved.getSegment(0, 10);
+    Matrix<double, Dynamic, 3> coords2_result = sampler_gaussian.getCoords(); 
     if (accepted_move)
     {
         // Move was taken 
         for (int i = 0; i < 10; ++i)
         {
             REQUIRE_THAT(
-                (coords5.row(i) - coords6.row(i)).norm(),
+                (coords2_result.row(i) - coords2_moved.row(i)).norm(),
                 Catch::Matchers::WithinAbs(0, tol)
             ); 
         } 
@@ -548,10 +577,10 @@ TEST_CASE("Tests for terminal segment moves", "[moveTerminalSegment()]")
         for (int i = 0; i < 10; ++i)
         {
             REQUIRE_THAT(
-                (coords5.row(i) - coords4.row(i)).norm(),
+                (coords2_result.row(i) - coords2.row(i)).norm(),
                 Catch::Matchers::WithinAbs(0, tol)
             ); 
         } 
-    } 
+    }
 }
 
