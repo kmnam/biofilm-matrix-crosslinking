@@ -21,6 +21,7 @@
 #include <boost/math/constants/constants.hpp>
 #include <boost/multiprecision/mpfr.hpp>
 #include <boost/random.hpp>
+#include "utils.hpp"
 
 using std::abs;
 using boost::multiprecision::abs; 

@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/2/2026
+ *     2/3/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -14,12 +14,14 @@
 #include <utility>
 #include <tuple>
 #include <limits>
+#include <chrono>
 #include <vector>
 #include <unordered_map>
 #include <Eigen/Dense>
 #include <boost/multiprecision/mpfr.hpp>
 #include <boost/random.hpp>
 #include "utils.hpp"
+#include "polymerConfiguration.hpp"
 
 using std::min; 
 using boost::multiprecision::min; 
@@ -1138,11 +1140,14 @@ Matrix<T, Dynamic, Dynamic> runCBMC(PolymerConfiguration<T>& config,
                                     boost::random::uniform_01<>& uniform_dist,
                                     const Ref<const Matrix<T, 3, 1> >& weights, 
                                     const int n_tries, const int max_iter,
-                                    const int n_burnin, const int mod)
+                                    const int n_burnin, const int mod, 
+                                    const bool verbose = false)
 {
+    auto t_curr = std::chrono::high_resolution_clock::now();  
+
     // Identify how many configurations will be collected throughout the sampling
     int n_collect = (max_iter - n_burnin) / mod; 
-    Matrix<T, Dynamic, Dynamic> coords(n_collect, 3 * config.getLength()); 
+    Matrix<T, Dynamic, Dynamic> coords(n_collect, 3 * config.getLength());
 
     // Run sampling procedure ... 
     int curr_idx = 0; 
@@ -1189,6 +1194,14 @@ Matrix<T, Dynamic, Dynamic> runCBMC(PolymerConfiguration<T>& config,
                 min_newton_stepsize, armijo_const 
             ); 
         }
+        if (verbose && curr_idx % 100 == 0)
+        {
+            auto t_next = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> elapsed = t_next - t_curr; 
+            std::cout << "... generated configuration " << curr_idx  
+                      << ", time elapsed = " << elapsed.count() << std::endl;
+            t_curr = t_next; 
+        } 
 
         // Should we collect this configuration? 
         if (curr_idx >= n_burnin && (curr_idx - n_burnin) % mod == 0)
