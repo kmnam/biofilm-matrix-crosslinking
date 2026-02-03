@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/2/2026
+ *     2/3/2026
  */
 
 #include <iostream>
@@ -13,12 +13,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "../../include/utils.hpp"
+#include "../../include/polymerConfiguration.hpp"
 #include "../../include/cbmc.hpp"
 
 using namespace Eigen;
 
 /**
- * Tests for generateReptationMoves(). 
+ * Tests for PolymerCBMCSampler::generateReptationMoves(). 
  */
 TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
 {
@@ -59,19 +60,24 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
     );
     Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10);  
     REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10);  
+    REQUIRE(coords.rows() == 10);
+
+    // Initialize sampler instance
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    PolymerCBMCSampler<double> sampler_cosine(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, dihedral_params, rng
+    );  
 
     // Try generating 50 reptation moves at the head
     int n_candidates = 50;  
-    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
-    auto result = generateReptationMoves<double>(
-        config, ReptationDirection::HEAD, n_candidates, rng, uniform_dist,
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
-        cosine_params, dihedral_params 
+    auto result = sampler_cosine.generateReptationMoves(
+        ReptationDirection::HEAD, n_candidates
     );
-    Matrix<double, Dynamic, 3> r_new = result.first; 
+    Matrix<double, Dynamic, Dynamic> r_new = result.first; 
     Matrix<double, Dynamic, 1> energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates); 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 3);  
     REQUIRE(energy_diffs.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
@@ -92,14 +98,13 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
         );
 
     // Try generating 50 reptation moves at the tail 
-    result = generateReptationMoves<double>(
-        config, ReptationDirection::TAIL, n_candidates, rng, uniform_dist,
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
-        cosine_params, dihedral_params 
+    result = sampler_cosine.generateReptationMoves(
+        ReptationDirection::TAIL, n_candidates
     );
     r_new = result.first; 
     energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates); 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 3);  
     REQUIRE(energy_diffs.size() == n_candidates); 
 
     // Check that the new atom has a valid distance to the 0-th atom
@@ -127,17 +132,22 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
     );
     coords = config.getSegment(0, 10);  
     REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10);  
+    REQUIRE(coords.rows() == 10); 
+
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_gaussian(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
+        gaussian_params, dihedral_params, rng
+    );  
 
     // Try generating 50 reptation moves at the head 
-    result = generateReptationMoves<double>(
-        config, ReptationDirection::HEAD, n_candidates, rng, uniform_dist,
-        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
-        gaussian_params, dihedral_params
+    result = sampler_gaussian.generateReptationMoves(
+        ReptationDirection::HEAD, n_candidates
     );
     r_new = result.first; 
     energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates); 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 3); 
     REQUIRE(energy_diffs.size() == n_candidates); 
 
     // Check that the new atom has a valid distance to the 0-th atom
@@ -158,14 +168,13 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
         );
 
     // Try generating 50 reptation moves at the tail
-    result = generateReptationMoves<double>(
-        config, ReptationDirection::TAIL, n_candidates, rng, uniform_dist,
-        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
-        gaussian_params, dihedral_params
+    result = sampler_gaussian.generateReptationMoves(
+        ReptationDirection::TAIL, n_candidates
     );
     r_new = result.first; 
     energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates); 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 3);  
     REQUIRE(energy_diffs.size() == n_candidates); 
 
     // Check that the new atom has a valid distance to the 0-th atom
@@ -187,9 +196,9 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
 }
 
 /**
- * Tests for reptate(). 
+ * Tests for reptation in the PolymerCBMCSampler class via moveOnce(). 
  */
-TEST_CASE("Tests for reptation", "[reptate()]")
+TEST_CASE("Tests for reptation", "[moveOnce()]")
 {
     boost::random::mt19937 rng(1234567890);
     boost::random::uniform_01<> uniform_dist;
@@ -228,30 +237,40 @@ TEST_CASE("Tests for reptation", "[reptate()]")
     );
     Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10);  
     REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10);  
+    REQUIRE(coords.rows() == 10); 
 
-    // Try reptating
+    // Initialize sampler instance
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    PolymerCBMCSampler<double> sampler_cosine(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, dihedral_params, rng
+    );  
+
+    // Try reptating by choosing from 50 reptation candidate moves 
     int n_candidates = 50; 
-    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"];
-    PolymerConfiguration<double> config2(config), config3(config);  
-    auto result = reptate<double>(
-        config2, n_candidates, rng, uniform_dist, lj_params, neighbor_threshold, 
-        fene_params, AngleMode::COSINE, cosine_params, dihedral_params
+    PolymerConfiguration<double> config_reptated(config);  
+    auto result = sampler_cosine.moveOnce(n_candidates, CBMCMoveType::REPTATION, 0, {}); 
+    Matrix<double, Dynamic, Dynamic> forward_moves = std::get<0>(result); 
+    Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result); 
+    int move_idx = std::get<2>(result); 
+    double prob_accept = std::get<3>(result); 
+    bool accepted_move = std::get<4>(result);
+    ReptationDirection direction = static_cast<ReptationDirection>(
+        std::get<5>(result).at("direction")
     );
-    ReptationDirection direction = std::get<0>(result);  
-    Matrix<double, Dynamic, 3> forward_moves = std::get<1>(result); 
-    Matrix<double, Dynamic, 3> reverse_moves = std::get<2>(result); 
-    int move_idx = std::get<3>(result); 
-    double prob_accept = std::get<4>(result); 
-    bool accepted_move = std::get<5>(result);
-    if (direction == ReptationDirection::HEAD)
-        config3.reptateTowardsHead(forward_moves.row(move_idx)); 
-    else 
-        config3.reptateTowardsTail(forward_moves.row(move_idx));
-    REQUIRE(forward_moves.rows() == n_candidates); 
+    REQUIRE(forward_moves.rows() == n_candidates);
+    REQUIRE(forward_moves.cols() == 3);  
     REQUIRE(reverse_moves.rows() == n_candidates);
+    REQUIRE(reverse_moves.cols() == 3);
     REQUIRE((move_idx >= 0 && move_idx < n_candidates));
     REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
+
+    // Generate the reptated configuration (in case the reptation move was not 
+    // accepted) 
+    if (direction == ReptationDirection::HEAD)
+        config_reptated.reptateTowardsHead(forward_moves.row(move_idx)); 
+    else 
+        config_reptated.reptateTowardsTail(forward_moves.row(move_idx));
 
     // Check that each new atom has a valid distance to the terminal atom 
     // at the appropriate end 
@@ -294,7 +313,7 @@ TEST_CASE("Tests for reptation", "[reptate()]")
         double diff1 = config.getReptationNonbondedEnergyDifference(
             direction, forward_moves.row(i), lj_params, neighbor_threshold
         );
-        double diff2 = config3.getReptationNonbondedEnergyDifference(
+        double diff2 = config_reptated.getReptationNonbondedEnergyDifference(
             reverse_direction, reverse_moves.row(i), lj_params, neighbor_threshold
         );
         weights_forward(i) = exp(-diff1 / kT);
@@ -316,15 +335,15 @@ TEST_CASE("Tests for reptation", "[reptate()]")
 
     // Check that, if the chosen move was taken, the resulting configuration is
     // as expected
-    Matrix<double, Dynamic, 3> coords2 = config2.getSegment(0, 10);
-    Matrix<double, Dynamic, 3> coords3 = config3.getSegment(0, 10);  
+    Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, 10); 
+    Matrix<double, Dynamic, 3> coords_result = sampler_cosine.getCoords();  
     if (accepted_move)
     {
         // Move was taken 
         for (int i = 0; i < 10; ++i)
         {
             REQUIRE_THAT(
-                (coords2.row(i) - coords3.row(i)).norm(),
+                (coords_result.row(i) - coords_reptated.row(i)).norm(),
                 Catch::Matchers::WithinAbs(0, tol)
             ); 
         } 
@@ -335,40 +354,45 @@ TEST_CASE("Tests for reptation", "[reptate()]")
         for (int i = 0; i < 10; ++i)
         {
             REQUIRE_THAT(
-                (coords2.row(i) - coords.row(i)).norm(),
+                (coords_result.row(i) - coords.row(i)).norm(),
                 Catch::Matchers::WithinAbs(0, tol)
             ); 
         } 
     } 
 
     // Generate a 10-mer with a dual Gaussian mixture angle potential
-    PolymerConfiguration<double> config4 = generateKMer<double, 10>(
+    PolymerConfiguration<double> config2 = generateKMer<double, 10>(
         lj_params, fene_params, AngleMode::GAUSSIAN, gaussian_params,
         dihedral_params, r0, collision_threshold, max_tries_per_atom,
         max_n_backtracks, rng, uniform_dist
     );
-    Matrix<double, Dynamic, 3> coords4 = config4.getSegment(0, 10);  
-    REQUIRE(config4.getLength() == 10);
-    REQUIRE(coords4.rows() == 10); 
+    Matrix<double, Dynamic, 3> coords2 = config2.getSegment(0, 10);  
+    REQUIRE(config2.getLength() == 10);
+    REQUIRE(coords2.rows() == 10);
 
-    // Try reptating
-    PolymerConfiguration<double> config5(config4), config6(config4);  
-    result = reptate<double>(
-        config5, n_candidates, rng, uniform_dist, lj_params, neighbor_threshold, 
-        fene_params, AngleMode::GAUSSIAN, gaussian_params, dihedral_params
-    );
-    direction = std::get<0>(result);  
-    forward_moves = std::get<1>(result); 
-    reverse_moves = std::get<2>(result); 
-    move_idx = std::get<3>(result); 
-    prob_accept = std::get<4>(result); 
-    accepted_move = std::get<5>(result);
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_gaussian(
+        config2, lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
+        gaussian_params, dihedral_params, rng
+    );  
+
+    // Try reptating by choosing from 50 reptation candidate moves 
+    PolymerConfiguration<double> config2_original(config2), config2_reptated(config2);  
+    result = sampler_gaussian.moveOnce(n_candidates, CBMCMoveType::REPTATION, 0, {}); 
+    forward_moves = std::get<0>(result); 
+    reverse_moves = std::get<1>(result); 
+    move_idx = std::get<2>(result); 
+    prob_accept = std::get<3>(result); 
+    accepted_move = std::get<4>(result);
+    direction = static_cast<ReptationDirection>(std::get<5>(result).at("direction"));
     if (direction == ReptationDirection::HEAD)
-        config6.reptateTowardsHead(forward_moves.row(move_idx)); 
+        config2_reptated.reptateTowardsHead(forward_moves.row(move_idx)); 
     else 
-        config6.reptateTowardsTail(forward_moves.row(move_idx));
-    REQUIRE(forward_moves.rows() == n_candidates); 
+        config2_reptated.reptateTowardsTail(forward_moves.row(move_idx));
+    REQUIRE(forward_moves.rows() == n_candidates);
+    REQUIRE(forward_moves.cols() == 3);  
     REQUIRE(reverse_moves.rows() == n_candidates);
+    REQUIRE(reverse_moves.cols() == 3); 
     REQUIRE((move_idx >= 0 && move_idx < n_candidates));
     REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
 
@@ -378,13 +402,13 @@ TEST_CASE("Tests for reptation", "[reptate()]")
     {
         if (direction == ReptationDirection::HEAD)
         { 
-            REQUIRE((forward_moves.row(i) - coords4.row(0)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords4.row(8)).norm() < fene_params["R0"]); 
+            REQUIRE((forward_moves.row(i) - coords2.row(0)).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - coords2.row(8)).norm() < fene_params["R0"]); 
         }
         else 
         {
-            REQUIRE((forward_moves.row(i) - coords4.row(9)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords4.row(1)).norm() < fene_params["R0"]); 
+            REQUIRE((forward_moves.row(i) - coords2.row(9)).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - coords2.row(1)).norm() < fene_params["R0"]); 
         }
     }
 
@@ -392,12 +416,12 @@ TEST_CASE("Tests for reptation", "[reptate()]")
     // reversion to the original configuration
     if (direction == ReptationDirection::HEAD)
         REQUIRE_THAT(
-            (reverse_moves.row(move_idx) - coords4.row(9)).norm(), 
+            (reverse_moves.row(move_idx) - coords2.row(9)).norm(), 
             Catch::Matchers::WithinAbs(0, tol)
         ); 
     else 
         REQUIRE_THAT(
-            (reverse_moves.row(move_idx) - coords4.row(0)).norm(), 
+            (reverse_moves.row(move_idx) - coords2.row(0)).norm(), 
             Catch::Matchers::WithinAbs(0, tol)
         );
 
@@ -408,10 +432,10 @@ TEST_CASE("Tests for reptation", "[reptate()]")
     ); 
     for (int i = 0; i < n_candidates; ++i)
     {
-        double diff1 = config4.getReptationNonbondedEnergyDifference(
+        double diff1 = config2.getReptationNonbondedEnergyDifference(
             direction, forward_moves.row(i), lj_params, neighbor_threshold
         );
-        double diff2 = config6.getReptationNonbondedEnergyDifference(
+        double diff2 = config2_reptated.getReptationNonbondedEnergyDifference(
             reverse_direction, reverse_moves.row(i), lj_params, neighbor_threshold
         );
         weights_forward(i) = exp(-diff1 / kT);
@@ -433,15 +457,15 @@ TEST_CASE("Tests for reptation", "[reptate()]")
 
     // Check that, if the chosen move was taken, the resulting configuration is
     // as expected
-    Matrix<double, Dynamic, 3> coords5 = config5.getSegment(0, 10);
-    Matrix<double, Dynamic, 3> coords6 = config6.getSegment(0, 10);  
+    Matrix<double, Dynamic, 3> coords2_reptated = config2_reptated.getSegment(0, 10);
+    Matrix<double, Dynamic, 3> coords2_result = sampler_gaussian.getCoords(); 
     if (accepted_move)
     {
         // Move was taken 
         for (int i = 0; i < 10; ++i)
         {
             REQUIRE_THAT(
-                (coords5.row(i) - coords6.row(i)).norm(),
+                (coords2_result.row(i) - coords2_reptated.row(i)).norm(),
                 Catch::Matchers::WithinAbs(0, tol)
             ); 
         } 
@@ -452,7 +476,7 @@ TEST_CASE("Tests for reptation", "[reptate()]")
         for (int i = 0; i < 10; ++i)
         {
             REQUIRE_THAT(
-                (coords5.row(i) - coords4.row(i)).norm(),
+                (coords2_result.row(i) - coords2.row(i)).norm(),
                 Catch::Matchers::WithinAbs(0, tol)
             ); 
         } 
