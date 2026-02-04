@@ -514,20 +514,31 @@ T sampleFene(const T eps, const T sigma, const T K, const T R0, const T kT,
 
     // Run the Monte Carlo procedure ...
     T length = 0.9 * R0; 
-    T stdev = 0.01 * R0;    // Start at a small initial value  
-    for (int i = 0; i < n_burnin + 1; ++i)
+    T stdev = 0.01 * R0;    // Start at a small initial value 
+    int iter = 0; 
+    while (iter < n_burnin)
     {
         // Try sampling the next value 
         T length_new = length + stdev * standardNormal<T>(rng, uniform_dist);
         
-        // If the length falls outside the interval, reflect accordingly 
-        while (length_new <= 0 || length_new >= R0)
+        // If the length falls outside the interval, reflect accordingly
+        int n_reflections = 0;  
+        while (length_new < 0 || length_new >= R0)
         {
-            if (length_new <= 0)
+            if (length_new < 0)
                 length_new *= -1;
             else    // length_new >= R0 
-                length_new = 2 * R0 - length_new; 
-        } 
+                length_new = 2 * R0 - length_new;
+
+            // Keep track of the number of reflections 
+            n_reflections++; 
+            if (n_reflections > 10) 
+                break; 
+        }
+
+        // Check if the reflection has failed 
+        if (length_new <= 0 || length_new >= R0)
+            continue; 
 
         // Compute the energy difference
         T energy_diff = energy(length_new) - energy(length); 
@@ -543,7 +554,8 @@ T sampleFene(const T eps, const T sigma, const T K, const T R0, const T kT,
 
         // Accept the next value 
         if (uniform_dist(rng) < prob_accept)
-            length = length_new;  
+            length = length_new; 
+        iter++;  
     }
 
     return length;  
