@@ -254,7 +254,7 @@ std::pair<Matrix<T, DimIn, 1>, T> perturbAndProject(VectorValuedFunction<T, DimI
     Matrix<T, DimOut, 1> f_curr = F(z_proj);  
     T residual = f_curr.norm();
     int iter = 0;  
-    while (residual > newton_tol && iter < max_iter)
+    while (residual > newton_tol && iter < max_newton_iter)
     {
         // Compute the Jacobian corresponding to the current step, times 
         // the orthogonal complement matrix  
@@ -359,7 +359,7 @@ std::pair<Matrix<T, Dynamic, 1>, T> perturbAndProject(DynamicVectorValuedFunctio
     Matrix<T, Dynamic, 1> f_curr = F(z_proj);                               // Size dim_out 
     T residual = f_curr.norm();
     int iter = 0;  
-    while (residual > newton_tol && iter < max_iter)
+    while (residual > newton_tol && iter < max_newton_iter)
     {
         // Compute the Jacobian corresponding to the current step, times 
         // the orthogonal complement matrix 
@@ -1188,7 +1188,7 @@ class PolymerCBMCSampler
                         min_newton_stepsize, max_newton_iter, armijo_const
                     );
                     x1 = perturb_result.first;
-                    residual = perturb_result.second;  
+                    T residual = perturb_result.second;  
                     
                     // If the projection fails to achieve the desired Newton
                     // tolerance, try perturbing by a smaller increment
@@ -1349,7 +1349,7 @@ class PolymerCBMCSampler
                         min_newton_stepsize, max_newton_iter, armijo_const
                     );
                     x1 = perturb_result.first;
-                    residual = perturb_result.second;  
+                    T residual = perturb_result.second;  
                     
                     // If the projection fails to achieve the desired Newton
                     // tolerance, try perturbing by a smaller increment
