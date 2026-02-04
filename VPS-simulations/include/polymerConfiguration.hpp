@@ -30,7 +30,9 @@ using boost::multiprecision::pow;
 using std::exp; 
 using boost::multiprecision::exp; 
 using std::min; 
-using boost::multiprecision::min; 
+using boost::multiprecision::min;
+using std::log10; 
+using boost::multiprecision::log10; 
 using std::isinf; 
 
 using namespace Eigen;
@@ -488,6 +490,20 @@ class PolymerConfiguration
         T kT;     // Boltzmann's constant times temperature
 
         /**
+         * Empty constructor. 
+         *
+         * A single atom is placed at the origin, and the temperature is 
+         * assumed to be 300 K.
+         */
+        PolymerConfiguration()
+        {
+            this->length = 1; 
+            this->r = Matrix<T, Dynamic, 3>::Zero(1, 3);
+            this->temp = 300;
+            this->kT = static_cast<T>(1.380649e-2) * temp;    // Assume nano units
+        }
+
+        /**
          * Default constructor.
          *
          * @param r Atomic coordinates. 
@@ -537,6 +553,29 @@ class PolymerConfiguration
         int getLength() const 
         {
             return this->length; 
+        }
+
+        /**
+         * Return the units. 
+         *
+         * @returns Units. 
+         */
+        Units getUnits() const 
+        {
+            if (log10(this->kT / this->temp) > 2)    // Boltzmann's constant = 1.380649e-2
+                return Units::NANO; 
+            else 
+                return Units::MICRO; 
+        }
+
+        /**
+         * Return the temperature. 
+         *
+         * @returns Temperature. 
+         */
+        T getTemp() const 
+        {
+            return this->temp; 
         }
 
         /**
