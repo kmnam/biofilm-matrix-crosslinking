@@ -1457,8 +1457,8 @@ class PolymerCBMCSampler
             }
 
             // Generate forward moves ...
-            Matrix<T, Dynamic, Dynamic> forward_moves; 
-            Matrix<T, Dynamic, 1> forward_diffs;  
+            Matrix<T, Dynamic, Dynamic> forward_moves, reverse_moves;  
+            Matrix<T, Dynamic, 1> forward_diffs, reverse_diffs;  
             if (move_type == CBMCMoveType::REPTATION)
             {
                 auto forward_result = this->generateReptationMoves(
@@ -1477,24 +1477,92 @@ class PolymerCBMCSampler
             }
             else    // move_type == CBMCMoveType::INTERNAL_SEGMENT
             {
+                // Specify required parameters
                 const T init_tangent_stepsize = move_params.at("init_tangent_stepsize"); 
-                const T min_tangent_stepsize = move_params.at("min_tangent_stepsize"); 
-                const T dx = move_params.at("dx"); 
-                const T newton_tol = move_params.at("newton_tol"); 
-                const T min_newton_stepsize = move_params.at("min_newton_stepsize");
-                const int max_newton_iter = static_cast<int>(move_params.at("max_newton_iter"));  
-                const T armijo_const = move_params.at("armijo_const");
+                const T min_tangent_stepsize = move_params.at("min_tangent_stepsize");
+
+                // Specify optional parameters
+                T dx, newton_tol, min_newton_stepsize, armijo_const; 
+                int max_iter, max_newton_iter; 
+                try
+                {
+                    max_iter = static_cast<int>(move_params.at("max_iter")); 
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    max_iter = 2 * n_candidates; 
+                }
+                try
+                {
+                    dx = move_params.at("dx");
+                }
+                catch (const std::out_of_range& e)
+                {
+                    dx = 1e-8;
+                } 
+                try
+                {
+                    newton_tol = move_params.at("newton_tol");
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    newton_tol = 1e-8;
+                } 
+                try
+                {
+                    min_newton_stepsize = move_params.at("min_newton_stepsize");
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    min_newton_stepsize = 1e-4;
+                }
+                try
+                {
+                    max_newton_iter = static_cast<int>(move_params.at("max_newton_iter"));
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    max_newton_iter = 1000;
+                } 
+                try
+                {
+                    armijo_const = move_params.at("armijo_const");
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    armijo_const = 1e-4;
+                }
+
+                // Generate internal segment moves  
                 auto forward_result = this->generateInternalSegmentMoves(
-                    n_candidates, segment_length, segment_idx, init_tangent_stepsize,
-                    min_tangent_stepsize, dx, newton_tol, min_newton_stepsize,
-                    max_newton_iter, armijo_const 
+                    n_candidates, segment_length, segment_idx, max_iter,
+                    init_tangent_stepsize, min_tangent_stepsize, dx, newton_tol,
+                    min_newton_stepsize, max_newton_iter, armijo_const 
                 );
+
+                // If the desired number of candidate moves was not generated, 
+                // then simply remain at the current configuration
+                if (forward_result.first.rows() < n_candidates)
+                {
+                    forward_moves.resize(1, 3 * segment_length); 
+                    reverse_moves.resize(1, 3 * segment_length);
+                    for (int i = 0; i < segment_length; ++i)
+                    {
+                        forward_moves(0, Eigen::seqN(3 * i, 3)) = this->r.row(segment_idx + i);
+                        reverse_moves(0, Eigen::seqN(3 * i, 3)) = this->r.row(segment_idx + i);  
+                    }
+                    std::unordered_map<std::string, T> move_info; 
+                    move_info["segment_idx"] = segment_idx;
+                    move_info["proposed_new_move"] = false; 
+                    return std::make_tuple(
+                        forward_moves, reverse_moves, 0, 1.0, true, move_info
+                    ); 
+                }
+
+                // Otherwise, keep track of the candidate moves 
                 forward_moves = forward_result.first;
                 forward_diffs = forward_result.second;  
             }
-
-            // TODO Possible that after internal segment moves, there are fewer
-            // than n_candidates moves
 
             // Calculate the forward Rosenbluth factor
             Matrix<T, Dynamic, 1> forward_weights
@@ -1547,8 +1615,6 @@ class PolymerCBMCSampler
             Matrix<T, Dynamic, 3> coords_chosen = config_chosen.getSegment(0, n);
 
             // Generate reverse moves from the chosen configuration
-            Matrix<T, Dynamic, Dynamic> reverse_moves; 
-            Matrix<T, Dynamic, 1> reverse_diffs;  
             if (move_type == CBMCMoveType::REPTATION)
             {
                 // Identify the reverse direction 
@@ -1576,20 +1642,92 @@ class PolymerCBMCSampler
             }
             else    // move_type == CBMCMoveType::INTERNAL_SEGMENT
             {
+                // Specify required parameters
                 const T init_tangent_stepsize = move_params.at("init_tangent_stepsize"); 
-                const T min_tangent_stepsize = move_params.at("min_tangent_stepsize"); 
-                const T dx = move_params.at("dx"); 
-                const T newton_tol = move_params.at("newton_tol"); 
-                const T min_newton_stepsize = move_params.at("min_newton_stepsize");
-                const int max_newton_iter = static_cast<int>(move_params.at("max_newton_iter"));  
-                const T armijo_const = move_params.at("armijo_const");
+                const T min_tangent_stepsize = move_params.at("min_tangent_stepsize");
+
+                // Specify optional parameters
+                T dx, newton_tol, min_newton_stepsize, armijo_const; 
+                int max_iter, max_newton_iter; 
+                try
+                {
+                    max_iter = static_cast<int>(move_params.at("max_iter")); 
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    max_iter = 2 * n_candidates; 
+                }
+                try
+                {
+                    dx = move_params.at("dx");
+                }
+                catch (const std::out_of_range& e)
+                {
+                    dx = 1e-8;
+                } 
+                try
+                {
+                    newton_tol = move_params.at("newton_tol");
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    newton_tol = 1e-8;
+                } 
+                try
+                {
+                    min_newton_stepsize = move_params.at("min_newton_stepsize");
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    min_newton_stepsize = 1e-4;
+                }
+                try
+                {
+                    max_newton_iter = static_cast<int>(move_params.at("max_newton_iter"));
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    max_newton_iter = 1000;
+                } 
+                try
+                {
+                    armijo_const = move_params.at("armijo_const");
+                } 
+                catch (const std::out_of_range& e)
+                {
+                    armijo_const = 1e-4;
+                }
+
+                // Generate internal segment moves  
                 auto reverse_result = this->generateInternalSegmentMoves(
                     n_candidates, segment_length, segment_idx, coords_chosen, 
-                    init_tangent_stepsize, min_tangent_stepsize, dx, newton_tol,
-                    min_newton_stepsize, max_newton_iter, armijo_const 
+                    max_iter, init_tangent_stepsize, min_tangent_stepsize,
+                    dx, newton_tol, min_newton_stepsize, max_newton_iter,
+                    armijo_const 
                 );
+
+                // If the desired number of candidate moves was not generated, 
+                // then simply remain at the current configuration
+                if (reverse_result.first.rows() < n_candidates)
+                {
+                    forward_moves.resize(1, 3 * segment_length); 
+                    reverse_moves.resize(1, 3 * segment_length);
+                    for (int i = 0; i < segment_length; ++i)
+                    {
+                        forward_moves(0, Eigen::seqN(3 * i, 3)) = this->r.row(segment_idx + i);
+                        reverse_moves(0, Eigen::seqN(3 * i, 3)) = this->r.row(segment_idx + i);  
+                    }
+                    std::unordered_map<std::string, T> move_info; 
+                    move_info["segment_idx"] = segment_idx;
+                    move_info["proposed_new_move"] = false; 
+                    return std::make_tuple(
+                        forward_moves, reverse_moves, 0, 1.0, true, move_info
+                    ); 
+                }
+
+                // Otherwise, keep track of the candidate moves 
                 reverse_moves = reverse_result.first;
-                reverse_diffs = reverse_result.second;  
+                reverse_diffs = reverse_result.second;
             }
 
             // Add in the original configuration as one of the reverse moves
@@ -1722,11 +1860,18 @@ class PolymerCBMCSampler
             // additional information about the move (depending on move type)
             std::unordered_map<std::string, T> move_info; 
             if (move_type == CBMCMoveType::REPTATION)
+            {
                 move_info["direction"] = (rept_dir == ReptationDirection::HEAD ? 0 : 1);
+            }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
-                move_info["terminal_end"] = (terminal_end == TerminalSegmentEnd::HEAD ? 0 : 1); 
-            else 
-                move_info["segment_idx"] = segment_idx; 
+            {
+                move_info["terminal_end"] = (terminal_end == TerminalSegmentEnd::HEAD ? 0 : 1);
+            } 
+            else
+            { 
+                move_info["segment_idx"] = segment_idx;
+                move_info["proposed_new_move"] = true; 
+            } 
             return std::make_tuple(
                 forward_moves, reverse_moves, move_idx, prob_accept,
                 (r < prob_accept), move_info
@@ -1779,7 +1924,13 @@ class PolymerCBMCSampler
             Matrix<T, Dynamic, Dynamic> ensemble_coords(n_collect, 3 * this->length); 
 
             // Tabulate average acceptance probabilities for each move type 
-            Matrix<T, 3, 1> accept_probs = Matrix<T, 3, 1>::Zero(); 
+            Matrix<T, 3, 1> accept_probs = Matrix<T, 3, 1>::Zero();
+
+            // Tabulate probability of null moves for internal segment moves 
+            T internal_null_move_prob = 0; 
+
+            // Tabulate fraction of non-null moves 
+            T frac_nonnull = 0;  
 
             // Run sampling procedure ... 
             int curr_idx = 0; 
@@ -1814,12 +1965,31 @@ class PolymerCBMCSampler
                 else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
                     accept_probs(1) += ((prob_accept - accept_probs(1)) / (curr_idx + 1));
                 else 
-                    accept_probs(2) += ((prob_accept - accept_probs(2)) / (curr_idx + 1));  
+                    accept_probs(2) += ((prob_accept - accept_probs(2)) / (curr_idx + 1)); 
 
-                // Did the polymer configuration change?
-                bool accepted_move = std::get<4>(result);  
-                if (!accepted_move)
-                    n_stall++; 
+                // Update probability of null internal segment moves
+                auto move_info = std::get<5>(result);
+                if (move_type == CBMCMoveType::INTERNAL_SEGMENT)
+                {
+                    double null_move = (move_info["proposed_new_move"] > 0 ? 0.0 : 1.0); 
+                    internal_null_move_prob += (
+                        (null_move - internal_null_move_prob) / (curr_idx + 1)
+                    );
+                }
+
+                // Update total fraction of non-null moves
+                bool accepted_move = std::get<4>(result); 
+                bool made_null_move = (
+                    !accepted_move || (
+                        move_type == CBMCMoveType::INTERNAL_SEGMENT &&
+                        move_info["proposed_new_move"] == 0
+                    )
+                );
+                frac_nonnull += (((!made_null_move) - frac_nonnull) / (curr_idx + 1));  
+
+                // Update number of consecutive stalling iterations 
+                if (made_null_move)
+                    n_stall++;
                 else 
                     n_stall = 0;
 
@@ -1840,12 +2010,16 @@ class PolymerCBMCSampler
                     auto t_next = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double> elapsed = t_next - t_curr; 
                     std::cout << "... generated configuration " << curr_idx  
-                              << ", collected " << collect_idx + 1 << " configurations"
+                              << ", collected " << collect_idx + 1
                               << "; time elapsed = " << elapsed.count() 
-                              << ", acceptance probabilities = ["
+                              << ", accept probs = ["
                               << accept_probs(0) << ", "
                               << accept_probs(1) << ", "
-                              << accept_probs(2) << "]" << std::endl;
+                              << accept_probs(2) << "]"
+                              << ", null internal move prob = "
+                              << internal_null_move_prob
+                              << ", fraction of non-null moves = "
+                              << frac_nonnull << std::endl;
                     t_curr = t_next; 
                 } 
 
