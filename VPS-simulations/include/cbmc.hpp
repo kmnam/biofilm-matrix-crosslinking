@@ -217,22 +217,23 @@ std::pair<Matrix<T, Dynamic, Dynamic>, Matrix<T, Dynamic, Dynamic> >
  * @param dir Perturbation direction.  
  * @param dx Increment for finite difference approximation.
  * @param newton_tol Tolerance for assessing convergence of Newton's method. 
- * @param min_newton_stepsize Minimum stepsize for Newton's method. 
+ * @param min_newton_stepsize Minimum stepsize for Newton's method.
+ * @param max_newton_iter Maximum number of Newton iterations.  
  * @param armijo_const Constant for Armijo condition. Set to 1e-4 by default,
  *                     following Nocedal and Wright (page 33).   
- * @returns Two matrices, the first with columns spanning the tangent space 
- *          of the Jacobian at x0, and the second with columns spanning the 
- *          orthogonal complement. 
+ * @returns The perturbed vector, together with a residual estimating its 
+ *          distance from the constraint manifold. 
  */
 template <typename T, size_t DimIn, size_t DimOut>
-Matrix<T, DimIn, 1> perturbAndProject(VectorValuedFunction<T, DimIn, DimOut>& F, 
-                                      const Ref<const Matrix<T, DimIn, 1> >& x0, 
-                                      const T tangent_stepsize,
-                                      const Ref<const Matrix<T, DimIn - DimOut, 1> >& dir, 
-                                      const T dx = 1e-8,
-                                      const T newton_tol = 1e-8,
-                                      const T min_newton_stepsize = 1e-4,
-                                      const T armijo_const = 1e-4)
+std::pair<Matrix<T, DimIn, 1>, T> perturbAndProject(VectorValuedFunction<T, DimIn, DimOut>& F, 
+                                                    const Ref<const Matrix<T, DimIn, 1> >& x0, 
+                                                    const T tangent_stepsize,
+                                                    const Ref<const Matrix<T, DimIn - DimOut, 1> >& dir, 
+                                                    const T dx = 1e-8,
+                                                    const T newton_tol = 1e-8,
+                                                    const T min_newton_stepsize = 1e-4,
+                                                    const int max_newton_iter = 1000,
+                                                    const T armijo_const = 1e-4)
 {
     // Get bases for the tangent space and orthogonal complement of the 
     // constraint manifold at x0
@@ -251,8 +252,9 @@ Matrix<T, DimIn, 1> perturbAndProject(VectorValuedFunction<T, DimIn, DimOut>& F,
     Matrix<T, DimOut, 1> z_curr = Matrix<T, DimOut, 1>::Zero(); 
     Matrix<T, DimIn, 1> z_proj = func(z_curr);
     Matrix<T, DimOut, 1> f_curr = F(z_proj);  
-    T residual = f_curr.norm(); 
-    while (residual > newton_tol)
+    T residual = f_curr.norm();
+    int iter = 0;  
+    while (residual > newton_tol && iter < max_iter)
     {
         // Compute the Jacobian corresponding to the current step, times 
         // the orthogonal complement matrix  
@@ -275,10 +277,11 @@ Matrix<T, DimIn, 1> perturbAndProject(VectorValuedFunction<T, DimIn, DimOut>& F,
         z_curr += stepsize * dz;
         z_proj = func(z_curr);  
         f_curr = F(z_proj); 
-        residual = f_curr.norm(); 
+        residual = f_curr.norm();
+        iter++;  
     }
 
-    return x1 + Qp * z_curr; 
+    return std::make_pair(x1 + Qp * z_curr, residual); 
 }
 
 /**
@@ -305,24 +308,25 @@ Matrix<T, DimIn, 1> perturbAndProject(VectorValuedFunction<T, DimIn, DimOut>& F,
  * @param dir Perturbation direction.  
  * @param dx Increment for finite difference approximation.
  * @param newton_tol Tolerance for assessing convergence of Newton's method. 
- * @param min_newton_stepsize Minimum stepsize for Newton's method. 
+ * @param min_newton_stepsize Minimum stepsize for Newton's method.
+ * @param max_newton_iter Maximum number of Newton iterations.  
  * @param armijo_const Constant for Armijo condition. Set to 1e-4 by default,
  *                     following Nocedal and Wright (page 33).   
- * @returns Two matrices, the first with columns spanning the tangent space 
- *          of the Jacobian at x0, and the second with columns spanning the 
- *          orthogonal complement. 
+ * @returns The perturbed vector, together with a residual estimating its 
+ *          distance from the constraint manifold. 
  */
 template <typename T>
-Matrix<T, Dynamic, 1> perturbAndProject(DynamicVectorValuedFunction<T>& F, 
-                                        const Ref<const Matrix<T, Dynamic, 1> >& x0,
-                                        const Ref<const Matrix<T, Dynamic, Dynamic> >& Qt, 
-                                        const Ref<const Matrix<T, Dynamic, Dynamic> >& Qp,  
-                                        const T tangent_stepsize,
-                                        const Ref<const Matrix<T, Dynamic, 1> >& dir, 
-                                        const T dx = 1e-8,
-                                        const T newton_tol = 1e-8,
-                                        const T min_newton_stepsize = 1e-4,
-                                        const T armijo_const = 1e-4)
+std::pair<Matrix<T, Dynamic, 1>, T> perturbAndProject(DynamicVectorValuedFunction<T>& F, 
+                                                      const Ref<const Matrix<T, Dynamic, 1> >& x0,
+                                                      const Ref<const Matrix<T, Dynamic, Dynamic> >& Qt, 
+                                                      const Ref<const Matrix<T, Dynamic, Dynamic> >& Qp,  
+                                                      const T tangent_stepsize,
+                                                      const Ref<const Matrix<T, Dynamic, 1> >& dir, 
+                                                      const T dx = 1e-8,
+                                                      const T newton_tol = 1e-8,
+                                                      const T min_newton_stepsize = 1e-4,
+                                                      const int max_newton_iter = 1000,
+                                                      const T armijo_const = 1e-4)
 {
     // Check input/output dimensions for F, Qt, and Qp, if desired 
     //
@@ -353,8 +357,9 @@ Matrix<T, Dynamic, 1> perturbAndProject(DynamicVectorValuedFunction<T>& F,
     Matrix<T, Dynamic, 1> z_curr = Matrix<T, Dynamic, 1>::Zero(dim_out);    // Size dim_out 
     Matrix<T, Dynamic, 1> z_proj = func(z_curr);                            // Size dim_in
     Matrix<T, Dynamic, 1> f_curr = F(z_proj);                               // Size dim_out 
-    T residual = f_curr.norm(); 
-    while (residual > newton_tol)
+    T residual = f_curr.norm();
+    int iter = 0;  
+    while (residual > newton_tol && iter < max_iter)
     {
         // Compute the Jacobian corresponding to the current step, times 
         // the orthogonal complement matrix 
@@ -381,10 +386,11 @@ Matrix<T, Dynamic, 1> perturbAndProject(DynamicVectorValuedFunction<T>& F,
         z_curr += stepsize * dz;
         z_proj = func(z_curr);       // Size dim_in 
         f_curr = F(z_proj);          // Size dim_out
-        residual = f_curr.norm(); 
+        residual = f_curr.norm();
+        iter++;  
     }
 
-    return x1 + Qp * z_curr;     // Size dim_in 
+    return std::make_pair(x1 + Qp * z_curr, residual);     // Size dim_in 
 }
 
 /** ------------------------------------------------------------------- // 
@@ -1095,7 +1101,8 @@ class PolymerCBMCSampler
          * @param dx Increment for finite difference approximation.
          * @param newton_tol Tolerance for assessing convergence of Newton's
          *                   method. 
-         * @param min_newton_stepsize Minimum stepsize for Newton's method. 
+         * @param min_newton_stepsize Minimum stepsize for Newton's method.
+         * @param max_newton_iter Maximum number of Newton iterations.  
          * @param armijo_const Constant for Armijo condition. Set to 1e-4 by
          *                     default, following Nocedal and Wright (page 33).  
          * @returns Arrays of candidate atomic positions for the new segment
@@ -1110,7 +1117,8 @@ class PolymerCBMCSampler
                                                                        const T min_tangent_stepsize,
                                                                        const T dx = 1e-8,  
                                                                        const T newton_tol = 1e-8,
-                                                                       const T min_newton_stepsize = 1e-4, 
+                                                                       const T min_newton_stepsize = 1e-4,
+                                                                       const int max_newton_iter = 1000, 
                                                                        const T armijo_const = 1e-4) 
         {
             // Specify the constraint manifold for the internal segment move 
@@ -1175,22 +1183,24 @@ class PolymerCBMCSampler
                 Matrix<T, Dynamic, 1> x1(3 * segment_length); 
                 while (tangent_stepsize > min_tangent_stepsize)
                 {
-                    try
+                    auto perturb_result = perturbAndProject<T>(
+                        F, x0, Qt, Qp, tangent_stepsize, dir, dx, newton_tol,
+                        min_newton_stepsize, max_newton_iter, armijo_const
+                    );
+                    x1 = perturb_result.first;
+                    residual = perturb_result.second;  
+                    
+                    // If the projection fails to achieve the desired Newton
+                    // tolerance, try perturbing by a smaller increment
+                    if (residual > newton_tol)
                     {
-                        x1 = perturbAndProject<T>(
-                            F, x0, Qt, Qp, tangent_stepsize, dir, dx, newton_tol,
-                            min_newton_stepsize, armijo_const
-                        );
+                        tangent_stepsize /= 2;
                     }
-                    catch (const std::runtime_error& e)
-                    {
-                        // If the projection fails, try perturbing by a smaller
-                        // increment
-                        tangent_stepsize /= 2; 
-                        continue; 
-                    }
-                    found_move = true;
-                    break;  
+                    else 
+                    { 
+                        found_move = true;
+                        break; 
+                    } 
                 }
 
                 // If projection along the given direction was successful, ... 
@@ -1246,7 +1256,8 @@ class PolymerCBMCSampler
          * @param dx Increment for finite difference approximation.
          * @param newton_tol Tolerance for assessing convergence of Newton's
          *                   method. 
-         * @param min_newton_stepsize Minimum stepsize for Newton's method. 
+         * @param min_newton_stepsize Minimum stepsize for Newton's method.
+         * @param max_newton_iter Maximum number of Newton iterations.  
          * @param armijo_const Constant for Armijo condition. Set to 1e-4 by
          *                     default, following Nocedal and Wright (page 33).  
          * @returns Arrays of candidate atomic positions for the new segment
@@ -1263,6 +1274,7 @@ class PolymerCBMCSampler
                                                                        const T dx = 1e-8,  
                                                                        const T newton_tol = 1e-8,
                                                                        const T min_newton_stepsize = 1e-4, 
+                                                                       const int max_newton_iter = 1000,
                                                                        const T armijo_const = 1e-4)
         {
             // Generate new configuration with the given coordinates 
@@ -1332,22 +1344,24 @@ class PolymerCBMCSampler
                 Matrix<T, Dynamic, 1> x1(3 * segment_length); 
                 while (tangent_stepsize > min_tangent_stepsize)
                 {
-                    try
+                    auto perturb_result = perturbAndProject<T>(
+                        F, x0, Qt, Qp, tangent_stepsize, dir, dx, newton_tol,
+                        min_newton_stepsize, max_newton_iter, armijo_const
+                    );
+                    x1 = perturb_result.first;
+                    residual = perturb_result.second;  
+                    
+                    // If the projection fails to achieve the desired Newton
+                    // tolerance, try perturbing by a smaller increment
+                    if (residual > newton_tol)
                     {
-                        x1 = perturbAndProject<T>(
-                            F, x0, Qt, Qp, tangent_stepsize, dir, dx, newton_tol,
-                            min_newton_stepsize, armijo_const
-                        );
+                        tangent_stepsize /= 2;
                     }
-                    catch (const std::runtime_error& e)
-                    {
-                        // If the projection fails, try perturbing by a smaller
-                        // increment
-                        tangent_stepsize /= 2; 
-                        continue; 
-                    }
-                    found_move = true;
-                    break;  
+                    else 
+                    { 
+                        found_move = true;
+                        break; 
+                    } 
                 }
 
                 // If projection along the given direction was successful, ... 
@@ -1467,12 +1481,13 @@ class PolymerCBMCSampler
                 const T min_tangent_stepsize = move_params.at("min_tangent_stepsize"); 
                 const T dx = move_params.at("dx"); 
                 const T newton_tol = move_params.at("newton_tol"); 
-                const T min_newton_stepsize = move_params.at("min_newton_stepsize"); 
+                const T min_newton_stepsize = move_params.at("min_newton_stepsize");
+                const int max_newton_iter = static_cast<int>(move_params.at("max_newton_iter"));  
                 const T armijo_const = move_params.at("armijo_const");
                 auto forward_result = this->generateInternalSegmentMoves(
                     n_candidates, segment_length, segment_idx, init_tangent_stepsize,
                     min_tangent_stepsize, dx, newton_tol, min_newton_stepsize,
-                    armijo_const 
+                    max_newton_iter, armijo_const 
                 );
                 forward_moves = forward_result.first;
                 forward_diffs = forward_result.second;  
@@ -1565,12 +1580,13 @@ class PolymerCBMCSampler
                 const T min_tangent_stepsize = move_params.at("min_tangent_stepsize"); 
                 const T dx = move_params.at("dx"); 
                 const T newton_tol = move_params.at("newton_tol"); 
-                const T min_newton_stepsize = move_params.at("min_newton_stepsize"); 
+                const T min_newton_stepsize = move_params.at("min_newton_stepsize");
+                const int max_newton_iter = static_cast<int>(move_params.at("max_newton_iter"));  
                 const T armijo_const = move_params.at("armijo_const");
                 auto reverse_result = this->generateInternalSegmentMoves(
                     n_candidates, segment_length, segment_idx, coords_chosen, 
                     init_tangent_stepsize, min_tangent_stepsize, dx, newton_tol,
-                    min_newton_stepsize, armijo_const 
+                    min_newton_stepsize, max_newton_iter, armijo_const 
                 );
                 reverse_moves = reverse_result.first;
                 reverse_diffs = reverse_result.second;  
@@ -1738,8 +1754,11 @@ class PolymerCBMCSampler
          *                                moves. 
          * @param max_iter Maximum number of iterations. 
          * @param n_burnin Number of burn-in iterations. 
-         * @param mod Modulus that determines which configurations to keep in the 
-         *            returned sample, to reduce auto-correlation. 
+         * @param mod Modulus that determines which configurations to keep in
+         *            the returned sample, to reduce auto-correlation.
+         * @param max_stall Maximum number of consecutive iterations in which
+         *                  the sampling "stalls" at one configuration without
+         *                  accepting a new move.  
          * @returns Representative sub-sample of sampled configurations.  
          */
         Matrix<T, Dynamic, Dynamic> run(const int n_candidates, 
@@ -1748,7 +1767,8 @@ class PolymerCBMCSampler
                                         const int terminal_segment_length, 
                                         const int internal_segment_length,
                                         const int max_iter, const int n_burnin,
-                                        const int mod, const bool verbose = false)
+                                        const int mod, const int max_stall, 
+                                        const bool verbose = false)
         {
             // Keep track of time for intermittent output to stdout
             auto t_curr = std::chrono::high_resolution_clock::now();  
@@ -1758,9 +1778,13 @@ class PolymerCBMCSampler
             int n_collect = (max_iter - n_burnin) / mod; 
             Matrix<T, Dynamic, Dynamic> ensemble_coords(n_collect, 3 * this->length); 
 
+            // Tabulate average acceptance probabilities for each move type 
+            Matrix<T, 3, 1> accept_probs = Matrix<T, 3, 1>::Zero(); 
+
             // Run sampling procedure ... 
             int curr_idx = 0; 
-            int collect_idx = 0; 
+            int collect_idx = 0;
+            int n_stall = 0;  
             while (collect_idx < n_collect)
             {
                 // Sample a move type 
@@ -1779,9 +1803,36 @@ class PolymerCBMCSampler
                     segment_length = terminal_segment_length; 
                 else if (move_type == CBMCMoveType::INTERNAL_SEGMENT)
                     segment_length = internal_segment_length;  
-                this->moveOnce(
+                auto result = this->moveOnce(
                     n_candidates, move_type, segment_length, internal_move_params
                 );
+
+                // Update average acceptance probabilities 
+                T prob_accept = std::get<3>(result);
+                if (move_type == CBMCMoveType::REPTATION)
+                    accept_probs(0) += ((prob_accept - accept_probs(0)) / (curr_idx + 1));
+                else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
+                    accept_probs(1) += ((prob_accept - accept_probs(1)) / (curr_idx + 1));
+                else 
+                    accept_probs(2) += ((prob_accept - accept_probs(2)) / (curr_idx + 1));  
+
+                // Did the polymer configuration change?
+                bool accepted_move = std::get<4>(result);  
+                if (!accepted_move)
+                    n_stall++; 
+                else 
+                    n_stall = 0;
+
+                // If we have exceeded the number of consecutive iterations 
+                // in which the sampling has stalled, return the current 
+                // sample 
+                if (n_stall > max_stall)
+                {
+                    std::cout << "[WARN] Sampling has stalled due to too many "
+                              << "consecutive rejections" << std::endl;
+                    ensemble_coords.conservativeResize(collect_idx, 3 * this->length);  
+                    return ensemble_coords; 
+                } 
 
                 // Print intermittent output to stdout, if desired  
                 if (verbose && curr_idx % 100 == 0)
@@ -1789,7 +1840,11 @@ class PolymerCBMCSampler
                     auto t_next = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double> elapsed = t_next - t_curr; 
                     std::cout << "... generated configuration " << curr_idx  
-                              << ", time elapsed = " << elapsed.count() << std::endl;
+                              << ", time elapsed = " << elapsed.count() 
+                              << ", acceptance probabilities = ["
+                              << accept_probs(0) << ", "
+                              << accept_probs(1) << ", "
+                              << accept_probs(2) << "]" << std::endl;
                     t_curr = t_next; 
                 } 
 
