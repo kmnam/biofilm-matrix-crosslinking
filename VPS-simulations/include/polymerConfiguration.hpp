@@ -1050,6 +1050,37 @@ class PolymerConfiguration
         }
 
         /**
+         * Get the total energy of the current polymer configuration. 
+         *
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @param fene_params FENE parameters. 
+         * @param angle_mode Angle potential type.  
+         * @param angle_params Angle potential parameters. Must include the 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
+         * @param dihedral_params Dihedral angle potential parameters.
+         * @returns Total energy.  
+         */
+        T getTotalEnergy(std::unordered_map<std::string, T>& lj_params,  
+                         const T neighbor_threshold, 
+                         std::unordered_map<std::string, T>& fene_params,
+                         const AngleMode angle_mode,  
+                         std::unordered_map<std::string, T>& angle_params,
+                         std::unordered_map<std::string, T>& dihedral_params) const
+        {
+            T energy = 0; 
+            energy += this->getNonbondedEnergy(lj_params, neighbor_threshold);
+            energy += this->getBondEnergy(fene_params); 
+            energy += this->getBondAngleEnergy(angle_mode, angle_params); 
+            energy += this->getDihedralAngleEnergy(dihedral_params); 
+
+            return energy; 
+        }
+
+        /**
          * Get the *non-bonded* energy difference between the current polymer
          * configuration and the configuration that would arise from reptating
          * the polymer in the given direction by adding the given atom.
