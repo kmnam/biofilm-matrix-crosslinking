@@ -1436,7 +1436,7 @@ class PolymerCBMCSampler
             if (move_type == CBMCMoveType::REPTATION)
             {
                 const T p = this->uniform_dist(this->rng); 
-                rept_dir = (p < 0.5 ? ReptationDirection::HEAD : ReptationDirection::TAIL); 
+                rept_dir = (p < 0.5 ? ReptationDirection::HEAD : ReptationDirection::TAIL);
             }
 
             // Specify a terminal segment to move if desired 
@@ -1465,7 +1465,7 @@ class PolymerCBMCSampler
                     rept_dir, n_candidates
                 );
                 forward_moves = forward_result.first;
-                forward_diffs = forward_result.second;  
+                forward_diffs = forward_result.second; 
             }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
             {
@@ -1499,7 +1499,7 @@ class PolymerCBMCSampler
             // Calculate the forward Rosenbluth factor
             Matrix<T, Dynamic, 1> forward_weights
                 = ((-forward_diffs).array() / this->config.kT).exp().matrix(); 
-            T forward_rosenbluth = forward_weights.sum(); 
+            T forward_rosenbluth = forward_weights.sum();
 
             // Choose one move out of the candidates 
             std::vector<T> probs; 
@@ -1802,7 +1802,7 @@ class PolymerCBMCSampler
                 if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
                     segment_length = terminal_segment_length; 
                 else if (move_type == CBMCMoveType::INTERNAL_SEGMENT)
-                    segment_length = internal_segment_length;  
+                    segment_length = internal_segment_length;
                 auto result = this->moveOnce(
                     n_candidates, move_type, segment_length, internal_move_params
                 );
@@ -1840,7 +1840,8 @@ class PolymerCBMCSampler
                     auto t_next = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double> elapsed = t_next - t_curr; 
                     std::cout << "... generated configuration " << curr_idx  
-                              << ", time elapsed = " << elapsed.count() 
+                              << ", collected " << collect_idx + 1 << " configurations"
+                              << "; time elapsed = " << elapsed.count() 
                               << ", acceptance probabilities = ["
                               << accept_probs(0) << ", "
                               << accept_probs(1) << ", "
