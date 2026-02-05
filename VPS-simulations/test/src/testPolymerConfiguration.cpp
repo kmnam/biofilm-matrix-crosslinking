@@ -1094,6 +1094,50 @@ TEST_CASE(
         Matrix<double, 3, 1> u = coords.row(i + 1) - coords.row(i);
         Matrix<double, 3, 1> v = tangent_vectors.row(i); 
         REQUIRE_THAT((u / u.norm() - v).norm(), Catch::Matchers::WithinAbs(0, tol)); 
-    } 
+    }
+
+    // Generate three more slightly perturbed configurations 
+    Matrix<double, Dynamic, 3> coords2(coords), coords3(coords), coords4(coords); 
+    for (int i = 0; i < 10; ++i)
+    {
+        for (int j = 0; j < 3; ++j)
+        {
+            coords2(i, j) += (-0.01 + 0.02 * uniform_dist(rng)); 
+            coords3(i, j) += (-0.01 + 0.02 * uniform_dist(rng)); 
+            coords4(i, j) += (-0.01 + 0.02 * uniform_dist(rng));
+        }
+    }
+    PolymerConfiguration<double> config2(coords2, Units::NANO, 300), 
+                                 config3(coords3, Units::NANO, 300), 
+                                 config4(coords4, Units::NANO, 300);
+
+    // Get the tangent vectors of all four configurations  
+    std::vector<Matrix<double, Dynamic, 3> > tangent_vectors_ensemble;
+    tangent_vectors_ensemble.push_back(tangent_vectors); 
+    tangent_vectors_ensemble.push_back(config2.tangentVectors()); 
+    tangent_vectors_ensemble.push_back(config3.tangentVectors()); 
+    tangent_vectors_ensemble.push_back(config4.tangentVectors()); 
+
+    // Get the tangent vector autocorrelation for k = 1
+    Matrix<double, Dynamic, 1> autocorrs = getTangentVectorAutocorrelation<double>(
+        tangent_vectors_ensemble, 1
+    );
+    
+    // Verify the autocorrelation for each configuration ... 
+    //
+    // Get the average dot product between all pairs of consecutive tangent 
+    // vectors along each configuration 
+    for (int i = 0; i < 4; ++i)
+    {
+        double sum = 0;
+        for (int j = 0; j < 8; ++j)
+        {
+            Matrix<double, 3, 1> u = tangent_vectors_ensemble[i].row(j); 
+            Matrix<double, 3, 1> v = tangent_vectors_ensemble[i].row(j + 1); 
+            sum += u.dot(v);
+        }
+        double mean = sum / 8;
+        REQUIRE_THAT(autocorrs(i), Catch::Matchers::WithinAbs(mean, tol)); 
+    }
 }
 
