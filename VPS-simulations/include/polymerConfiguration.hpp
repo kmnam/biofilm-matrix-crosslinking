@@ -1010,7 +1010,8 @@ class PolymerConfiguration
                     // Add the Lennard-Jones energy if desired
                     if (include_lj)
                         bond_energy += lj<T>(
-                            u.norm(), lj_params.at("eps"), lj_params.at("sigma"), true
+                            u.norm(), lj_params.at("eps"), lj_params.at("sigma"),
+                            true
                         );
                     energy += bond_energy; 
                 } 
@@ -2110,7 +2111,7 @@ Matrix<T, Dynamic, 1> getTangentVectorAutocorrelation(std::vector<Matrix<T, Dyna
 {
     // For each configuration ...
     const int n = tangent_vectors.size();              // Ensemble size 
-    const int n_bonds = tangent_vectors[0].size();     // Polymer length
+    const int n_bonds = tangent_vectors[0].rows();     // Polymer length
     Matrix<T, Dynamic, 1> autocorrs_per_config = Matrix<T, Dynamic, 1>::Zero(n); 
     for (int i = 0; i < n; ++i)
     { 
