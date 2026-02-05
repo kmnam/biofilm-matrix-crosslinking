@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/3/2026
+ *     2/4/2026
  */
 
 #ifndef POLYMER_CONFIGURATION_HPP
@@ -19,6 +19,7 @@
 #include <functional>
 #include <Eigen/Dense>
 #include <boost/math/constants/constants.hpp>
+#include <boost/math/distributions/normal.hpp>
 #include <boost/multiprecision/mpfr.hpp>
 #include <boost/random.hpp>
 #include "utils.hpp"
@@ -618,6 +619,54 @@ class PolymerConfiguration
                 );
 
             return dihedrals;  
+        }
+
+        /**
+         * Get the radius of gyration of the polymer configuration. 
+         *
+         * @returns Radius of gyration. 
+         */
+        T radiusOfGyration() const 
+        {
+            // Get the deviation of each atom from the center of mass 
+            Matrix<T, Dynamic, 3> deviations = this->r.rowwise() - this->r.colwise().mean();
+
+            // Get the radius of gyration 
+            T sum = 0; 
+            for (int i = 0; i < this->length; ++i)
+                sum += deviations.row(i).dot(deviations.row(i));
+            return sqrt(sum / this->length);  
+        }
+
+        /**
+         * Get the unit vectors tangent to each bond along the polymer
+         * configuration. 
+         *
+         * @returns Array of tangent vectors. 
+         */
+        Matrix<T, Dynamic, 3> tangentVectors() const
+        {
+            // Get the unit vectors along the bonds
+            Matrix<T, Dynamic, 3> bonds = (
+                this->r(Eigen::seq(1, this->length - 1), Eigen::all) -
+                this->r(Eigen::seq(0, this->length - 2), Eigen::all)
+            );
+            Matrix<T, Dynamic, 1> bond_lengths = bonds.rowwise().norm();
+            return (bonds.array().colwise() / bond_lengths.array()).matrix(); 
+        }
+        
+        /**
+         * Get the average bond length. 
+         *
+         * @returns Mean bond length. 
+         */
+        T meanBondLength() const 
+        {
+            Matrix<T, Dynamic, 3> bonds = (
+                this->r(Eigen::seq(1, this->length - 1), Eigen::all) -
+                this->r(Eigen::seq(0, this->length - 2), Eigen::all)
+            );
+            return bonds.rowwise().norm().mean();
         }
 
         /**
@@ -2041,6 +2090,123 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
     }
 
     return config;  
+}
+
+/**
+ * Given arrays of tangent vectors along an ensemble of polymer configurations, 
+ * get the corresponding autocorrelation in the tangent vector direction along
+ * each polymer configuration, for the given increment k.
+ *
+ * @param tangent_vectors Collection of arrays of tangent vectors along each 
+ *                        polymer configuration in an ensemble. 
+ * @param k Input increment. 
+ * @returns Array of n values (n = ensemble size), where the i-th value is 
+ *          the autocorrelation in the tangent vector direction along the 
+ *          i-th configuration, for the increment k.
+ */
+template <typename T>
+Matrix<T, Dynamic, 1> getTangentVectorAutocorrelation(std::vector<Matrix<T, Dynamic, 3> >& tangent_vectors, 
+                                                      const int k)
+{
+    // For each configuration ...
+    const int n = tangent_vectors.size();              // Ensemble size 
+    const int n_bonds = tangent_vectors[0].size();     // Polymer length
+    Matrix<T, Dynamic, 1> autocorrs_per_config = Matrix<T, Dynamic, 1>::Zero(n); 
+    for (int i = 0; i < n; ++i)
+    { 
+        // Calculate the average of the dot product between the j-th and 
+        // (j + k)-th tangent vectors in the i-th configuration
+        for (int j = 0; j < n_bonds - k; ++j)
+        {
+            Matrix<T, 3, 1> u = tangent_vectors[i].row(j); 
+            Matrix<T, 3, 1> v = tangent_vectors[i].row(j + k);
+            autocorrs_per_config(i) += u.dot(v); 
+        }
+        autocorrs_per_config(i) /= (n_bonds - k);
+    }
+
+    return autocorrs_per_config;
+}
+
+template <typename T>
+using PolymerEnsemble = std::vector<PolymerConfiguration<T> >;
+
+/**
+ * Estimate the persistence length of the polymer from the given ensemble of
+ * polymer configurations, using the tangent vector autocorrelation along 
+ * each configuration. 
+ *
+ * @param ensemble Ensemble of polymer configurations. 
+ * @returns Persistence length. 
+ */
+template <typename T>
+T getPersistenceLength(PolymerEnsemble<T>& ensemble)
+{
+    // Check that there are at least two configurations 
+    if (ensemble.size() < 2)
+        throw std::runtime_error(
+            "Invalid ensemble size for persistence length calculation"
+        ); 
+
+    // Get the tangent vectors along each configuration in the ensemble
+    const int n = ensemble.size();  
+    std::vector<Matrix<T, Dynamic, 3> > tangent_vectors; 
+    for (int i = 0; i < n; ++i)
+        tangent_vectors.push_back(ensemble[i].tangentVectors()); 
+
+    // Get the mean bond length in each configuration
+    T mean_bond_length = 0; 
+    for (int i = 0; i < n; ++i)
+    {
+        T mean_i = ensemble[i].meanBondLength(); 
+        mean_bond_length += ((mean_i - mean_bond_length) / (i + 1));
+    } 
+
+    // Get the 97.5-th percentile point of the standard normal 
+    boost::math::normal normal_dist(0.0, 1.0); 
+    const double z975 = quantile(normal_dist, 0.975); 
+
+    // For each value of k ...
+    Matrix<T, Dynamic, 1> autocorrs(0); 
+    int k = 1;
+    bool terminate = false;
+    int n_noisy = 0;  
+    while (!terminate)
+    {
+        // For each configuration ... 
+        Matrix<T, Dynamic, 1> autocorrs_per_config_k
+            = getTangentVectorAutocorrelation<T>(tangent_vectors, k);
+        T autocorr_k = autocorrs_per_config_k.mean(); 
+
+        // Keep track of the mean over all configurations for k 
+        autocorrs.conservativeResize(k); 
+        autocorrs(k - 1) = autocorr_k;
+
+        // Calculate the standard error
+        Array<T, Dynamic, 1> deviations = autocorrs_per_config_k.array() - autocorr_k; 
+        T variance = deviations.pow(2).sum() / (n - 1);
+        T std_error = sqrt(variance / n);
+
+        // Check if the mean is statistically indistinguishable from zero 
+        // using the Wald test
+        //
+        // More specifically, we check if the absolute value of the test
+        // statistic, (mean - 0) / standard error, exceeds the Z-score for 
+        // the 97.5-th percentile point of the standard normal 
+        if (autocorr_k / std_error < z975)
+            n_noisy++; 
+        else     // If not, then reset n_noisy to zero 
+            n_noisy = 0;
+
+        // If we have reached 5 consecutive iterations where the mean is 
+        // statistically indistiguishable from zero, then terminate  
+        if (n_noisy >= 5)
+            terminate = true;
+        k++;
+    }
+
+    // Estimate the persistence length
+    return mean_bond_length * (0.5 + autocorrs.sum()); 
 }
 
 #endif
