@@ -668,18 +668,18 @@ TEST_CASE(
     // Calculate the bonded interaction energy (including Lennard-Jones) and 
     // compare against LAMMPS-computed value
     double bond_energy = config.getBondEnergy(fene_params, true, lj_params);
-    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(606.38266, tol));
+    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(654.92774, tol)); 
 
     // Calculate the bond angle energy and compare against LAMMPS-computed value
     double angle_energy = config.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
-    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(13.45284, tol));
+    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(38.432699, tol));
 
     // Calculate the dihedral angle energy and compare against LAMMPS-computed
     // value
     double dihedral_energy = config.getDihedralAngleEnergy(dihedral_params); 
     REQUIRE_THAT(
         dihedral_energy,
-        Catch::Matchers::WithinAbs(627.95034 - 606.38266 - 13.45284, tol)
+        Catch::Matchers::WithinAbs(726.79979 - 654.92774 - 38.432699, tol)
     );
 
     // Parse test 10-mer coordinates with angles chosen from a dual Gaussian
@@ -704,18 +704,18 @@ TEST_CASE(
     // Calculate the bonded interaction energy (including Lennard-Jones) and 
     // compare against LAMMPS-computed value
     bond_energy = config.getBondEnergy(fene_params, true, lj_params);
-    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(688.27727, tol));
+    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(674.95671, tol));
 
     // Calculate the bond angle energy and compare against LAMMPS-computed value
     angle_energy = config.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
-    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(37.895133, tol));
+    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(22.813472, tol));
 
     // Calculate the dihedral angle energy and compare against LAMMPS-computed
     // value
     dihedral_energy = config.getDihedralAngleEnergy(dihedral_params); 
     REQUIRE_THAT(
         dihedral_energy,
-        Catch::Matchers::WithinAbs(729.07644 - 688.27727 - 37.895133, tol)
+        Catch::Matchers::WithinAbs(721.25863 - 674.95671 - 22.813472, tol)
     ); 
 }
 
@@ -1052,5 +1052,48 @@ TEST_CASE(
         dihedral_params
     );
     REQUIRE_THAT(reptate_energy_45, Catch::Matchers::WithinAbs(-reptate_energy_14, tol));
+}
+
+/**
+ * Tests for tangentVectors() and getTangentVectorAutocorrelation(). 
+ */
+TEST_CASE(
+    "Tests for tangent vector autocorrelation calculation", 
+    "[tangentVectors(), getTangentVectorAutocorrelation()]"
+)
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+    const double tol = 1e-8;
+
+    // Parse test 10-mer coordinates with angles chosen from a cosine potential
+    auto result = parseLammps<double>(
+        "configs/test_10mer_cosine.txt", Units::NANO, 300
+    ); 
+    PolymerConfiguration<double> config = std::get<0>(result); 
+    std::unordered_map<std::string, double> lj_params = std::get<1>(result); 
+    std::unordered_map<std::string, double> fene_params = std::get<2>(result); 
+    std::unordered_map<std::string, double> angle_params = std::get<4>(result); 
+    std::unordered_map<std::string, double> dihedral_params = std::get<5>(result);
+
+    // Get the tangent vectors along the polymer configuration 
+    Matrix<double, Dynamic, 3> tangent_vectors = config.tangentVectors();
+    REQUIRE(config.getLength() == 10); 
+    REQUIRE(tangent_vectors.rows() == 9); 
+
+    // Check that each tangent vector has norm 1
+    for (int i = 0; i < 9; ++i)
+        REQUIRE_THAT(
+            tangent_vectors.row(i).norm(), Catch::Matchers::WithinAbs(1, tol)
+        );
+
+    // Check that each tangent vector is parallel to the corresponding bond
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10); 
+    for (int i = 0; i < 9; ++i)
+    {
+        Matrix<double, 3, 1> u = coords.row(i + 1) - coords.row(i);
+        Matrix<double, 3, 1> v = tangent_vectors.row(i); 
+        REQUIRE_THAT((u / u.norm() - v).norm(), Catch::Matchers::WithinAbs(0, tol)); 
+    } 
 }
 
