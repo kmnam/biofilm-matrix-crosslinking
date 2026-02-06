@@ -118,7 +118,7 @@ TEST_CASE(
         return x.tail(2); 
     };
 
-    // Try calculating the Jacobian at multiple values of r, \theta, \phi
+    // Try calculating the Jacobian at multiple points 
     boost::random::mt19937 rng(1234567890);
     boost::random::uniform_01<> uniform_dist; 
     for (int i = 0; i < 100; ++i)
