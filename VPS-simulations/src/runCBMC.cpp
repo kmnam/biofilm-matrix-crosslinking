@@ -30,14 +30,14 @@ int main(int argc, char** argv)
     const int length = json_data["length"].as_int64(); 
     lj_params["eps"] = json_data["lj_eps"].as_double(); 
     lj_params["sigma"] = json_data["lj_sigma"].as_double(); 
-    fene_params["K"] = json_data["fene_K_by_kT"].as_double() * kT;
+    fene_params["K"] = json_data["fene_K"].as_double() * kT;
     fene_params["R0"] = json_data["fene_R0"].as_double();
     AngleMode angle_mode = (
         json_data["angle_mode"] == 0 ? AngleMode::COSINE : AngleMode::GAUSSIAN
     ); 
     if (angle_mode == AngleMode::COSINE)
     { 
-        angle_params["K"] = json_data["cosine_K_by_kT"].as_double() * kT; 
+        angle_params["K"] = json_data["cosine_K"].as_double() * kT; 
         angle_params["theta0"] = (
             json_data["cosine_theta0"].as_double() * boost::math::constants::pi<double>() / 180
         );
@@ -55,7 +55,9 @@ int main(int argc, char** argv)
             json_data["gaussian_theta2"].as_double() * boost::math::constants::pi<double>() / 180
         );
     } 
-    dihedral_params["K"] = json_data["dihedral_K_by_kT"].as_double() * kT;
+    dihedral_params["K"] = json_data["dihedral_K"].as_double() * kT;
+    dihedral_params["d"] = 1; 
+    dihedral_params["n"] = 1;
     const double collision_threshold = json_data["init_collision_threshold"].as_double(); 
     const int max_tries_per_atom = json_data["init_max_tries_per_atom"].as_int64();
     const int max_n_backtracks = json_data["init_max_n_backtracks"].as_int64();
@@ -94,7 +96,7 @@ int main(int argc, char** argv)
     }
     catch (boost::wrapexcept<boost::system::system_error>& e)
     {
-        internal_move_params["init_tangent_stepsize"] = 0.01 * lj_params["sigma"]; 
+        internal_move_params["min_tangent_stepsize"] = 0.01 * lj_params["sigma"]; 
     }
     try
     { 
