@@ -2079,6 +2079,27 @@ class PolymerCBMCSampler
                 curr_idx++; 
             }
 
+            // Write remaining configurations to file 
+            for (int i = last_written_idx + 1; i < collect_idx; ++i)
+            {
+                // Calculate configuration energy and radius of gyration
+                T energy = config.getTotalEnergy(
+                    this->lj_params, this->neighbor_threshold, 
+                    this->fene_params, this->angle_mode,
+                    this->angle_params, this->dihedral_params
+                );
+                T radius = config.radiusOfGyration();  
+                outfile << "CONFIG\t" << i << std::endl
+                        << "# ENERGY\t" << energy << std::endl 
+                        << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
+                for (int j = 0; j < length; ++j)
+                {
+                    outfile << ensemble_coords(i, 3 * j) << '\t'
+                            << ensemble_coords(i, 3 * j + 1) << '\t' 
+                            << ensemble_coords(i, 3 * j + 2) << std::endl; 
+                }  
+            } 
+
             return ensemble_coords; 
         }
 };
