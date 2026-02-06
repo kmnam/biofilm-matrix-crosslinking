@@ -23,6 +23,8 @@
 #include "utils.hpp"
 #include "polymerConfiguration.hpp"
 
+using std::max; 
+using boost::multiprecision::max; 
 using std::min; 
 using boost::multiprecision::min; 
 using std::exp; 
@@ -1929,7 +1931,7 @@ class PolymerCBMCSampler
 
             // Identify how many configurations will be collected throughout
             // the sampling
-            int n_collect = (max_iter - n_burnin) / mod; 
+            int n_collect = (max_iter - n_burnin) / mod_collect; 
             Matrix<T, Dynamic, Dynamic> ensemble_coords(n_collect, 3 * this->length);
 
             // Ensure that mod_write is some multiple (>= 10) of mod_collect
