@@ -2063,7 +2063,9 @@ class PolymerCBMCSampler
                             this->fene_params, this->angle_mode,
                             this->angle_params, this->dihedral_params
                         );
-                        T radius = config.radiusOfGyration();  
+                        T radius = config.radiusOfGyration(); 
+
+                        // Write coordinates, energy, and radius of gyration to file  
                         outfile << "CONFIG\t" << i << std::endl
                                 << "# ENERGY\t" << energy << std::endl 
                                 << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
@@ -2088,7 +2090,9 @@ class PolymerCBMCSampler
                     this->fene_params, this->angle_mode,
                     this->angle_params, this->dihedral_params
                 );
-                T radius = config.radiusOfGyration();  
+                T radius = config.radiusOfGyration(); 
+
+                // Write coordinates, energy, and radius of gyration to file  
                 outfile << "CONFIG\t" << i << std::endl
                         << "# ENERGY\t" << energy << std::endl 
                         << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
