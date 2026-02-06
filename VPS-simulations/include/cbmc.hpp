@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/3/2026
+ *     2/5/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -2059,13 +2059,20 @@ class PolymerCBMCSampler
                 {
                     for (int i = last_written_idx + 1; i < collect_idx; ++i)
                     {
-                        // Calculate configuration energy and radius of gyration
-                        T energy = config.getTotalEnergy(
+                        // Instantiate polymer configuration and calculate 
+                        // its energy and radius of gyration
+                        Matrix<T, Dynamic, 3> coords_i(length, 3); 
+                        for (int j = 0; j < length; ++j)
+                            coords_i.row(j) = ensemble_coords(i, Eigen::seq(3 * j, 3)); 
+                        PolymerConfiguration<T> config_i(
+                            coords_i, this->config.getUnits(), this->config.getTemp()
+                        ); 
+                        T energy = config_i.getTotalEnergy(
                             this->lj_params, this->neighbor_threshold, 
                             this->fene_params, this->angle_mode,
                             this->angle_params, this->dihedral_params
                         );
-                        T radius = config.radiusOfGyration(); 
+                        T radius = config_i.radiusOfGyration(); 
 
                         // Write coordinates, energy, and radius of gyration to file  
                         outfile << "CONFIG\t" << i << std::endl
@@ -2086,13 +2093,20 @@ class PolymerCBMCSampler
             // Write remaining configurations to file 
             for (int i = last_written_idx + 1; i < collect_idx; ++i)
             {
-                // Calculate configuration energy and radius of gyration
-                T energy = config.getTotalEnergy(
+                // Instantiate polymer configuration and calculate 
+                // its energy and radius of gyration
+                Matrix<T, Dynamic, 3> coords_i(length, 3); 
+                for (int j = 0; j < length; ++j)
+                    coords_i.row(j) = ensemble_coords(i, Eigen::seq(3 * j, 3)); 
+                PolymerConfiguration<T> config_i(
+                    coords_i, this->config.getUnits(), this->config.getTemp()
+                ); 
+                T energy = config_i.getTotalEnergy(
                     this->lj_params, this->neighbor_threshold, 
                     this->fene_params, this->angle_mode,
                     this->angle_params, this->dihedral_params
                 );
-                T radius = config.radiusOfGyration(); 
+                T radius = config_i.radiusOfGyration(); 
 
                 // Write coordinates, energy, and radius of gyration to file  
                 outfile << "CONFIG\t" << i << std::endl
