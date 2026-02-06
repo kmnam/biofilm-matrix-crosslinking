@@ -31,6 +31,8 @@ using std::isnan;
 using boost::multiprecision::isnan; 
 using std::isinf; 
 using boost::multiprecision::isinf;
+using std::ceil; 
+using boost::multiprecision::ceil; 
 
 enum class TerminalSegmentEnd
 {
@@ -1898,12 +1900,17 @@ class PolymerCBMCSampler
          * @param internal_segment_length Segment length for internal segment 
          *                                moves. 
          * @param max_iter Maximum number of iterations. 
-         * @param n_burnin Number of burn-in iterations. 
-         * @param mod Modulus that determines which configurations to keep in
-         *            the returned sample, to reduce auto-correlation.
+         * @param n_burnin Number of burn-in iterations.
+         * @param mod_collect Collect only one of every given number of
+         *                    configurations in the sample, to reduce 
+         *                    auto-correlation.
+         * @param mod_write Write accumulated configurations to file once 
+         *                  every this many iterations. 
          * @param max_stall Maximum number of consecutive iterations in which
          *                  the sampling "stalls" at one configuration without
-         *                  accepting a new move.  
+         *                  accepting a new move. 
+         * @param outfile Output file stream. 
+         * @param verbose If true, print intermittent output to stdout.  
          * @returns Representative sub-sample of sampled configurations.  
          */
         Matrix<T, Dynamic, Dynamic> run(const int n_candidates, 
@@ -1912,7 +1919,9 @@ class PolymerCBMCSampler
                                         const int terminal_segment_length, 
                                         const int internal_segment_length,
                                         const int max_iter, const int n_burnin,
-                                        const int mod, const int max_stall, 
+                                        const int mod_collect, int mod_write, 
+                                        const int max_stall,
+                                        std::ofstream& outfile,  
                                         const bool verbose = false)
         {
             // Keep track of time for intermittent output to stdout
@@ -1921,7 +1930,13 @@ class PolymerCBMCSampler
             // Identify how many configurations will be collected throughout
             // the sampling
             int n_collect = (max_iter - n_burnin) / mod; 
-            Matrix<T, Dynamic, Dynamic> ensemble_coords(n_collect, 3 * this->length); 
+            Matrix<T, Dynamic, Dynamic> ensemble_coords(n_collect, 3 * this->length);
+
+            // Ensure that mod_write is some multiple (>= 10) of mod_collect
+            mod_write = max(
+                10 * mod_collect, 
+                mod_collect * static_cast<int>(ceil(mod_write / mod_collect))
+            );  
 
             // Tabulate average acceptance probabilities for each move type 
             Matrix<T, 3, 1> accept_probs = Matrix<T, 3, 1>::Zero();
@@ -1935,7 +1950,8 @@ class PolymerCBMCSampler
             // Run sampling procedure ... 
             int curr_idx = 0; 
             int collect_idx = 0;
-            int n_stall = 0;  
+            int n_stall = 0; 
+            int last_written_idx = -1;  
             while (collect_idx < n_collect)
             {
                 // Sample a move type 
@@ -2024,7 +2040,7 @@ class PolymerCBMCSampler
                 } 
 
                 // Decide whether to collect this configuration 
-                if (curr_idx >= n_burnin && (curr_idx - n_burnin) % mod == 0)
+                if (curr_idx >= n_burnin && (curr_idx - n_burnin) % mod_collect == 0)
                 {
                     for (int j = 0; j < this->length; ++j)
                     {
@@ -2034,6 +2050,32 @@ class PolymerCBMCSampler
                     }
                     collect_idx++;
                 }
+
+                // Decide whether to write the configurations accumulated
+                // thus far
+                if (curr_idx >= n_burnin && (curr_idx - n_burnin) % mod_write == 0)
+                {
+                    for (int i = last_written_idx + 1; i < collect_idx; ++i)
+                    {
+                        // Calculate configuration energy and radius of gyration
+                        T energy = config.getTotalEnergy(
+                            this->lj_params, this->neighbor_threshold, 
+                            this->fene_params, this->angle_mode,
+                            this->angle_params, this->dihedral_params
+                        );
+                        T radius = config.radiusOfGyration();  
+                        outfile << "CONFIG\t" << i << std::endl
+                                << "# ENERGY\t" << energy << std::endl 
+                                << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
+                        for (int j = 0; j < length; ++j)
+                        {
+                            outfile << ensemble_coords(i, 3 * j) << '\t'
+                                    << ensemble_coords(i, 3 * j + 1) << '\t' 
+                                    << ensemble_coords(i, 3 * j + 2) << std::endl; 
+                        }  
+                    } 
+                    last_written_idx = collect_idx - 1;
+                } 
                 curr_idx++; 
             }
 
