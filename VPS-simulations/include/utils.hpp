@@ -10,11 +10,13 @@
 #define POLYMER_UTILS_HPP 
 
 #include <cmath>
+#include <fstream>
 #include <string>
 #include <limits>
 #include <unordered_map>
 #include <functional>
 #include <Eigen/Dense>
+#include <boost/json/src.hpp>
 #include <boost/math/constants/constants.hpp>
 #include <boost/multiprecision/mpfr.hpp>
 #include <boost/random.hpp>
@@ -787,5 +789,30 @@ Matrix<T, Dynamic, 3> getNeighbors(const Ref<const Matrix<T, Dynamic, 3> >& r1,
 
     return neighbors; 
 } 
+
+/**
+ * Parse a JSON file specifying simulation parameters.
+ *
+ * @param filename Input JSON configurations file.
+ * @returns `boost::json::value` instance containing the JSON data.  
+ */
+boost::json::value parseConfigFile(const std::string filename)
+{
+    std::string line;
+    std::ifstream infile(filename);
+    boost::json::stream_parser p; 
+    boost::json::error_code ec;  
+    while (std::getline(infile, line))
+    {
+        p.write(line, ec); 
+        if (ec)
+            return nullptr; 
+    }
+    p.finish(ec); 
+    if (ec)
+        return nullptr;
+    
+    return p.release(); 
+}
 
 #endif
