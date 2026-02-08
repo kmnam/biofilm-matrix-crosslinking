@@ -450,7 +450,7 @@ T angleCosine(const T theta, const T K, const T theta0)
  *
  * @param theta Input angle. 
  * @param A1, A2 Weights of the two Gaussian components.
- * @param w1, w2 Standard deviations of the two Gaussian components. 
+ * @param w1, w2 Twice the standard deviations of the two Gaussian components. 
  * @param theta1, theta2 Means of the two Gaussian components. 
  * @param kT Boltzmann's constant times temperature (in the appropriate units). 
  * @returns Potential value.  
@@ -578,35 +578,30 @@ T sampleFene(const T eps, const T sigma, const T K, const T R0, const T kT,
  * @param kT Boltzmann's constant times temperature (in the appropriate units).
  * @param rng Random number generator.
  * @param uniform_dist Pre-defined instance of standard uniform distribution.
- * @param n_burnin Number of burn-in samples. 
  * @returns Sampled bond angle. 
  */
 template <typename T>
 T sampleAngleCosine(const T K, const T theta0, const T kT,
                     boost::random::mt19937& rng,
-                    boost::random::uniform_01<>& uniform_dist,
-                    const int n_burnin = 50)
+                    boost::random::uniform_01<>& uniform_dist)
 {
-    // Run the Monte Carlo procedure ...
+    // Run the rejection sampling procedure ... 
     T theta = theta0; 
     T kappa = K / kT;
-    for (int i = 0; i < n_burnin + 1; ++i)
+    bool accept = false; 
+    while (!accept)
     {
         // Try sampling the next value from the Boltzmann distribution
         // (minus the Jacobian) 
-        T theta_new = vonMises<T>(theta0, kappa, rng, uniform_dist);
+        theta = vonMises<T>(theta0, kappa, rng, uniform_dist);
 
         // The von Mises distribution runs from -\pi to \pi; make all negative
         // angles positive 
-        if (theta_new < 0)
-            theta_new *= -1;
+        if (theta < 0)
+            theta *= -1;
 
-        // Calculate the Metropolis acceptance probability
-        T prob_accept = min(1.0, sin(theta_new) / sin(theta)); 
-
-        // Accept the next value 
-        if (uniform_dist(rng) < prob_accept)
-            theta = theta_new;  
+        // Accept with probability sin(theta)
+        accept = (uniform_dist(rng) < sin(theta)); 
     }
 
     return theta;  
@@ -623,62 +618,58 @@ T sampleAngleCosine(const T K, const T theta0, const T kT,
  * where E is the corresponding potential value. 
  *
  * @param A1, A2 Weights of the two Gaussian components.
- * @param w1, w2 Standard deviations of the two Gaussian components. 
+ * @param w1, w2 Twice the standard deviations of the two Gaussian components. 
  * @param theta1, theta2 Means of the two Gaussian components. 
  * @param kT Boltzmann's constant times temperature (in the appropriate units). 
  * @param rng Random number generator.
  * @param uniform_dist Pre-defined instance of standard uniform distribution.
- * @param n_burnin Number of burn-in samples. 
  * @returns Sampled bond angle. 
  */
 template <typename T>
 T sampleAngleDualGaussianMixture(const T A1, const T A2, const T w1, const T w2,
                                  const T theta1, const T theta2, const T kT,
                                  boost::random::mt19937& rng,
-                                 boost::random::uniform_01<>& uniform_dist,
-                                 const int n_burnin = 50)
+                                 boost::random::uniform_01<>& uniform_dist)
 {
     // Set up a four-component von Mises mixture, reflected about 0
     T mu1 = theta1; 
     T mu2 = theta2;
     T mu3 = -theta1; 
-    T mu4 = -theta2; 
-    T kappa1 = 1 / (w1 * w1); 
-    T kappa2 = 1 / (w2 * w2);
+    T mu4 = -theta2;
+    T stdev1 = w1 / 2;           // w1 and w2 are double the standard deviations 
+    T stdev2 = w2 / 2;  
+    T kappa1 = 1 / (stdev1 * stdev1);    // Concentration = 1 / variance  
+    T kappa2 = 1 / (stdev2 * stdev2);
     T kappa3 = kappa1; 
     T kappa4 = kappa2; 
     T weight1 = A1 / 2; 
     T weight2 = A2 / 2; 
     T weight3 = A1 / 2; 
     T weight4 = A2 / 2;
-    boost::random::discrete_distribution<> component_dist({weight1, weight2, weight3, weight4}); 
+    boost::random::discrete_distribution<> component_dist({weight1, weight2, weight3, weight4});
 
-    // Run the Monte Carlo procedure ...
+    // Run the rejection sampling procedure ... 
     T theta = theta1;
-    for (int i = 0; i < n_burnin + 1; ++i)
+    bool accept = false; 
+    while (!accept) 
     {
         // Try sampling the next value
         int choice = component_dist(rng); 
-        T theta_new; 
         if (choice == 0)
-            theta_new = vonMises<T>(mu1, kappa1, rng, uniform_dist); 
+            theta = vonMises<T>(mu1, kappa1, rng, uniform_dist); 
         else if (choice == 1) 
-            theta_new = vonMises<T>(mu2, kappa2, rng, uniform_dist);
+            theta = vonMises<T>(mu2, kappa2, rng, uniform_dist);
         else if (choice == 2) 
-            theta_new = vonMises<T>(mu3, kappa3, rng, uniform_dist); 
+            theta = vonMises<T>(mu3, kappa3, rng, uniform_dist); 
         else    // choice == 3
-            theta_new = vonMises<T>(mu4, kappa4, rng, uniform_dist);
+            theta = vonMises<T>(mu4, kappa4, rng, uniform_dist);
 
         // Fold the distribution back into [0, \pi)
-        if (theta_new < 0)
-            theta_new *= -1;
+        if (theta < 0)
+            theta *= -1;
         
-        // Calculate the Metropolis acceptance probability
-        T prob_accept = min(1.0, sin(theta_new) / sin(theta)); 
-
-        // Accept the next value 
-        if (uniform_dist(rng) < prob_accept)
-            theta = theta_new;  
+        // Accept with probability sin(theta)
+        accept = (uniform_dist(rng) < sin(theta)); 
     }
 
     return theta;  
