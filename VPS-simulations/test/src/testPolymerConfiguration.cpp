@@ -3,10 +3,11 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     1/30/2026
+ *     2/8/2026
  */
 
 #include <iostream>
+#include <cstdlib>
 #include <Eigen/Dense>
 #include <boost/math/constants/constants.hpp>
 #include <boost/random.hpp>
@@ -432,8 +433,8 @@ TEST_CASE("Tests for k-mer generation", "[generateKMer()]")
     cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
     gaussian_params["A1"] = 0.9; 
     gaussian_params["A2"] = 0.1;
-    gaussian_params["w1"] = 0.2236067977;    // = 1/sqrt(20) 
-    gaussian_params["w2"] = 0.2236067977; 
+    gaussian_params["w1"] = 0.4472135955;    // = 2 * 1/sqrt(20) 
+    gaussian_params["w2"] = 0.4472135955; 
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
     gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
     dihedral_params["K"] = 10 * kT;
@@ -493,8 +494,8 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
     cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
     gaussian_params["A1"] = 0.9; 
     gaussian_params["A2"] = 0.1;
-    gaussian_params["w1"] = 0.2236067977;    // = 1/sqrt(20) 
-    gaussian_params["w2"] = 0.2236067977; 
+    gaussian_params["w1"] = 0.4472135955;    // = 1/sqrt(20) 
+    gaussian_params["w2"] = 0.4472135955; 
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
     gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
     dihedral_params["K"] = 10 * kT;
@@ -639,6 +640,9 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
  * mpirun -np 1 lmp -i get_energy_cosine.lammps -v VARS configs/test_10mer_cosine.txt
  *
  * mpirun -np 1 lmp -i get_energy_gaussian.lammps -v VARS configs/test_10mer_gaussian.txt
+ *
+ * which are invoked by a wrapped Python script (run_lammps_get_energy.py)
+ * that is called within this module. 
  */
 TEST_CASE(
     "Tests for energy calculation methods", 
@@ -655,7 +659,27 @@ TEST_CASE(
     std::unordered_map<std::string, double> lj_params = std::get<1>(result); 
     std::unordered_map<std::string, double> fene_params = std::get<2>(result); 
     std::unordered_map<std::string, double> angle_params = std::get<4>(result); 
-    std::unordered_map<std::string, double> dihedral_params = std::get<5>(result); 
+    std::unordered_map<std::string, double> dihedral_params = std::get<5>(result);
+
+    // Calculate energies via LAMMPS
+    std::string cmd = "python3 run_lammps_get_energy.py cosine"; 
+    int rc = std::system(cmd.c_str()); 
+    if (rc != 0)
+        throw std::runtime_error("Failed to run run_lammps_get_energy.py");
+    std::ifstream infile("configs/test_10mer_cosine_energy.txt");
+    std::stringstream ss;
+    std::string line, token;
+    std::getline(infile, line);
+    ss << line; 
+    std::getline(ss, token, ' '); 
+    double energy_lammps = std::stod(token); 
+    std::getline(ss, token, ' '); 
+    double nonbonded_energy_lammps = std::stod(token); 
+    std::getline(ss, token, ' '); 
+    double bond_energy_lammps = std::stod(token); 
+    std::getline(ss, token, ' '); 
+    double angle_energy_lammps = std::stod(token);
+    infile.close();  
 
     // Calculate the non-bonded interaction energy between non-consecutive atoms
     // and compare against LAMMPS-computed value 
@@ -663,23 +687,31 @@ TEST_CASE(
     double nonbonded_energy_nc = config.getNonbondedEnergy(
         lj_params, neighbor_threshold, true
     );
-    REQUIRE_THAT(nonbonded_energy_nc, Catch::Matchers::WithinAbs(0.0, tol)); 
+    REQUIRE_THAT(
+        nonbonded_energy_nc,
+        Catch::Matchers::WithinAbs(nonbonded_energy_lammps, tol)
+    ); 
 
     // Calculate the bonded interaction energy (including Lennard-Jones) and 
     // compare against LAMMPS-computed value
     double bond_energy = config.getBondEnergy(fene_params, true, lj_params);
-    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(654.92774, tol)); 
+    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(bond_energy_lammps, tol)); 
+
+    //REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(654.92774, tol)); 
 
     // Calculate the bond angle energy and compare against LAMMPS-computed value
     double angle_energy = config.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
-    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(38.432699, tol));
+    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(angle_energy_lammps, tol));
 
     // Calculate the dihedral angle energy and compare against LAMMPS-computed
     // value
     double dihedral_energy = config.getDihedralAngleEnergy(dihedral_params); 
     REQUIRE_THAT(
         dihedral_energy,
-        Catch::Matchers::WithinAbs(726.79979 - 654.92774 - 38.432699, tol)
+        Catch::Matchers::WithinAbs(
+            energy_lammps - nonbonded_energy_lammps - bond_energy_lammps - angle_energy_lammps,
+            tol
+        ) 
     );
 
     // Parse test 10-mer coordinates with angles chosen from a dual Gaussian
@@ -691,7 +723,26 @@ TEST_CASE(
     lj_params = std::get<1>(result); 
     fene_params = std::get<2>(result); 
     angle_params = std::get<4>(result); 
-    dihedral_params = std::get<5>(result); 
+    dihedral_params = std::get<5>(result);
+
+    // Calculate energies via LAMMPS
+    cmd = "python3 run_lammps_get_energy.py gaussian"; 
+    rc = std::system(cmd.c_str()); 
+    if (rc != 0)
+        throw std::runtime_error("Failed to run run_lammps_get_energy.py");
+    infile.open("configs/test_10mer_gaussian_energy.txt");
+    ss.str(std::string()); 
+    ss.clear(); 
+    std::getline(infile, line);
+    ss << line; 
+    std::getline(ss, token, ' '); 
+    energy_lammps = std::stod(token); 
+    std::getline(ss, token, ' '); 
+    nonbonded_energy_lammps = std::stod(token); 
+    std::getline(ss, token, ' '); 
+    bond_energy_lammps = std::stod(token); 
+    std::getline(ss, token, ' '); 
+    angle_energy_lammps = std::stod(token); 
 
     // Calculate the non-bonded interaction energy between non-consecutive atoms
     // and compare against LAMMPS-computed value 
@@ -699,23 +750,29 @@ TEST_CASE(
     nonbonded_energy_nc = config.getNonbondedEnergy(
         lj_params, neighbor_threshold, true
     );
-    REQUIRE_THAT(nonbonded_energy_nc, Catch::Matchers::WithinAbs(0.0, tol)); 
+    REQUIRE_THAT(
+        nonbonded_energy_nc,
+        Catch::Matchers::WithinAbs(nonbonded_energy_lammps, tol)
+    ); 
 
     // Calculate the bonded interaction energy (including Lennard-Jones) and 
     // compare against LAMMPS-computed value
     bond_energy = config.getBondEnergy(fene_params, true, lj_params);
-    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(674.95671, tol));
+    REQUIRE_THAT(bond_energy, Catch::Matchers::WithinAbs(bond_energy_lammps, tol));
 
     // Calculate the bond angle energy and compare against LAMMPS-computed value
     angle_energy = config.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
-    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(22.813472, tol));
+    REQUIRE_THAT(angle_energy, Catch::Matchers::WithinAbs(angle_energy_lammps, tol));
 
     // Calculate the dihedral angle energy and compare against LAMMPS-computed
     // value
     dihedral_energy = config.getDihedralAngleEnergy(dihedral_params); 
     REQUIRE_THAT(
         dihedral_energy,
-        Catch::Matchers::WithinAbs(721.25863 - 674.95671 - 22.813472, tol)
+        Catch::Matchers::WithinAbs(
+            energy_lammps - nonbonded_energy_lammps - bond_energy_lammps - angle_energy_lammps,
+            tol
+        )
     ); 
 }
 
