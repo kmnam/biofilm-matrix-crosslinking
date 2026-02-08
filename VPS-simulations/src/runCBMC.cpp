@@ -28,7 +28,7 @@ int main(int argc, char** argv)
                                             internal_move_params;
     const double kT = 1.380649e-2 * 300;    // Use "nano" units 
     const int length = json_data["length"].as_int64(); 
-    lj_params["eps"] = json_data["lj_eps"].as_double(); 
+    lj_params["eps"] = json_data["lj_eps"].as_double() * kT; 
     lj_params["sigma"] = json_data["lj_sigma"].as_double(); 
     fene_params["K"] = json_data["fene_K"].as_double() * kT;
     fene_params["R0"] = json_data["fene_R0"].as_double();
