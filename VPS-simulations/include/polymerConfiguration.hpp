@@ -1964,7 +1964,7 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
         {
             return sampleAngleCosine<T>(
                 angle_params["K"], angle_params["theta0"], kT, rng_, 
-                uniform_dist, 50
+                uniform_dist
             );
         };
     } 
@@ -1975,7 +1975,7 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
             return sampleAngleDualGaussianMixture<T>(
                 angle_params["A1"], angle_params["A2"], angle_params["w1"],
                 angle_params["w2"], angle_params["theta1"], angle_params["theta2"],
-                kT, rng_, uniform_dist, 50
+                kT, rng_, uniform_dist
             );
         };
     }
@@ -2152,7 +2152,7 @@ PolymerConfiguration<T> generateKMer(const int K,
         {
             return sampleAngleCosine<T>(
                 angle_params["K"], angle_params["theta0"], kT, rng_, 
-                uniform_dist, 50
+                uniform_dist
             );
         };
     } 
@@ -2163,7 +2163,7 @@ PolymerConfiguration<T> generateKMer(const int K,
             return sampleAngleDualGaussianMixture<T>(
                 angle_params["A1"], angle_params["A2"], angle_params["w1"],
                 angle_params["w2"], angle_params["theta1"], angle_params["theta2"],
-                kT, rng_, uniform_dist, 50
+                kT, rng_, uniform_dist
             );
         };
     }

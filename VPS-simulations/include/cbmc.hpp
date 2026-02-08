@@ -524,7 +524,7 @@ class PolymerCBMCSampler
                         this->angle_params.at("theta0"),
                         this->config.kT,
                         this->rng, 
-                        this->uniform_dist, 50
+                        this->uniform_dist
                     );
                 };
             } 
@@ -541,7 +541,7 @@ class PolymerCBMCSampler
                         this->angle_params.at("theta2"),
                         this->config.kT,
                         this->rng,
-                        this->uniform_dist, 50
+                        this->uniform_dist
                     );
                 };
             }
@@ -641,7 +641,7 @@ class PolymerCBMCSampler
                         this->angle_params.at("theta0"),
                         this->config.kT,
                         this->rng, 
-                        this->uniform_dist, 50
+                        this->uniform_dist
                     );
                 };
             } 
@@ -658,7 +658,7 @@ class PolymerCBMCSampler
                         this->angle_params.at("theta2"),
                         this->config.kT,
                         this->rng,
-                        this->uniform_dist, 50
+                        this->uniform_dist
                     );
                 };
             }
@@ -756,7 +756,7 @@ class PolymerCBMCSampler
                         this->angle_params.at("theta0"),
                         this->config.kT,
                         this->rng, 
-                        this->uniform_dist, 50
+                        this->uniform_dist
                     );
                 };
             } 
@@ -773,7 +773,7 @@ class PolymerCBMCSampler
                         this->angle_params.at("theta2"),
                         this->config.kT,
                         this->rng,
-                        this->uniform_dist, 50
+                        this->uniform_dist
                     );
                 };
             }
@@ -940,7 +940,7 @@ class PolymerCBMCSampler
                         this->angle_params.at("theta0"),
                         this->config.kT,
                         this->rng, 
-                        this->uniform_dist, 50
+                        this->uniform_dist
                     );
                 };
             } 
@@ -957,7 +957,7 @@ class PolymerCBMCSampler
                         this->angle_params.at("theta2"),
                         this->config.kT,
                         this->rng,
-                        this->uniform_dist, 50
+                        this->uniform_dist
                     );
                 };
             }
