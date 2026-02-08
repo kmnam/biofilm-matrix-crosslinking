@@ -153,7 +153,7 @@ TEST_CASE(
     Array<double, Dynamic, 1> sample_angles_cosine(n); 
     for (int i = 0; i < n; ++i) 
         sample_angles_cosine(i) = sampleAngleCosine<double>(
-            K_angle, theta0, kT, rng, uniform_dist, 50
+            K_angle, theta0, kT, rng, uniform_dist
         );
 
     // Check that the bond angles are within [0, \pi)
@@ -206,14 +206,14 @@ TEST_CASE(
     // Sample bond angles according to the dual Gaussian mixture potential ... 
     double A1 = 0.7; 
     double A2 = 0.3; 
-    const double w1 = sqrt(1 / (10 * kT));
-    const double w2 = sqrt(1 / (8 * kT));
+    const double w1 = 2 * sqrt(1.0 / 10.0);
+    const double w2 = 2 * sqrt(1.0 / 8.0);
     const double theta1 = 160 * boost::math::constants::pi<double>() / 180;
     const double theta2 = boost::math::constants::half_pi<double>(); 
     Array<double, Dynamic, 1> sample_angles_gaussian(n); 
-    for (int i = 0; i < n; ++i) 
+    for (int i = 0; i < n; ++i)
         sample_angles_gaussian(i) = sampleAngleDualGaussianMixture<double>(
-            A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist, 50
+            A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist
         );
 
     // Check that the bond angles are within [0, \pi)
@@ -223,9 +223,9 @@ TEST_CASE(
     // Sample from just one Gaussian component
     A1 = 0.0; 
     A2 = 1.0; 
-    for (int i = 0; i < n; ++i) 
+    for (int i = 0; i < n; ++i)
         sample_angles_gaussian(i) = sampleAngleDualGaussianMixture<double>(
-            A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist, 50
+            A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist
         );
 
     // Divide each sampled angle by sin(theta) and check the mean 
@@ -267,7 +267,7 @@ TEST_CASE(
     }
     var_gaussian *= (effective_size / (effective_size - 1));
     std::cout << "Empirical vs. theoretical variances from angles (Gaussian potential): "
-              << var_gaussian << ", " << w2 * w2 << std::endl; 
+              << var_gaussian << ", " << w2 * w2 / 4 << std::endl; 
    
     // Sample dihedral angles ... 
     const double K_dihedral = 10 * kT; 
