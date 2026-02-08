@@ -636,7 +636,7 @@ T sampleAngleDualGaussianMixture(const T A1, const T A2, const T w1, const T w2,
     T mu2 = theta2;
     T mu3 = -theta1; 
     T mu4 = -theta2;
-    T stdev1 = w1 / 2;           // w1 and w2 are double the standard deviations 
+    T stdev1 = w1 / 2;     // w1 and w2 are double the standard deviations 
     T stdev2 = w2 / 2;  
     T kappa1 = 1 / (stdev1 * stdev1);    // Concentration = 1 / variance  
     T kappa2 = 1 / (stdev2 * stdev2);
