@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/5/2026
+ *     2/9/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -1228,7 +1228,7 @@ class PolymerCBMCSampler
                         this->neighbor_threshold, this->fene_params, 
                         this->angle_mode, this->angle_params,
                         this->dihedral_params
-                    );  
+                    );
                     n_success++;
                 }
 
@@ -1284,7 +1284,7 @@ class PolymerCBMCSampler
             // Generate new configuration with the given coordinates 
             PolymerConfiguration<T> config_(
                 coords, this->config.getUnits(), this->config.getTemp()
-            );    
+            );
 
             // Specify the constraint manifold for the internal segment move 
             //
@@ -1383,13 +1383,13 @@ class PolymerCBMCSampler
                         moves(n_success, 3 * j + 2) = x1(3 * j + 2);
                     }
 
-                    // Calculate the corresponding energy difference 
+                    // Calculate the corresponding energy difference
                     energy_diffs(n_success) = config_.getSegmentReplacementEnergyDifference(
                         segment, segment_idx, this->lj_params,
                         this->neighbor_threshold, this->fene_params, 
                         this->angle_mode, this->angle_params,
                         this->dihedral_params
-                    );  
+                    ); 
                     n_success++;
                 }
 
@@ -1537,7 +1537,7 @@ class PolymerCBMCSampler
                     armijo_const = 1e-4;
                 }
 
-                // Generate internal segment moves  
+                // Generate internal segment moves
                 auto forward_result = this->generateInternalSegmentMoves(
                     n_candidates, segment_length, segment_idx, max_iter,
                     init_tangent_stepsize, min_tangent_stepsize, dx, newton_tol,
@@ -1548,8 +1548,8 @@ class PolymerCBMCSampler
                 // then simply remain at the current configuration
                 if (forward_result.first.rows() < n_candidates)
                 {
-                    forward_moves.resize(1, 3 * segment_length); 
-                    reverse_moves.resize(1, 3 * segment_length);
+                    forward_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length); 
+                    reverse_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length);
                     for (int i = 0; i < segment_length; ++i)
                     {
                         forward_moves(0, Eigen::seqN(3 * i, 3)) = this->r.row(segment_idx + i);
@@ -1557,7 +1557,7 @@ class PolymerCBMCSampler
                     }
                     std::unordered_map<std::string, T> move_info; 
                     move_info["segment_idx"] = segment_idx;
-                    move_info["proposed_new_move"] = false; 
+                    move_info["proposed_new_move"] = false;
                     return std::make_tuple(
                         forward_moves, reverse_moves, 0, 1.0, true, move_info
                     ); 
@@ -1702,7 +1702,7 @@ class PolymerCBMCSampler
                     armijo_const = 1e-4;
                 }
 
-                // Generate internal segment moves  
+                // Generate internal segment moves 
                 auto reverse_result = this->generateInternalSegmentMoves(
                     n_candidates, segment_length, segment_idx, coords_chosen, 
                     max_iter, init_tangent_stepsize, min_tangent_stepsize,
@@ -1714,8 +1714,8 @@ class PolymerCBMCSampler
                 // then simply remain at the current configuration
                 if (reverse_result.first.rows() < n_candidates)
                 {
-                    forward_moves.resize(1, 3 * segment_length); 
-                    reverse_moves.resize(1, 3 * segment_length);
+                    forward_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length); 
+                    reverse_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length);
                     for (int i = 0; i < segment_length; ++i)
                     {
                         forward_moves(0, Eigen::seqN(3 * i, 3)) = this->r.row(segment_idx + i);
@@ -1723,7 +1723,7 @@ class PolymerCBMCSampler
                     }
                     std::unordered_map<std::string, T> move_info; 
                     move_info["segment_idx"] = segment_idx;
-                    move_info["proposed_new_move"] = false; 
+                    move_info["proposed_new_move"] = false;
                     return std::make_tuple(
                         forward_moves, reverse_moves, 0, 1.0, true, move_info
                     ); 
@@ -1807,9 +1807,11 @@ class PolymerCBMCSampler
                     reverse_moves(move_idx, 3 * i + 2) = segment(i, 2); 
                 }
                 reverse_diffs(move_idx)
-                    = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
+                    = config_chosen.getSegmentReplacementEnergyDifference(
                         segment, segment_idx, this->lj_params,
-                        this->neighbor_threshold 
+                        this->neighbor_threshold, this->fene_params, 
+                        this->angle_mode, this->angle_params,
+                        this->dihedral_params
                     );
             }
 
@@ -2061,9 +2063,9 @@ class PolymerCBMCSampler
                     {
                         // Instantiate polymer configuration and calculate 
                         // its energy and radius of gyration
-                        Matrix<T, Dynamic, 3> coords_i(length, 3); 
-                        for (int j = 0; j < length; ++j)
-                            coords_i.row(j) = ensemble_coords(i, Eigen::seq(3 * j, 3)); 
+                        Matrix<T, Dynamic, 3> coords_i(this->length, 3); 
+                        for (int j = 0; j < this->length; ++j)
+                            coords_i.row(j) = ensemble_coords(i, Eigen::seqN(3 * j, 3)); 
                         PolymerConfiguration<T> config_i(
                             coords_i, this->config.getUnits(), this->config.getTemp()
                         ); 
@@ -2078,7 +2080,7 @@ class PolymerCBMCSampler
                         outfile << "CONFIG\t" << i << std::endl
                                 << "# ENERGY\t" << energy << std::endl 
                                 << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
-                        for (int j = 0; j < length; ++j)
+                        for (int j = 0; j < this->length; ++j)
                         {
                             outfile << ensemble_coords(i, 3 * j) << '\t'
                                     << ensemble_coords(i, 3 * j + 1) << '\t' 
@@ -2097,7 +2099,7 @@ class PolymerCBMCSampler
                 // its energy and radius of gyration
                 Matrix<T, Dynamic, 3> coords_i(length, 3); 
                 for (int j = 0; j < length; ++j)
-                    coords_i.row(j) = ensemble_coords(i, Eigen::seq(3 * j, 3)); 
+                    coords_i.row(j) = ensemble_coords(i, Eigen::seqN(3 * j, 3)); 
                 PolymerConfiguration<T> config_i(
                     coords_i, this->config.getUnits(), this->config.getTemp()
                 ); 
