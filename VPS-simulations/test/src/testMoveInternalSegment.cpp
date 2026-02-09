@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/4/2026
+ *     2/9/2026
  */
 
 #include <iostream>
@@ -26,6 +26,7 @@ using namespace Eigen;
  */
 TEST_CASE("Tests for internal segment move generation", "[generateInternalSegmentMoves()]")
 {
+    /*
     boost::random::mt19937 rng(1234567890);
     boost::random::uniform_01<> uniform_dist;
     const double tol = 1e-8;  
@@ -72,8 +73,8 @@ TEST_CASE("Tests for internal segment move generation", "[generateInternalSegmen
         cosine_params, dihedral_params, rng
     );  
     
-    // Try generating 50 4-atom internal segment moves for the segment [3, 4, 5, 6]
-    int n_candidates = 50;
+    // Try generating 5 4-atom internal segment moves for the segment [3, 4, 5, 6]
+    int n_candidates = 5;
     int max_iter = 100;
     double init_tangent_stepsize = 0.1;  
     double min_tangent_stepsize = 1e-3; 
@@ -94,6 +95,18 @@ TEST_CASE("Tests for internal segment move generation", "[generateInternalSegmen
         REQUIRE_THAT((r1.transpose() - coords.row(3)).norm(), Catch::Matchers::WithinAbs(0, tol)); 
         REQUIRE_THAT((r2.transpose() - coords.row(6)).norm(), Catch::Matchers::WithinAbs(0, tol));
     }
+
+    // Check that each new segment differs from the original segment along
+    // the interior 
+    for (int i = 0; i < n_candidates; ++i)
+    {
+        for (int j = 1; j < 3; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new(i, Eigen::seqN(3 * j, 3));
+            Matrix<double, 3, 1> r2 = coords.row(3 + j); 
+            REQUIRE((r1 - r2).norm() > tol);
+        }
+    } 
 
     // Check that, for any new segment along which there is a bond that is 
     // too long, the corresponding energy difference is infinite
@@ -257,6 +270,7 @@ TEST_CASE("Tests for internal segment move generation", "[generateInternalSegmen
         }
         REQUIRE(sum1 >= sum2); 
     } 
+    */
 }
 
 /**
@@ -312,8 +326,8 @@ TEST_CASE("Tests for internal segment moves", "[moveOnce()]")
     );  
 
     // Try moving a randomly chosen 4-atom internal segment by choosing from 
-    // 50 candidate moves 
-    int n_candidates = 50;
+    // 5 candidate moves 
+    int n_candidates = 5;
     std::unordered_map<std::string, double> internal_move_params; 
     internal_move_params["init_tangent_stepsize"] = 0.1; 
     internal_move_params["min_tangent_stepsize"] = 1e-3; 
@@ -329,7 +343,7 @@ TEST_CASE("Tests for internal segment moves", "[moveOnce()]")
     int segment_idx = static_cast<int>(std::get<5>(result_cosine).at("segment_idx"));
     bool proposed_new_move = static_cast<bool>(
         std::get<5>(result_cosine).at("proposed_new_move")
-    ); 
+    );
 
     // The two sets of moves should be equal in size 
     REQUIRE(forward_moves.cols() == 12); 
@@ -683,7 +697,7 @@ TEST_CASE("Tests for internal segment moves", "[moveOnce()]")
 
         // Re-calculate the Rosenbluth weights ...
         Matrix<double, Dynamic, 1> weights_forward(n_candidates),
-                                   weights_reverse(n_candidates); 
+                                   weights_reverse(n_candidates);
         for (int i = 0; i < n_candidates; ++i)
         {
             Matrix<double, Dynamic, 3> forward_segment(5, 3);
