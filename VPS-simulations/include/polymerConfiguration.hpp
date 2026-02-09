@@ -563,7 +563,7 @@ class PolymerConfiguration
          */
         Units getUnits() const 
         {
-            if (log10(this->kT / this->temp) > 2)    // Boltzmann's constant = 1.380649e-2
+            if (log10(this->kT / this->temp) > -2)    // Boltzmann's constant = 1.380649e-2
                 return Units::NANO; 
             else 
                 return Units::MICRO; 
@@ -1520,7 +1520,7 @@ class PolymerConfiguration
             T energy_new = this->getSegmentInteractionEnergy(
                 segment, idx, lj_params, neighbor_threshold, fene_params, 
                 angle_mode, angle_params, dihedral_params
-            ); 
+            );
             return energy_new - energy_curr; 
         }
 
