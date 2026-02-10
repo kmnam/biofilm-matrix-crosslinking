@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/9/2026
+ *     2/10/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -2123,6 +2123,156 @@ class PolymerCBMCSampler
             } 
 
             return ensemble_coords; 
+        }
+
+        /**
+         * Restart configurational-bias Monte Carlo sampling from the final
+         * configuration in the given file.
+         *
+         * The sampling procedure uses the same parameters that were used 
+         * to generate the configurations in the given file.  
+         *
+         * @param filename Input filename.
+         * @param n_collect Number of configurations to sample; this determines
+         *                  the number of sampling iterations. 
+         * @param outfile Output file stream. 
+         * @param verbose If true, print intermittent output to stdout.  
+         * @returns Representative sub-sample of sampled configurations.  
+         */
+        Matrix<T, Dynamic, Dynamic> run(std::string& filename,
+                                        const int n_collect,
+                                        std::ofstream& outfile,  
+                                        const bool verbose = false)
+        {
+            int n_candidates; 
+            std::unordered_map<std::string, T> internal_move_params; 
+            Matrix<T, 3, 1> move_probs;
+            int terminal_segment_length, internal_segment_length, mod_collect,
+                mod_write, max_stall; 
+            const int n_burnin = 0;    // Set burn-in to zero
+
+            // Parse the given file ... 
+            //
+            // First, parse the sampling parameters
+            std::ifstream infile(filename);  
+            std::string line;
+            while (std::getline(infile, line))
+            {
+                // If the line starts with "##", then parse
+                if (line.find("##") == 0)
+                {
+                    std::string token = line.substr(3, line.find(" = ") - 3);   // Remove leading "## "
+                    line.erase(0, line.find(" = ") + 3);
+                    if (token == "n_candidates")
+                        n_candidates = std::stoi(line);
+                    else if (token == "internal_move_init_tangent_stepsize")
+                        internal_move_params["init_tangent_stepsize"] = static_cast<T>(std::stod(line)); 
+                    else if (token == "internal_move_min_tangent_stepsize")
+                        internal_move_params["min_tangent_stepsize"] = static_cast<T>(std::stod(line)); 
+                    else if (token == "internal_move_dx")
+                        internal_move_params["dx"] = static_cast<T>(std::stod(line)); 
+                    else if (token == "internal_move_newton_tol")
+                        internal_move_params["newton_tol"] = static_cast<T>(std::stod(line)); 
+                    else if (token == "internal_move_min_newton_stepsize")
+                        internal_move_params["min_newton_stepsize"] = static_cast<T>(std::stod(line));
+                    else if (token == "internal_move_max_newton_iter")
+                        internal_move_params["max_newton_iter"] = static_cast<T>(std::stod(line));   
+                    else if (token == "internal_move_armijo_const")
+                        internal_move_params["armijo_const"] = static_cast<T>(std::stod(line));  
+                    else if (token == "move_prob_reptation")
+                        move_probs(0) = static_cast<T>(std::stod(line));  
+                    else if (token == "move_prob_terminal_segment")
+                        move_probs(1) = static_cast<T>(std::stod(line)); 
+                    else if (token == "move_prob_internal_segment")
+                        move_probs(2) = static_cast<T>(std::stod(line)); 
+                    else if (token == "terminal_segment_length")
+                        terminal_segment_length = std::stoi(line); 
+                    else if (token == "internal_segment_length")
+                        internal_segment_length = std::stoi(line); 
+                    else if (token == "max_iter")
+                        max_iter = std::stoi(line); 
+                    else if (token == "mod_collect")
+                        mod_collect = std::stoi(line); 
+                    else if (token == "mod_write")
+                        mod_write = std::stoi(line); 
+                    else if (token == "max_stall")
+                        max_stall = std::stoi(line);
+                    else 
+                        throw std::runtime_error(
+                            "Invalid sampling parameter specified in input configurations file"
+                        );  
+                }
+                // If not, then we have encountered the first configuration,
+                // so we must break 
+                else 
+                {
+                    break; 
+                }
+            }
+
+            // Fix number of sampling iterations 
+            const int max_iter = n_collect * mod_collect; 
+
+            // Now parse the first configuration, to get the polymer length
+            int length = 0;
+            std::getline(infile, line);    // # CONFIG INIT
+            while (std::getline(infile, line))
+            {
+                if (line.find("# CONFIG") == 0)   // If we reach the next configuration, break
+                    break;
+                else
+                    length++; 
+            }
+
+            // Now parse the rest of the file to get the final configuration 
+            Matrix<T, Dynamic, 3> coords(length, 3);
+            int curr_idx = 0; 
+            while (std::getline(infile, line))
+            {
+                // If we reach a new configuration, keep parsing
+                if (line.find("# CONFIG") == 0)
+                {
+                    curr_idx = 0;
+                }
+                // If we reach an ensemble-level output line at the end of
+                // the file, stop parsing
+                else if (line.find("##" ) == 0)
+                {
+                    break; 
+                }
+                // If we reach a configuration-level output line, keep parsing
+                else if (line.find("# ") == 0)
+                {
+                    // Do nothing
+                }
+                // Otherwise, the line specifies coordinates that should be
+                // collected 
+                else 
+                {
+                    std::stringstream ss; 
+                    ss << line;
+                    std::string token;  
+                    std::getline(ss, token, '\t');    // x-coordinate 
+                    coords(curr_idx, 0) = static_cast<T>(std::stod(token));
+                    std::getline(ss, token, '\t');    // y-coordinate
+                    coords(curr_idx, 1) = static_cast<T>(std::stod(token));
+                    std::getline(ss, token, '\t');    // z-coordinate
+                    coords(curr_idx, 2) = static_cast<T>(std::stod(token));
+                    curr_idx++; 
+                }
+            } 
+            
+            // Update the stored configuration
+            this->config.replaceSegment(coords, 0); 
+            this->updateCoords(); 
+
+            // Run the sampling
+            this->run(
+                n_candidates, internal_move_params, move_probs, 
+                terminal_segment_length, internal_segment_length, max_iter, 
+                n_burnin, mod_collect, mod_write, max_stall, outfile, 
+                verbose 
+            );  
         }
 };
 
