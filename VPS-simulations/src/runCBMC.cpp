@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/5/2026
+ *     2/10/2026
  */
 
 #include <iostream>
@@ -66,7 +66,7 @@ int main(int argc, char** argv)
     const int n_burnin = json_data["n_burnin"].as_int64(); 
     const int mod_collect = json_data["collect_config_every_iter"].as_int64();
     const int mod_write = json_data["write_configs_every_iter"].as_int64();  
-    const int max_iter = n_burnin + (n_target - 1) * mod_collect; 
+    const int max_iter = n_burnin + (n_target - 1) * mod_collect;
     const int max_stall = json_data["max_stall_iter"].as_int64();
 
     // Fix move probabilities 
@@ -83,7 +83,7 @@ int main(int argc, char** argv)
     try
     {
         internal_move_params["init_tangent_stepsize"]
-            = json_data["internal_init_tangent_stepsize"].as_double();
+            = json_data["init_tangent_stepsize"].as_double();
     }
     catch (boost::wrapexcept<boost::system::system_error>& e)
     {
@@ -92,7 +92,7 @@ int main(int argc, char** argv)
     try
     {
         internal_move_params["min_tangent_stepsize"]
-            = json_data["internal_min_tangent_stepsize"].as_double();
+            = json_data["min_tangent_stepsize"].as_double();
     }
     catch (boost::wrapexcept<boost::system::system_error>& e)
     {
@@ -144,30 +144,32 @@ int main(int argc, char** argv)
         max_n_backtracks, rng, uniform_dist, Units::NANO, 300
     );
 
-    // Write the initial coordinates to file 
+    // Initialize output file 
     std::string outfilename = argv[2]; 
     std::ofstream outfile(outfilename);
-    outfile << std::setprecision(10); 
-    outfile << "CONFIG\tINIT\n";
-    Matrix<double, Dynamic, 3> init_coords = config.getSegment(0, length);  
-    for (int i = 0; i < length; ++i)
-    {
-        outfile << init_coords(i, 0) << '\t'
-                << init_coords(i, 1) << '\t'
-                << init_coords(i, 2) << std::endl; 
-    }
 
-    // Initialize and run CBMC sampler 
+    // Initialize CBMC sampler 
     const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
     PolymerCBMCSampler<double> sampler(
         config, lj_params, neighbor_threshold, fene_params, angle_mode, 
         angle_params, dihedral_params, rng
-    ); 
-    Matrix<double, Dynamic, Dynamic> ensemble_coords = sampler.run(
-        n_candidates, internal_move_params, move_probs, terminal_segment_length,
-        internal_segment_length, max_iter, n_burnin, mod_collect, mod_write,
-        max_stall, outfile, true
-    ); 
+    );
+
+    // Determine if a prior run is to be continued
+    Matrix<double, Dynamic, Dynamic> ensemble_coords; 
+    if (argc == 5 && argv[3] == "-c")
+    {
+        std::string prev_filename = argv[4];
+        ensemble_coords = sampler.run(prev_filename, n_target - 1, outfile, true);  
+    }
+    else    // Otherwise, start a new run
+    {
+        ensemble_coords = sampler.run(
+            n_candidates, internal_move_params, move_probs, terminal_segment_length,
+            internal_segment_length, max_iter, n_burnin, mod_collect, mod_write,
+            max_stall, outfile, true
+        );
+    } 
     const int n_ensemble = ensemble_coords.rows();  
 
     // Calculate the persistence length and write to file
