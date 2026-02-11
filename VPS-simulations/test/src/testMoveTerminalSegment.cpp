@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/3/2026
+ *     2/11/2026
  */
 
 #include <iostream>
@@ -310,7 +310,7 @@ TEST_CASE("Tests for terminal segment moves", "[moveOnce()]")
     Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result_cosine); 
     int move_idx = std::get<2>(result_cosine); 
     double prob_accept = std::get<3>(result_cosine);
-    bool accepted_move = std::get<4>(result_cosine);
+    CBMCMoveResult accepted_move = std::get<4>(result_cosine);
     TerminalSegmentEnd direction = static_cast<TerminalSegmentEnd>(
         std::get<5>(result_cosine).at("terminal_end")
     ); 
@@ -319,7 +319,8 @@ TEST_CASE("Tests for terminal segment moves", "[moveOnce()]")
     REQUIRE(reverse_moves.rows() == n_candidates);
     REQUIRE(reverse_moves.cols() == 9); 
     REQUIRE((move_idx >= 0 && move_idx < n_candidates));
-    REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
+    REQUIRE((prob_accept >= 0 && prob_accept <= 1)); 
+    REQUIRE(accepted_move != CBMCMoveResult::NONE);  
 
     // Generate the modified configuration (in case the move was not accepted)
     Matrix<double, Dynamic, 3> move_segment(3, 3); 
@@ -404,13 +405,13 @@ TEST_CASE("Tests for terminal segment moves", "[moveOnce()]")
 
     // Check that, if the acceptance probability is 1, the chosen move was taken 
     if (prob_accept == 1)
-        REQUIRE(accepted_move); 
+        REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
 
     // Check that, if the chosen move was taken, the resulting configuration is
     // as expected
     Matrix<double, Dynamic, 3> coords_moved = config_moved.getSegment(0, 10); 
     Matrix<double, Dynamic, 3> coords_result = sampler_cosine.getCoords();  
-    if (accepted_move)
+    if (accepted_move == CBMCMoveResult::ACCEPT)
     {
         // Move was taken 
         for (int i = 0; i < 10; ++i)
@@ -467,7 +468,8 @@ TEST_CASE("Tests for terminal segment moves", "[moveOnce()]")
     REQUIRE(reverse_moves.rows() == n_candidates);
     REQUIRE(reverse_moves.cols() == 15); 
     REQUIRE((move_idx >= 0 && move_idx < n_candidates));
-    REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
+    REQUIRE((prob_accept >= 0 && prob_accept <= 1)); 
+    REQUIRE(accepted_move != CBMCMoveResult::NONE);  
 
     // Generate the modified configuration (in case the move was not accepted)
     move_segment.resize(5, 3); 
@@ -554,13 +556,13 @@ TEST_CASE("Tests for terminal segment moves", "[moveOnce()]")
 
     // Check that, if the acceptance probability is 1, the chosen move was taken 
     if (prob_accept == 1)
-        REQUIRE(accepted_move); 
+        REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
 
     // Check that, if the chosen move was taken, the resulting configuration is
     // as expected
     Matrix<double, Dynamic, 3> coords2_moved = config2_moved.getSegment(0, 10);
     Matrix<double, Dynamic, 3> coords2_result = sampler_gaussian.getCoords(); 
-    if (accepted_move)
+    if (accepted_move == CBMCMoveResult::ACCEPT)
     {
         // Move was taken 
         for (int i = 0; i < 10; ++i)
