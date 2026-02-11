@@ -1940,9 +1940,11 @@ class PolymerCBMCSampler
                     << "## internal_move_newton_tol = "
                     << internal_move_params["newton_tol"] << std::endl 
                     << "## internal_move_min_newton_stepsize = "
-                    << internal_move_params["min_newton_stepsize"] << std::endl 
+                    << internal_move_params["min_newton_stepsize"] << std::endl
+                    << "## internal_move_max_iter = "
+                    << static_cast<int>(internal_move_params["max_iter"]) << std::endl 
                     << "## internal_move_max_newton_iter = "
-                    << internal_move_params["max_newton_iter"] << std::endl
+                    << static_cast<int>(internal_move_params["max_newton_iter"]) << std::endl
                     << "## internal_move_armijo_const = "
                     << internal_move_params["armijo_const"] << std::endl
                     << "## move_prob_reptation = "
@@ -2118,7 +2120,7 @@ class PolymerCBMCSampler
                         T radius = config_i.radiusOfGyration(); 
 
                         // Write coordinates, energy, and radius of gyration to file  
-                        outfile << "CONFIG\t" << i << std::endl
+                        outfile << "# CONFIG\t" << i << std::endl
                                 << "# ENERGY\t" << energy << std::endl 
                                 << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
                         for (int j = 0; j < this->length; ++j)
@@ -2152,7 +2154,7 @@ class PolymerCBMCSampler
                 T radius = config_i.radiusOfGyration(); 
 
                 // Write coordinates, energy, and radius of gyration to file  
-                outfile << "CONFIG\t" << i << std::endl
+                outfile << "# CONFIG\t" << i << std::endl
                         << "# ENERGY\t" << energy << std::endl 
                         << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
                 for (int j = 0; j < length; ++j)
@@ -2216,6 +2218,8 @@ class PolymerCBMCSampler
                         internal_move_params["newton_tol"] = static_cast<T>(std::stod(line)); 
                     else if (token == "internal_move_min_newton_stepsize")
                         internal_move_params["min_newton_stepsize"] = static_cast<T>(std::stod(line));
+                    else if (token == "internal_move_max_iter")
+                        internal_move_params["max_iter"] = static_cast<T>(std::stod(line)); 
                     else if (token == "internal_move_max_newton_iter")
                         internal_move_params["max_newton_iter"] = static_cast<T>(std::stod(line));   
                     else if (token == "internal_move_armijo_const")
@@ -2236,10 +2240,6 @@ class PolymerCBMCSampler
                         mod_write = std::stoi(line); 
                     else if (token == "max_stall")
                         max_stall = std::stoi(line);
-                    else 
-                        throw std::runtime_error(
-                            "Invalid sampling parameter specified in input configurations file"
-                        );  
                 }
                 // If not, then we have encountered the first configuration,
                 // so we must break 
@@ -2254,7 +2254,6 @@ class PolymerCBMCSampler
 
             // Now parse the first configuration, to get the polymer length
             int length = 0;
-            std::getline(infile, line);    // # CONFIG INIT
             while (std::getline(infile, line))
             {
                 if (line.find("# CONFIG") == 0)   // If we reach the next configuration, break
@@ -2299,7 +2298,7 @@ class PolymerCBMCSampler
                     coords(curr_idx, 2) = static_cast<T>(std::stod(token));
                     curr_idx++; 
                 }
-            } 
+            }
             
             // Update the stored configuration
             this->config.replaceSegment(coords, 0); 
