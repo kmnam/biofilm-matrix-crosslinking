@@ -1928,6 +1928,47 @@ class PolymerCBMCSampler
                                         std::ofstream& outfile,  
                                         const bool verbose = false)
         {
+            // Write sampling parameters to file
+            outfile << std::setprecision(10); 
+            outfile << "## n_candidates = " << n_candidates << std::endl
+                    << "## internal_move_init_tangent_stepsize = " 
+                    << internal_move_params["init_tangent_stepsize"] << std::endl
+                    << "## internal_move_min_tangent_stepsize = " 
+                    << internal_move_params["min_tangent_stepsize"] << std::endl
+                    << "## internal_move_dx = " 
+                    << internal_move_params["dx"] << std::endl
+                    << "## internal_move_newton_tol = "
+                    << internal_move_params["newton_tol"] << std::endl 
+                    << "## internal_move_min_newton_stepsize = "
+                    << internal_move_params["min_newton_stepsize"] << std::endl 
+                    << "## internal_move_max_newton_iter = "
+                    << internal_move_params["max_newton_iter"] << std::endl
+                    << "## internal_move_armijo_const = "
+                    << internal_move_params["armijo_const"] << std::endl
+                    << "## move_prob_reptation = "
+                    << move_probs(0) << std::endl
+                    << "## move_prob_terminal_segment = "
+                    << move_probs(1) << std::endl
+                    << "## move_prob_internal_segment = "
+                    << move_probs(2) << std::endl
+                    << "## terminal_segment_length = "
+                    << terminal_segment_length << std::endl
+                    << "## internal_segment_length = "
+                    << internal_segment_length << std::endl
+                    << "## max_iter = " << max_iter << std::endl
+                    << "## mod_collect = " << mod_collect << std::endl
+                    << "## mod_write = " << mod_write << std::endl
+                    << "## max_stall = " << max_stall << std::endl;
+
+            // Write the initial coordinates to file 
+            outfile << "# CONFIG\tINIT\n";
+            for (int i = 0; i < this->length; ++i)
+            {
+                outfile << this->r(i, 0) << '\t'
+                        << this->r(i, 1) << '\t'
+                        << this->r(i, 2) << std::endl; 
+            }
+
             // Keep track of time for intermittent output to stdout
             auto t_curr = std::chrono::high_resolution_clock::now();  
 
@@ -2189,8 +2230,6 @@ class PolymerCBMCSampler
                         terminal_segment_length = std::stoi(line); 
                     else if (token == "internal_segment_length")
                         internal_segment_length = std::stoi(line); 
-                    else if (token == "max_iter")
-                        max_iter = std::stoi(line); 
                     else if (token == "mod_collect")
                         mod_collect = std::stoi(line); 
                     else if (token == "mod_write")
