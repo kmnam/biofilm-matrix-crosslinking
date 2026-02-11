@@ -2306,7 +2306,7 @@ class PolymerCBMCSampler
             this->updateCoords(); 
 
             // Run the sampling
-            this->run(
+            return this->run(
                 n_candidates, internal_move_params, move_probs, 
                 terminal_segment_length, internal_segment_length, max_iter, 
                 n_burnin, mod_collect, mod_write, max_stall, outfile, 
