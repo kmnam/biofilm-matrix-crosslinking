@@ -99,6 +99,14 @@ int main(int argc, char** argv)
         internal_move_params["min_tangent_stepsize"] = 0.01 * lj_params["sigma"]; 
     }
     try
+    {
+        internal_move_params["max_iter"] = json_data["max_iter"].as_double(); 
+    }
+    catch (boost::wrapexcept<boost::system::system_error>& e)
+    {
+        internal_move_params["max_iter"] = 2 * n_candidates; 
+    }
+    try
     { 
         internal_move_params["dx"] = json_data["dx"].as_double(); 
     }
