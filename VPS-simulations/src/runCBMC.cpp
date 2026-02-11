@@ -157,7 +157,7 @@ int main(int argc, char** argv)
 
     // Determine if a prior run is to be continued
     Matrix<double, Dynamic, Dynamic> ensemble_coords; 
-    if (argc == 5 && argv[3] == "-c")
+    if (argc == 5 && strcmp(argv[3], "-c") == 0)
     {
         std::string prev_filename = argv[4];
         ensemble_coords = sampler.run(prev_filename, n_target - 1, outfile, true);  
