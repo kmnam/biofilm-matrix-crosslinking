@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/3/2026
+ *     2/11/2026
  */
 
 #include <iostream>
@@ -254,7 +254,7 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
     Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result); 
     int move_idx = std::get<2>(result); 
     double prob_accept = std::get<3>(result); 
-    bool accepted_move = std::get<4>(result);
+    CBMCMoveResult accepted_move = std::get<4>(result);
     ReptationDirection direction = static_cast<ReptationDirection>(
         std::get<5>(result).at("direction")
     );
@@ -263,7 +263,8 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
     REQUIRE(reverse_moves.rows() == n_candidates);
     REQUIRE(reverse_moves.cols() == 3);
     REQUIRE((move_idx >= 0 && move_idx < n_candidates));
-    REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
+    REQUIRE((prob_accept >= 0 && prob_accept <= 1));
+    REQUIRE(accepted_move != CBMCMoveResult::NONE); 
 
     // Generate the reptated configuration (in case the reptation move was not 
     // accepted) 
@@ -331,13 +332,13 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
 
     // Check that, if the acceptance probability is 1, the chosen move was taken 
     if (prob_accept == 1)
-        REQUIRE(accepted_move); 
+        REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
 
     // Check that, if the chosen move was taken, the resulting configuration is
     // as expected
     Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, 10); 
     Matrix<double, Dynamic, 3> coords_result = sampler_cosine.getCoords();  
-    if (accepted_move)
+    if (accepted_move == CBMCMoveResult::ACCEPT)
     {
         // Move was taken 
         for (int i = 0; i < 10; ++i)
@@ -394,7 +395,8 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
     REQUIRE(reverse_moves.rows() == n_candidates);
     REQUIRE(reverse_moves.cols() == 3); 
     REQUIRE((move_idx >= 0 && move_idx < n_candidates));
-    REQUIRE((prob_accept >= 0 && prob_accept <= 1));  
+    REQUIRE((prob_accept >= 0 && prob_accept <= 1)); 
+    REQUIRE(accepted_move != CBMCMoveResult::NONE);  
 
     // Check that each new atom has a valid distance to the terminal atom 
     // at the appropriate end 
@@ -453,13 +455,13 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
 
     // Check that, if the acceptance probability is 1, the chosen move was taken 
     if (prob_accept == 1)
-        REQUIRE(accepted_move); 
+        REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
 
     // Check that, if the chosen move was taken, the resulting configuration is
     // as expected
     Matrix<double, Dynamic, 3> coords2_reptated = config2_reptated.getSegment(0, 10);
     Matrix<double, Dynamic, 3> coords2_result = sampler_gaussian.getCoords(); 
-    if (accepted_move)
+    if (accepted_move == CBMCMoveResult::ACCEPT)
     {
         // Move was taken 
         for (int i = 0; i < 10; ++i)
