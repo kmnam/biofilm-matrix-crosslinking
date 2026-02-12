@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/10/2026
+ *     2/11/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -47,6 +47,19 @@ enum class CBMCMoveType
     REPTATION,
     TERMINAL_SEGMENT,
     INTERNAL_SEGMENT 
+};
+
+enum class InternalMoveGenerationMode
+{
+    FIXED_ATTEMPTS,
+    FIXED_CANDIDATES
+};
+
+enum class CBMCMoveResult
+{
+    REJECT,
+    NONE,
+    ACCEPT
 };
 
 /** ------------------------------------------------------------------- // 
@@ -1094,14 +1107,14 @@ class PolymerCBMCSampler
          * Generate possible internal segment moves from the current 
          * configuration. 
          *
-         * @param n_candidates Number of candidate moves to generate. 
+         * @param n_attempts Number of candidate move generation attempts.
+         * @param n_candidates Number of candidate moves to generate. Only
+         *                     used if aiming for a fixed number of candidates. 
          * @param segment_length Segment length.
          * @param segment_idx Index of first atom in the segment. 
-         * @param max_iter Maximum number of move generation attempts. 
-         * @param init_tangent_stepsize Initial stepsize for perturbation in
-         *                              the tangent space. 
-         * @param min_tangent_stepsize Minimum stepsize for perturbation in the 
-         *                             tangent space.  
+         * @param tangent_stepsize Perturbation stepsize in the tangent space.
+         * @param mode Move generation mode (fixed number of candidate 
+         *             generation attempts, or fixed number of candidates).
          * @param dx Increment for finite difference approximation.
          * @param newton_tol Tolerance for assessing convergence of Newton's
          *                   method. 
@@ -1113,12 +1126,12 @@ class PolymerCBMCSampler
          *          and the corresponding energy differences. 
          */
         std::pair<Matrix<T, Dynamic, Dynamic>, 
-                  Matrix<T, Dynamic, 1> > generateInternalSegmentMoves(const int n_candidates, 
+                  Matrix<T, Dynamic, 1> > generateInternalSegmentMoves(const int n_attempts,
+                                                                       const int n_candidates,
                                                                        const int segment_length, 
                                                                        const int segment_idx,
-                                                                       const int max_iter,
-                                                                       const T init_tangent_stepsize, 
-                                                                       const T min_tangent_stepsize,
+                                                                       const T tangent_stepsize, 
+                                                                       const InternalMoveGenerationMode mode, 
                                                                        const T dx = 1e-8,  
                                                                        const T newton_tol = 1e-8,
                                                                        const T min_newton_stepsize = 1e-4,
@@ -1162,17 +1175,14 @@ class PolymerCBMCSampler
             }
             auto bases = getTangentAndOrthogonalSpaceBases<T>(F, x0, dx); 
             Matrix<T, Dynamic, Dynamic> Qt = bases.first; 
-            Matrix<T, Dynamic, Dynamic> Qp = bases.second; 
+            Matrix<T, Dynamic, Dynamic> Qp = bases.second;
 
             // Try generating internal moves ... 
-            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3 * segment_length);
-            Matrix<T, Dynamic, 1> energy_diffs(n_candidates);  
-            int n_success = 0;  
-            for (int i = 0; i < max_iter; ++i)
+            Matrix<T, Dynamic, Dynamic> moves(n_attempts, 3 * segment_length);
+            Matrix<T, Dynamic, 1> energy_diffs(n_attempts);  
+            int n_success = 0;
+            for (int i = 0; i < n_attempts; ++i)
             {
-                T tangent_stepsize = init_tangent_stepsize;
-                bool found_move = false;  
-
                 // Generate a candidate concerted move
                 //
                 // First generate a random direction to move along the tangent
@@ -1183,32 +1193,16 @@ class PolymerCBMCSampler
                 
                 // Try perturbing the input point along the sampled direction,
                 // then projecting the perturbed point onto the constraint
-                // manifold 
-                Matrix<T, Dynamic, 1> x1(3 * segment_length); 
-                while (tangent_stepsize > min_tangent_stepsize)
-                {
-                    auto perturb_result = perturbAndProject<T>(
-                        F, x0, Qt, Qp, tangent_stepsize, dir, dx, newton_tol,
-                        min_newton_stepsize, max_newton_iter, armijo_const
-                    );
-                    x1 = perturb_result.first;
-                    T residual = perturb_result.second;  
+                // manifold
+                auto perturb_result = perturbAndProject<T>(
+                    F, x0, Qt, Qp, tangent_stepsize, dir, dx, newton_tol,
+                    min_newton_stepsize, max_newton_iter, armijo_const
+                );
+                Matrix<T, Dynamic, 1> x1 = perturb_result.first;
+                T residual = perturb_result.second; 
                     
-                    // If the projection fails to achieve the desired Newton
-                    // tolerance, try perturbing by a smaller increment
-                    if (residual > newton_tol)
-                    {
-                        tangent_stepsize /= 2;
-                    }
-                    else 
-                    { 
-                        found_move = true;
-                        break; 
-                    } 
-                }
-
-                // If projection along the given direction was successful, ... 
-                if (found_move)
+                // If the projection achieves the desired Newton tolerance ... 
+                if (residual < newton_tol)
                 {
                     // Generate the corresponding atomic coordinates
                     Matrix<T, Dynamic, 3> segment(segment_length, 3); 
@@ -1230,10 +1224,11 @@ class PolymerCBMCSampler
                         this->dihedral_params
                     );
                     n_success++;
-                }
+                } 
 
-                // If we have reached the desired number of candidates, quit 
-                if (n_success == n_candidates)
+                // If we have reached the desired number of candidates (and 
+                // we are aiming for a fixed number of candidates), quit 
+                if (mode == InternalMoveGenerationMode::FIXED_CANDIDATES && n_success == n_candidates)
                     break; 
             }
 
@@ -1248,15 +1243,15 @@ class PolymerCBMCSampler
          * Generate possible internal segment moves from the given
          * configuration (which may differ from the current configuration). 
          *
-         * @param n_candidates Number of candidate moves to generate. 
+         * @param coords Input array of atomic coordinates.  
+         * @param n_attempts Number of candidate move generation attempts.
+         * @param n_candidates Number of candidate moves to generate. Only
+         *                     used if aiming for a fixed number of candidates. 
          * @param segment_length Segment length.
          * @param segment_idx Index of first atom in the segment.
-         * @param coords Input array of atomic coordinates.  
-         * @param max_iter Maximum number of move generation attempts. 
-         * @param init_tangent_stepsize Initial stepsize for perturbation in
-         *                              the tangent space. 
-         * @param min_tangent_stepsize Minimum stepsize for perturbation in the 
-         *                             tangent space.  
+         * @param tangent_stepsize Perturbation stepsize in the tangent space.
+         * @param mode Move generation mode (fixed number of candidate 
+         *             generation attempts, or fixed number of candidates).
          * @param dx Increment for finite difference approximation.
          * @param newton_tol Tolerance for assessing convergence of Newton's
          *                   method. 
@@ -1268,13 +1263,13 @@ class PolymerCBMCSampler
          *          and the corresponding energy differences. 
          */
         std::pair<Matrix<T, Dynamic, Dynamic>, 
-                  Matrix<T, Dynamic, 1> > generateInternalSegmentMoves(const int n_candidates, 
+                  Matrix<T, Dynamic, 1> > generateInternalSegmentMoves(const Ref<const Matrix<T, Dynamic, 3> >& coords,
+                                                                       const int n_attempts, 
+                                                                       const int n_candidates, 
                                                                        const int segment_length, 
                                                                        const int segment_idx,
-                                                                       const Ref<const Matrix<T, Dynamic, 3> >& coords, 
-                                                                       const int max_iter,
-                                                                       const T init_tangent_stepsize, 
-                                                                       const T min_tangent_stepsize,
+                                                                       const T tangent_stepsize,
+                                                                       const InternalMoveGenerationMode mode,
                                                                        const T dx = 1e-8,  
                                                                        const T newton_tol = 1e-8,
                                                                        const T min_newton_stepsize = 1e-4, 
@@ -1326,14 +1321,11 @@ class PolymerCBMCSampler
             Matrix<T, Dynamic, Dynamic> Qp = bases.second; 
 
             // Try generating internal moves ... 
-            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3 * segment_length);
-            Matrix<T, Dynamic, 1> energy_diffs(n_candidates);  
-            int n_success = 0;  
-            for (int i = 0; i < max_iter; ++i)
+            Matrix<T, Dynamic, Dynamic> moves(n_attempts, 3 * segment_length);
+            Matrix<T, Dynamic, 1> energy_diffs(n_attempts);
+            int n_success = 0; 
+            for (int i = 0; i < n_attempts; ++i)
             {
-                T tangent_stepsize = init_tangent_stepsize;
-                bool found_move = false;  
-
                 // Generate a candidate concerted move
                 //
                 // First generate a random direction to move along the tangent
@@ -1344,32 +1336,16 @@ class PolymerCBMCSampler
                 
                 // Try perturbing the input point along the sampled direction,
                 // then projecting the perturbed point onto the constraint
-                // manifold 
-                Matrix<T, Dynamic, 1> x1(3 * segment_length); 
-                while (tangent_stepsize > min_tangent_stepsize)
-                {
-                    auto perturb_result = perturbAndProject<T>(
-                        F, x0, Qt, Qp, tangent_stepsize, dir, dx, newton_tol,
-                        min_newton_stepsize, max_newton_iter, armijo_const
-                    );
-                    x1 = perturb_result.first;
-                    T residual = perturb_result.second;  
+                // manifold
+                auto perturb_result = perturbAndProject<T>(
+                    F, x0, Qt, Qp, tangent_stepsize, dir, dx, newton_tol,
+                    min_newton_stepsize, max_newton_iter, armijo_const
+                );
+                Matrix<T, Dynamic, 1> x1 = perturb_result.first; 
+                T residual = perturb_result.second;  
                     
-                    // If the projection fails to achieve the desired Newton
-                    // tolerance, try perturbing by a smaller increment
-                    if (residual > newton_tol)
-                    {
-                        tangent_stepsize /= 2;
-                    }
-                    else 
-                    { 
-                        found_move = true;
-                        break; 
-                    } 
-                }
-
-                // If projection along the given direction was successful, ... 
-                if (found_move)
+                // If the projection achieves the desired Newton tolerance ... 
+                if (residual < newton_tol)
                 {
                     // Generate the corresponding atomic coordinates
                     Matrix<T, Dynamic, 3> segment(segment_length, 3); 
@@ -1393,8 +1369,9 @@ class PolymerCBMCSampler
                     n_success++;
                 }
 
-                // If we have reached the desired number of candidates, quit 
-                if (n_success == n_candidates)
+                // If we have reached the desired number of candidates (and 
+                // we are aiming for a fixed number of candidates), quit 
+                if (mode == InternalMoveGenerationMode::FIXED_CANDIDATES && n_success == n_candidates)
                     break; 
             }
 
@@ -1409,6 +1386,8 @@ class PolymerCBMCSampler
          *                 CONFIGURATIONAL-BIAS MONTE CARLO                // 
          *  -------------------------------------------------------------- */
         /**
+         * Perform one iteration of configurational-bias Monte Carlo. 
+         *
          * @param n_candidates Number of candidate moves to generate. 
          * @param move_type Move type. 
          * @param segment_length Segment length for terminal/internal segment
@@ -1423,7 +1402,7 @@ class PolymerCBMCSampler
                    Matrix<T, Dynamic, Dynamic>, 
                    int, 
                    T, 
-                   bool, 
+                   CBMCMoveResult, 
                    std::unordered_map<std::string, T> > moveOnce(const int n_candidates,
                                                                  const CBMCMoveType move_type,
                                                                  int segment_length,
@@ -1462,7 +1441,8 @@ class PolymerCBMCSampler
 
             // Generate forward moves ...
             Matrix<T, Dynamic, Dynamic> forward_moves, reverse_moves;  
-            Matrix<T, Dynamic, 1> forward_diffs, reverse_diffs;  
+            Matrix<T, Dynamic, 1> forward_diffs, reverse_diffs; 
+            int n_forward = 0;  
             if (move_type == CBMCMoveType::REPTATION)
             {
                 auto forward_result = this->generateReptationMoves(
@@ -1482,20 +1462,33 @@ class PolymerCBMCSampler
             else    // move_type == CBMCMoveType::INTERNAL_SEGMENT
             {
                 // Specify required parameters
-                const T init_tangent_stepsize = move_params.at("init_tangent_stepsize"); 
-                const T min_tangent_stepsize = move_params.at("min_tangent_stepsize");
+                const T tangent_stepsize = move_params.at("tangent_stepsize");
+                const InternalMoveGenerationMode mode
+                    = static_cast<InternalMoveGenerationMode>(move_params.at("mode")); 
+
+                // Specify number of candidate move generation attempts 
+                int n_attempts;
+                if (mode == InternalMoveGenerationMode::FIXED_ATTEMPTS)
+                {
+                    n_attempts = n_candidates;
+                } 
+                else
+                {
+                    // If the number of attempts is not necessarily the number
+                    // of candidates, extract from the input parameters 
+                    try
+                    {
+                        n_attempts = static_cast<int>(move_params.at("n_attempts")); 
+                    } 
+                    catch (const std::out_of_range& e)
+                    {
+                        n_attempts = 2 * n_candidates; 
+                    }
+                }
 
                 // Specify optional parameters
                 T dx, newton_tol, min_newton_stepsize, armijo_const; 
-                int max_iter, max_newton_iter; 
-                try
-                {
-                    max_iter = static_cast<int>(move_params.at("max_iter")); 
-                } 
-                catch (const std::out_of_range& e)
-                {
-                    max_iter = 2 * n_candidates; 
-                }
+                int max_newton_iter;
                 try
                 {
                     dx = move_params.at("dx");
@@ -1539,14 +1532,25 @@ class PolymerCBMCSampler
 
                 // Generate internal segment moves
                 auto forward_result = this->generateInternalSegmentMoves(
-                    n_candidates, segment_length, segment_idx, max_iter,
-                    init_tangent_stepsize, min_tangent_stepsize, dx, newton_tol,
-                    min_newton_stepsize, max_newton_iter, armijo_const 
+                    n_attempts, n_candidates, segment_length, segment_idx, 
+                    tangent_stepsize, mode, dx, newton_tol, min_newton_stepsize,
+                    max_newton_iter, armijo_const 
                 );
+                n_forward = forward_result.first.rows(); 
 
-                // If the desired number of candidate moves was not generated, 
+                // If either:
+                // 
+                // 1) there are no forward moves, or 
+                // 2) we are aiming to generate a fixed number of candidates 
+                //    and we failed to generate that number, 
+                // 
                 // then simply remain at the current configuration
-                if (forward_result.first.rows() < n_candidates)
+                bool fail1 = (mode == InternalMoveGenerationMode::FIXED_ATTEMPTS && n_forward == 0);
+                bool fail2 = (
+                    mode == InternalMoveGenerationMode::FIXED_CANDIDATES &&
+                    n_forward < n_candidates
+                );  
+                if (fail1 || fail2)
                 {
                     forward_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length); 
                     reverse_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length);
@@ -1559,7 +1563,8 @@ class PolymerCBMCSampler
                     move_info["segment_idx"] = segment_idx;
                     move_info["proposed_new_move"] = false;
                     return std::make_tuple(
-                        forward_moves, reverse_moves, 0, 1.0, true, move_info
+                        forward_moves, reverse_moves, 0, 1.0,
+                        CBMCMoveResult::NONE, move_info
                     ); 
                 }
 
@@ -1575,7 +1580,7 @@ class PolymerCBMCSampler
 
             // Choose one move out of the candidates 
             std::vector<T> probs; 
-            for (int i = 0; i < n_candidates; ++i)
+            for (int i = 0; i < n_forward; ++i)
                 probs.push_back(forward_weights(i) / forward_rosenbluth); 
             boost::random::discrete_distribution<> dist(probs);  
             int move_idx = dist(this->rng);
@@ -1619,6 +1624,7 @@ class PolymerCBMCSampler
             Matrix<T, Dynamic, 3> coords_chosen = config_chosen.getSegment(0, n);
 
             // Generate reverse moves from the chosen configuration
+            int n_reverse = 0; 
             if (move_type == CBMCMoveType::REPTATION)
             {
                 // Identify the reverse direction 
@@ -1647,20 +1653,33 @@ class PolymerCBMCSampler
             else    // move_type == CBMCMoveType::INTERNAL_SEGMENT
             {
                 // Specify required parameters
-                const T init_tangent_stepsize = move_params.at("init_tangent_stepsize"); 
-                const T min_tangent_stepsize = move_params.at("min_tangent_stepsize");
+                const T tangent_stepsize = move_params.at("tangent_stepsize");
+                const InternalMoveGenerationMode mode
+                    = static_cast<InternalMoveGenerationMode>(move_params.at("mode"));
+
+                // Specify number of candidate move generation attempts 
+                int n_attempts;
+                if (mode == InternalMoveGenerationMode::FIXED_ATTEMPTS)
+                {
+                    n_attempts = n_candidates;
+                } 
+                else
+                {
+                    // If the number of attempts is not necessarily the number
+                    // of candidates, extract from the input parameters 
+                    try
+                    {
+                        n_attempts = static_cast<int>(move_params.at("n_attempts")); 
+                    } 
+                    catch (const std::out_of_range& e)
+                    {
+                        n_attempts = 2 * n_candidates; 
+                    }
+                }
 
                 // Specify optional parameters
                 T dx, newton_tol, min_newton_stepsize, armijo_const; 
-                int max_iter, max_newton_iter; 
-                try
-                {
-                    max_iter = static_cast<int>(move_params.at("max_iter")); 
-                } 
-                catch (const std::out_of_range& e)
-                {
-                    max_iter = 2 * n_candidates; 
-                }
+                int max_newton_iter; 
                 try
                 {
                     dx = move_params.at("dx");
@@ -1704,15 +1723,48 @@ class PolymerCBMCSampler
 
                 // Generate internal segment moves 
                 auto reverse_result = this->generateInternalSegmentMoves(
-                    n_candidates, segment_length, segment_idx, coords_chosen, 
-                    max_iter, init_tangent_stepsize, min_tangent_stepsize,
-                    dx, newton_tol, min_newton_stepsize, max_newton_iter,
-                    armijo_const 
+                    coords_chosen, n_attempts, n_candidates, segment_length,
+                    segment_idx, tangent_stepsize, mode, dx, newton_tol,
+                    min_newton_stepsize, max_newton_iter, armijo_const 
                 );
+                n_reverse = reverse_result.first.rows();
 
-                // If the desired number of candidate moves was not generated, 
-                // then simply remain at the current configuration
-                if (reverse_result.first.rows() < n_candidates)
+                // Check for failure modes
+                bool fail1 = (mode == InternalMoveGenerationMode::FIXED_ATTEMPTS && n_reverse == 0);
+                bool fail2 = (
+                    mode == InternalMoveGenerationMode::FIXED_CANDIDATES &&
+                    n_reverse < n_candidates
+                );  
+
+                // If there were no reverse moves generated, then add in the 
+                // original configuration
+                if (fail1)
+                {
+                    // Extract the original configuration along the internal segment
+                    Matrix<T, Dynamic, 3> segment = this->r(
+                        Eigen::seqN(segment_idx, segment_length), Eigen::all
+                    );
+                    reverse_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length);
+                    reverse_diffs = Matrix<T, Dynamic, 1>::Zero(1); 
+                    for (int i = 0; i < segment_length; ++i)
+                    {
+                        reverse_moves(0, 3 * i) = segment(i, 0); 
+                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
+                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
+                    }
+                    reverse_diffs(0)
+                        = config_chosen.getSegmentReplacementEnergyDifference(
+                            segment, segment_idx, this->lj_params,
+                            this->neighbor_threshold, this->fene_params, 
+                            this->angle_mode, this->angle_params,
+                            this->dihedral_params
+                        );
+                    n_reverse = 1; 
+                }
+                // If we are aiming to generate a fixed number of candidates
+                // and we failed to generate that number, then simply remain
+                // at the current configuration
+                else if (fail2)
                 {
                     forward_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length); 
                     reverse_moves = Matrix<T, Dynamic, Dynamic>::Zero(1, 3 * segment_length);
@@ -1725,22 +1777,27 @@ class PolymerCBMCSampler
                     move_info["segment_idx"] = segment_idx;
                     move_info["proposed_new_move"] = false;
                     return std::make_tuple(
-                        forward_moves, reverse_moves, 0, 1.0, true, move_info
+                        forward_moves, reverse_moves, 0, 1.0,
+                        CBMCMoveResult::NONE, move_info
                     ); 
                 }
-
-                // Otherwise, keep track of the candidate moves 
-                reverse_moves = reverse_result.first;
-                reverse_diffs = reverse_result.second;
+                // Otherwise, keep track of the candidate moves
+                else 
+                { 
+                    reverse_moves = reverse_result.first;
+                    reverse_diffs = reverse_result.second;
+                }
             }
 
             // Add in the original configuration as one of the reverse moves
+            //
+            // Simply replace the 0-th reverse move 
             if (move_type == CBMCMoveType::REPTATION)
             {
                 if (rept_dir == ReptationDirection::HEAD)
                 { 
-                    reverse_moves.row(move_idx) = this->r.row(n - 1); 
-                    reverse_diffs(move_idx)
+                    reverse_moves.row(0) = this->r.row(n - 1); 
+                    reverse_diffs(0)
                         = config_chosen.getReptationNonbondedEnergyDifference(
                             ReptationDirection::TAIL, this->r.row(n - 1),
                             this->lj_params, this->neighbor_threshold
@@ -1748,8 +1805,8 @@ class PolymerCBMCSampler
                 }
                 else 
                 {
-                    reverse_moves.row(move_idx) = this->r.row(0); 
-                    reverse_diffs(move_idx)
+                    reverse_moves.row(0) = this->r.row(0); 
+                    reverse_diffs(0)
                         = config_chosen.getReptationNonbondedEnergyDifference(
                             ReptationDirection::HEAD, this->r.row(0),
                             this->lj_params, this->neighbor_threshold
@@ -1766,11 +1823,11 @@ class PolymerCBMCSampler
                     ); 
                     for (int i = 0; i < segment_length; ++i)
                     {
-                        reverse_moves(move_idx, 3 * i) = segment(i, 0); 
-                        reverse_moves(move_idx, 3 * i + 1) = segment(i, 1); 
-                        reverse_moves(move_idx, 3 * i + 2) = segment(i, 2); 
+                        reverse_moves(0, 3 * i) = segment(i, 0); 
+                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
+                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
                     }
-                    reverse_diffs(move_idx)
+                    reverse_diffs(0)
                         = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
                             segment, 0, this->lj_params, this->neighbor_threshold 
                         );
@@ -1783,11 +1840,11 @@ class PolymerCBMCSampler
                     );
                     for (int i = 0; i < segment_length; ++i)
                     {
-                        reverse_moves(move_idx, 3 * i) = segment(i, 0); 
-                        reverse_moves(move_idx, 3 * i + 1) = segment(i, 1); 
-                        reverse_moves(move_idx, 3 * i + 2) = segment(i, 2); 
+                        reverse_moves(0, 3 * i) = segment(i, 0); 
+                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
+                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
                     }
-                    reverse_diffs(move_idx)
+                    reverse_diffs(0)
                         = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
                             segment, n - segment_length, this->lj_params,
                             this->neighbor_threshold
@@ -1802,11 +1859,11 @@ class PolymerCBMCSampler
                 ); 
                 for (int i = 0; i < segment_length; ++i)
                 {
-                    reverse_moves(move_idx, 3 * i) = segment(i, 0); 
-                    reverse_moves(move_idx, 3 * i + 1) = segment(i, 1); 
-                    reverse_moves(move_idx, 3 * i + 2) = segment(i, 2); 
+                    reverse_moves(0, 3 * i) = segment(i, 0); 
+                    reverse_moves(0, 3 * i + 1) = segment(i, 1); 
+                    reverse_moves(0, 3 * i + 2) = segment(i, 2); 
                 }
-                reverse_diffs(move_idx)
+                reverse_diffs(0)
                     = config_chosen.getSegmentReplacementEnergyDifference(
                         segment, segment_idx, this->lj_params,
                         this->neighbor_threshold, this->fene_params, 
@@ -1876,11 +1933,12 @@ class PolymerCBMCSampler
             else
             { 
                 move_info["segment_idx"] = segment_idx;
-                move_info["proposed_new_move"] = true; 
+                move_info["proposed_new_move"] = true;
             } 
             return std::make_tuple(
                 forward_moves, reverse_moves, move_idx, prob_accept,
-                (r < prob_accept), move_info
+                (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
+                move_info
             ); 
         }
 
@@ -1931,18 +1989,18 @@ class PolymerCBMCSampler
             // Write sampling parameters to file
             outfile << std::setprecision(10); 
             outfile << "## n_candidates = " << n_candidates << std::endl
-                    << "## internal_move_init_tangent_stepsize = " 
-                    << internal_move_params["init_tangent_stepsize"] << std::endl
-                    << "## internal_move_min_tangent_stepsize = " 
-                    << internal_move_params["min_tangent_stepsize"] << std::endl
+                    << "## internal_move_tangent_stepsize = " 
+                    << internal_move_params["tangent_stepsize"] << std::endl
+                    << "## internal_move_generation_mode = "
+                    << static_cast<int>(internal_move_params["mode"]) << std::endl
+                    << "## internal_move_n_attempts = "
+                    << static_cast<int>(internal_move_params["n_attempts"]) << std::endl
                     << "## internal_move_dx = " 
                     << internal_move_params["dx"] << std::endl
                     << "## internal_move_newton_tol = "
                     << internal_move_params["newton_tol"] << std::endl 
                     << "## internal_move_min_newton_stepsize = "
                     << internal_move_params["min_newton_stepsize"] << std::endl
-                    << "## internal_move_max_iter = "
-                    << static_cast<int>(internal_move_params["max_iter"]) << std::endl 
                     << "## internal_move_max_newton_iter = "
                     << static_cast<int>(internal_move_params["max_newton_iter"]) << std::endl
                     << "## internal_move_armijo_const = "
@@ -1988,16 +2046,21 @@ class PolymerCBMCSampler
             // Tabulate average acceptance probabilities for each move type 
             Matrix<T, 3, 1> accept_probs = Matrix<T, 3, 1>::Zero();
 
+            // Tabulate probability of proposing at least one nontrivial 
+            // internal segment move
+            T internal_new_move_prob = 0; 
+
             // Tabulate probability of null moves for internal segment moves 
             T internal_null_move_prob = 0; 
 
-            // Tabulate fraction of non-null moves 
-            T frac_nonnull = 0;  
+            // Tabulate fraction of accepted moves 
+            T frac_accept = 0;
 
             // Run sampling procedure ... 
             int curr_idx = 0; 
             int collect_idx = 0;
-            int n_stall = 0; 
+            int n_stall = 0;
+            int n_internal = 0; 
             int last_written_idx = -1;  
             while (collect_idx < n_collect)
             {
@@ -2020,38 +2083,46 @@ class PolymerCBMCSampler
                 auto result = this->moveOnce(
                     n_candidates, move_type, segment_length, internal_move_params
                 );
+                T prob_accept = std::get<3>(result);
+                CBMCMoveResult accepted_move = std::get<4>(result);  
+                auto move_info = std::get<5>(result);
 
                 // Update average acceptance probabilities 
-                T prob_accept = std::get<3>(result);
                 if (move_type == CBMCMoveType::REPTATION)
                     accept_probs(0) += ((prob_accept - accept_probs(0)) / (curr_idx + 1));
                 else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
                     accept_probs(1) += ((prob_accept - accept_probs(1)) / (curr_idx + 1));
                 else 
-                    accept_probs(2) += ((prob_accept - accept_probs(2)) / (curr_idx + 1)); 
+                    accept_probs(2) += ((prob_accept - accept_probs(2)) / (curr_idx + 1));
 
-                // Update probability of null internal segment moves
-                auto move_info = std::get<5>(result);
+                // If an internal segment move was made ... 
                 if (move_type == CBMCMoveType::INTERNAL_SEGMENT)
                 {
-                    double null_move = (move_info["proposed_new_move"] > 0 ? 0.0 : 1.0); 
+                    // Update probability of non-trivial internal segment move
+                    // candidates
+                    double proposed_new_move = static_cast<double>(
+                        move_info["proposed_new_move"]
+                    ); 
+                    internal_new_move_prob += (
+                        (proposed_new_move - internal_new_move_prob) / (n_internal + 1) 
+                    ); 
+                    
+                    // Update probability of null internal segment moves
+                    double made_null_internal_move = (
+                        accepted_move == CBMCMoveResult::NONE ? 1.0 : 0.0
+                    ); 
                     internal_null_move_prob += (
-                        (null_move - internal_null_move_prob) / (curr_idx + 1)
+                        (made_null_internal_move - internal_null_move_prob) / (n_internal + 1)
                     );
+                    n_internal++; 
                 }
 
-                // Update total fraction of non-null moves
-                bool accepted_move = std::get<4>(result); 
-                bool made_null_move = (
-                    !accepted_move || (
-                        move_type == CBMCMoveType::INTERNAL_SEGMENT &&
-                        move_info["proposed_new_move"] == 0
-                    )
-                );
-                frac_nonnull += (((!made_null_move) - frac_nonnull) / (curr_idx + 1));  
+                // Update total fraction of accepts 
+                double outcome = (accepted_move == CBMCMoveResult::ACCEPT ? 1.0 : 0.0); 
+                frac_accept += ((outcome - frac_accept) / (curr_idx + 1));  
 
                 // Update number of consecutive stalling iterations 
-                if (made_null_move)
+                if (outcome == 0)
                     n_stall++;
                 else 
                     n_stall = 0;
@@ -2061,8 +2132,9 @@ class PolymerCBMCSampler
                 // sample 
                 if (n_stall > max_stall)
                 {
-                    std::cout << "[WARN] Sampling has stalled due to too many "
-                              << "consecutive rejections" << std::endl;
+                    std::cout << "[FAIL] Sampling has stalled due to too many "
+                              << "consecutive null moves or rejections"
+                              << std::endl;
                     ensemble_coords.conservativeResize(collect_idx, 3 * this->length);  
                     return ensemble_coords; 
                 } 
@@ -2079,10 +2151,12 @@ class PolymerCBMCSampler
                               << accept_probs(0) << ", "
                               << accept_probs(1) << ", "
                               << accept_probs(2) << "]"
+                              << ", new internal move prob = " 
+                              << internal_new_move_prob
                               << ", null internal move prob = "
                               << internal_null_move_prob
-                              << ", fraction of non-null moves = "
-                              << frac_nonnull << std::endl;
+                              << ", fraction of accepts = "
+                              << frac_accept << std::endl;
                     t_curr = t_next; 
                 } 
 
@@ -2208,20 +2282,20 @@ class PolymerCBMCSampler
                     line.erase(0, line.find(" = ") + 3);
                     if (token == "n_candidates")
                         n_candidates = std::stoi(line);
-                    else if (token == "internal_move_init_tangent_stepsize")
-                        internal_move_params["init_tangent_stepsize"] = static_cast<T>(std::stod(line)); 
-                    else if (token == "internal_move_min_tangent_stepsize")
-                        internal_move_params["min_tangent_stepsize"] = static_cast<T>(std::stod(line)); 
+                    else if (token == "internal_move_tangent_stepsize")
+                        internal_move_params["tangent_stepsize"] = static_cast<T>(std::stod(line));
+                    else if (token == "internal_move_generation_mode")
+                        internal_move_params["mode"] = static_cast<T>(std::stoi(line));
+                    else if (token == "internal_move_n_attempts") 
+                        internal_move_params["n_attempts"] = static_cast<T>(std::stoi(line));  
                     else if (token == "internal_move_dx")
                         internal_move_params["dx"] = static_cast<T>(std::stod(line)); 
                     else if (token == "internal_move_newton_tol")
                         internal_move_params["newton_tol"] = static_cast<T>(std::stod(line)); 
                     else if (token == "internal_move_min_newton_stepsize")
                         internal_move_params["min_newton_stepsize"] = static_cast<T>(std::stod(line));
-                    else if (token == "internal_move_max_iter")
-                        internal_move_params["max_iter"] = static_cast<T>(std::stod(line)); 
                     else if (token == "internal_move_max_newton_iter")
-                        internal_move_params["max_newton_iter"] = static_cast<T>(std::stod(line));   
+                        internal_move_params["max_newton_iter"] = static_cast<T>(std::stoi(line)); 
                     else if (token == "internal_move_armijo_const")
                         internal_move_params["armijo_const"] = static_cast<T>(std::stod(line));  
                     else if (token == "move_prob_reptation")
