@@ -98,7 +98,6 @@ int main(int argc, char** argv)
         internal_move_params["mode"] = 0; 
     }
     mode = static_cast<InternalMoveGenerationMode>(internal_move_params["mode"]); 
-    std::cout << internal_move_params["mode"] << std::endl;   
     try
     {
         internal_move_params["n_attempts"] = json_data["internal_move_n_attempts"].as_double(); 
@@ -110,7 +109,6 @@ int main(int argc, char** argv)
         else 
             internal_move_params["n_attempts"] = 2 * n_candidates; 
     }
-    std::cout << internal_move_params["n_attempts"] << std::endl; 
     try
     { 
         internal_move_params["dx"] = json_data["dx"].as_double(); 
