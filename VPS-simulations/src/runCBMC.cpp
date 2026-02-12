@@ -79,33 +79,38 @@ int main(int argc, char** argv)
     const int terminal_segment_length = json_data["terminal_segment_length"].as_int64(); 
     const int internal_segment_length = json_data["internal_segment_length"].as_int64();
 
-    // Parse internal move parameters (with default values as follows) 
+    // Parse internal move parameters (with default values as follows)
+    InternalMoveGenerationMode mode;  
     try
     {
-        internal_move_params["init_tangent_stepsize"]
-            = json_data["init_tangent_stepsize"].as_double();
+        internal_move_params["tangent_stepsize"] = json_data["tangent_stepsize"].as_double();
     }
     catch (boost::wrapexcept<boost::system::system_error>& e)
     {
-        internal_move_params["init_tangent_stepsize"] = 0.1 * lj_params["sigma"]; 
-    } 
-    try
-    {
-        internal_move_params["min_tangent_stepsize"]
-            = json_data["min_tangent_stepsize"].as_double();
-    }
-    catch (boost::wrapexcept<boost::system::system_error>& e)
-    {
-        internal_move_params["min_tangent_stepsize"] = 0.01 * lj_params["sigma"]; 
+        internal_move_params["tangent_stepsize"] = 0.1 * lj_params["sigma"]; 
     }
     try
     {
-        internal_move_params["max_iter"] = json_data["max_iter"].as_double(); 
+        internal_move_params["mode"] = json_data["internal_move_generation_mode"].as_int64();
     }
     catch (boost::wrapexcept<boost::system::system_error>& e)
     {
-        internal_move_params["max_iter"] = 2 * n_candidates; 
+        internal_move_params["mode"] = 0; 
     }
+    mode = static_cast<InternalMoveGenerationMode>(internal_move_params["mode"]); 
+    std::cout << internal_move_params["mode"] << std::endl;   
+    try
+    {
+        internal_move_params["n_attempts"] = json_data["internal_move_n_attempts"].as_double(); 
+    }
+    catch (boost::wrapexcept<boost::system::system_error>& e)
+    {
+        if (mode == InternalMoveGenerationMode::FIXED_ATTEMPTS)
+            internal_move_params["n_attempts"] = n_candidates; 
+        else 
+            internal_move_params["n_attempts"] = 2 * n_candidates; 
+    }
+    std::cout << internal_move_params["n_attempts"] << std::endl; 
     try
     { 
         internal_move_params["dx"] = json_data["dx"].as_double(); 
