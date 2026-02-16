@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/10/2026
+ *     2/15/2026
  */
 
 #include <iostream>
@@ -11,6 +11,7 @@
 #include <Eigen/Dense>
 #include "../include/utils.hpp"
 #include "../include/polymerConfiguration.hpp"
+#include "../include/polymerEnsemble.hpp"
 #include "../include/cbmc.hpp"
 
 int main(int argc, char** argv)
