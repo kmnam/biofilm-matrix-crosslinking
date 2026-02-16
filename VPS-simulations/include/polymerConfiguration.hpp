@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/4/2026
+ *     2/15/2026
  */
 
 #ifndef POLYMER_CONFIGURATION_HPP
@@ -2282,6 +2282,102 @@ PolymerConfiguration<T> generateKMer(const int K,
 }
 
 /**
+ * Generate a random coil of length K, i.e., a K-mer with fixed bond lengths,
+ * random angles, and random dihedrals. 
+ *
+ * @param K Polymer length.
+ * @param bond_length Bond length. 
+ * @param r0 Position of 0-th atom. 
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin). 
+ * @returns Resulting polymer configuration.  
+ */
+template <typename T>
+PolymerConfiguration<T> generateKMerRandomCoil(const int K, const T bond_length, 
+                                               const Ref<const Matrix<T, 3, 1> >& r0,
+                                               boost::random::mt19937& rng,
+                                               boost::random::uniform_01<>& uniform_dist,
+                                               const Units units = Units::NANO, 
+                                               const T temp = 300.0)
+{
+    // Generate each atom along the chain ... 
+    //
+    // Start with the first two atoms 
+    Matrix<T, Dynamic, 3> coords(K, 3); 
+    coords.row(0) = r0; 
+    coords(1, 0) = bond_length; 
+    coords(1, 1) = 0; 
+    coords(1, 2) = 0;
+
+    // Then generate each subsequent atom with a random bond angle
+    for (int i = 2; i < K; ++i)
+    {
+        // Generate the next bond vector
+        T u = -1 + 2 * uniform_dist(rng); 
+        T r = sqrt(1 - u * u); 
+        T phi = boost::math::constants::two_pi<T>() * uniform_dist(rng); 
+        Matrix<T, 3, 1> v; 
+        v << r * cos(phi), r * sin(phi), u;
+        coords.row(i) = coords.row(i - 1) + bond_length * v.transpose();  
+    } 
+
+    // Generate a PolymerConfiguration<T> instance
+    PolymerConfiguration<T> config(coords, units, temp);
+    return config;  
+}
+
+/**
+ * Generate a freely rotating chain of length K, i.e., a K-mer with fixed bond
+ * lengths and angles, and random dihedrals.
+ *
+ * @param K Polymer length.
+ * @param bond_length Bond length.
+ * @param bond_angle Bond angle.  
+ * @param r0 Position of 0-th atom. 
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin). 
+ * @returns Resulting polymer configuration.  
+ */
+template <typename T>
+PolymerConfiguration<T> generateKMerFreelyRotatingChain(const int K,
+                                                        const T bond_length,
+                                                        const T bond_angle, 
+                                                        const Ref<const Matrix<T, 3, 1> >& r0,
+                                                        boost::random::mt19937& rng,
+                                                        boost::random::uniform_01<>& uniform_dist,
+                                                        const Units units = Units::NANO, 
+                                                        const T temp = 300.0)
+{
+    // Generate each atom along the chain ... 
+    //
+    // Start with the first two atoms 
+    Matrix<T, Dynamic, 3> coords(K, 3); 
+    coords.row(0) = r0; 
+    coords(1, 0) = bond_length; 
+    coords(1, 1) = 0; 
+    coords(1, 2) = 0;
+
+    // Then generate each subsequent atom with the same bond length and angle,
+    // but with a random dihedral 
+    for (int i = 2; i < K; ++i)
+    {
+        // Generate the next bond vector
+        coords.row(i) = generateNextAtom<T>(
+            coords.row(i - 2), coords.row(i - 1), bond_length, bond_angle, 
+            rng, uniform_dist
+        ); 
+    } 
+
+    // Generate a PolymerConfiguration<T> instance
+    PolymerConfiguration<T> config(coords, units, temp);
+    return config;  
+}
+
+/**
  * Given arrays of tangent vectors along an ensemble of polymer configurations, 
  * get the corresponding autocorrelation in the tangent vector direction along
  * each polymer configuration, for the given increment k.
@@ -2315,87 +2411,6 @@ Matrix<T, Dynamic, 1> getTangentVectorAutocorrelation(std::vector<Matrix<T, Dyna
     }
 
     return autocorrs_per_config;
-}
-
-template <typename T>
-using PolymerEnsemble = std::vector<PolymerConfiguration<T> >;
-
-/**
- * Estimate the persistence length of the polymer from the given ensemble of
- * polymer configurations, using the tangent vector autocorrelation along 
- * each configuration. 
- *
- * @param ensemble Ensemble of polymer configurations. 
- * @returns Persistence length. 
- */
-template <typename T>
-T getPersistenceLength(PolymerEnsemble<T>& ensemble)
-{
-    // Check that there are at least two configurations 
-    if (ensemble.size() < 2)
-        throw std::runtime_error(
-            "Invalid ensemble size for persistence length calculation"
-        ); 
-
-    // Get the tangent vectors along each configuration in the ensemble
-    const int n = ensemble.size();  
-    std::vector<Matrix<T, Dynamic, 3> > tangent_vectors; 
-    for (int i = 0; i < n; ++i)
-        tangent_vectors.push_back(ensemble[i].tangentVectors()); 
-
-    // Get the mean bond length in each configuration
-    T mean_bond_length = 0; 
-    for (int i = 0; i < n; ++i)
-    {
-        T mean_i = ensemble[i].meanBondLength(); 
-        mean_bond_length += ((mean_i - mean_bond_length) / (i + 1));
-    } 
-
-    // Get the 97.5-th percentile point of the standard normal 
-    boost::math::normal normal_dist(0.0, 1.0); 
-    const double z975 = quantile(normal_dist, 0.975); 
-
-    // For each value of k ...
-    Matrix<T, Dynamic, 1> autocorrs(0); 
-    int k = 1;
-    bool terminate = false;
-    int n_noisy = 0;  
-    while (!terminate)
-    {
-        // For each configuration ... 
-        Matrix<T, Dynamic, 1> autocorrs_per_config_k
-            = getTangentVectorAutocorrelation<T>(tangent_vectors, k);
-        T autocorr_k = autocorrs_per_config_k.mean(); 
-
-        // Keep track of the mean over all configurations for k 
-        autocorrs.conservativeResize(k); 
-        autocorrs(k - 1) = autocorr_k;
-
-        // Calculate the standard error
-        Array<T, Dynamic, 1> deviations = autocorrs_per_config_k.array() - autocorr_k; 
-        T variance = deviations.pow(2).sum() / (n - 1);
-        T std_error = sqrt(variance / n);
-
-        // Check if the mean is statistically indistinguishable from zero 
-        // using the Wald test
-        //
-        // More specifically, we check if the absolute value of the test
-        // statistic, (mean - 0) / standard error, exceeds the Z-score for 
-        // the 97.5-th percentile point of the standard normal 
-        if (autocorr_k / std_error < z975)
-            n_noisy++; 
-        else     // If not, then reset n_noisy to zero 
-            n_noisy = 0;
-
-        // If we have reached 5 consecutive iterations where the mean is 
-        // statistically indistiguishable from zero, then terminate  
-        if (n_noisy >= 5)
-            terminate = true;
-        k++;
-    }
-
-    // Estimate the persistence length
-    return mean_bond_length * (0.5 + autocorrs.sum()); 
 }
 
 #endif
