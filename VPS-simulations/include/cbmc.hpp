@@ -1824,7 +1824,8 @@ class PolymerCBMCSampler
                     rept_dir, n_candidates
                 );
                 forward_moves = forward_result.first;
-                forward_diffs = forward_result.second; 
+                forward_diffs = forward_result.second;
+                n_forward = forward_moves.rows();  
             }
             else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
             {
@@ -1833,6 +1834,7 @@ class PolymerCBMCSampler
                 );
                 forward_moves = forward_result.first; 
                 forward_diffs = forward_result.second;
+                n_forward = forward_moves.rows(); 
             }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
             {
@@ -1840,7 +1842,8 @@ class PolymerCBMCSampler
                     segment_length, terminal_end, n_candidates
                 );
                 forward_moves = forward_result.first;
-                forward_diffs = forward_result.second;  
+                forward_diffs = forward_result.second; 
+                n_forward = forward_moves.rows();  
             }
             else    // move_type == CBMCMoveType::INTERNAL_SEGMENT
             {
@@ -1964,7 +1967,7 @@ class PolymerCBMCSampler
             // Choose one move out of the candidates 
             std::vector<T> probs; 
             for (int i = 0; i < n_forward; ++i)
-                probs.push_back(forward_weights(i) / forward_rosenbluth); 
+                probs.push_back(forward_weights(i) / forward_rosenbluth);
             boost::random::discrete_distribution<> dist(probs);  
             int move_idx = dist(this->rng);
             Matrix<T, Dynamic, 3> move(segment_length, 3); 
@@ -2014,7 +2017,6 @@ class PolymerCBMCSampler
             Matrix<T, Dynamic, 3> coords_chosen = config_chosen.getSegment(0, n);
 
             // Generate reverse moves from the chosen configuration
-            int n_reverse = 0; 
             if (move_type == CBMCMoveType::REPTATION)
             {
                 // Identify the reverse direction 
@@ -2133,7 +2135,7 @@ class PolymerCBMCSampler
                     segment_idx, tangent_stepsize, mode, dx, newton_tol,
                     min_newton_stepsize, max_newton_iter, armijo_const 
                 );
-                n_reverse = reverse_result.first.rows();
+                int n_reverse = reverse_result.first.rows();
 
                 // Check for failure modes
                 bool fail1 = (mode == InternalMoveGenerationMode::FIXED_ATTEMPTS && n_reverse == 0);
@@ -2384,7 +2386,7 @@ class PolymerCBMCSampler
             { 
                 move_info["segment_idx"] = segment_idx;
                 move_info["proposed_new_move"] = true;
-            } 
+            }
             return std::make_tuple(
                 forward_moves, reverse_moves, move_idx, prob_accept,
                 (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
