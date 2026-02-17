@@ -349,11 +349,10 @@ TEST_CASE("Tests for terminal segment moves", "[moveOnce()]")
         }
     }
 
-    // Check that the reverse move corresponding to the chosen move is
-    // reversion to the original configuration
+    // Check that the 0-th reverse move is reversion to the original configuration
     Matrix<double, Dynamic, 3> reverse_move_segment(3, 3); 
     for (int i = 0; i < 3; ++i)
-        reverse_move_segment.row(i) = reverse_moves(move_idx, Eigen::seqN(3 * i, 3)); 
+        reverse_move_segment.row(i) = reverse_moves(0, Eigen::seqN(3 * i, 3)); 
     if (direction == TerminalSegmentEnd::HEAD)
     {
         for (int i = 0; i < 3; ++i)
@@ -502,11 +501,10 @@ TEST_CASE("Tests for terminal segment moves", "[moveOnce()]")
         }
     }
 
-    // Check that the reverse move corresponding to the chosen move is
-    // reversion to the original configuration
+    // Check that the 0-th reverse move is reversion to the original configuration
     reverse_move_segment.resize(5, 3); 
     for (int i = 0; i < 5; ++i)
-        reverse_move_segment.row(i) = reverse_moves(move_idx, Eigen::seqN(3 * i, 3)); 
+        reverse_move_segment.row(i) = reverse_moves(0, Eigen::seqN(3 * i, 3)); 
     if (direction == TerminalSegmentEnd::HEAD)
     {
         for (int i = 0; i < 5; ++i)
