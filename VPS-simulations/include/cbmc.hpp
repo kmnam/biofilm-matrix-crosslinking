@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/11/2026
+ *     2/16/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -45,6 +45,7 @@ enum class TerminalSegmentEnd
 enum class CBMCMoveType
 {
     REPTATION,
+    MULTIMER_REPTATION,
     TERMINAL_SEGMENT,
     INTERNAL_SEGMENT 
 };
@@ -737,6 +738,382 @@ class PolymerCBMCSampler
         }
 
         /** -------------------------------------------------------------- // 
+         *                MOVE GENERATION: MULTIMER REPTATION              // 
+         *  -------------------------------------------------------------- */
+        /**
+         * Generate possible multimer reptation moves from the current
+         * configuration.
+         *
+         * @param direction Reptation direction.
+         * @param n_reptate Multimer length.  
+         * @param n_candidates Number of candidate moves to generate.  
+         * @returns Arrays of candidate atomic positions for the new atom and
+         *          the corresponding reptation energy differences.  
+         */
+        std::pair<Matrix<T, Dynamic, Dynamic>,
+                  Matrix<T, Dynamic, 1> > generateMultimerReptationMoves(const ReptationDirection direction,
+                                                                         const int n_reptate, 
+                                                                         const int n_candidates)
+        {
+            const int n = this->length; 
+            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3 * n_reptate);
+            Matrix<T, Dynamic, 1> energy_diffs(n_candidates); 
+
+            // Define the angle sampling function  
+            std::function<T()> sample_angle;
+            if (this->angle_mode == AngleMode::COSINE)
+            {
+                sample_angle = [this]() -> T
+                {
+                    return sampleAngleCosine<T>(
+                        this->angle_params.at("K"),
+                        this->angle_params.at("theta0"),
+                        this->config.kT,
+                        this->rng, 
+                        this->uniform_dist
+                    );
+                };
+            } 
+            else     // this->angle_mode == AngleMode::GAUSSIAN
+            {
+                sample_angle = [this]() -> T
+                {
+                    return sampleAngleDualGaussianMixture<T>(
+                        this->angle_params.at("A1"),
+                        this->angle_params.at("A2"),
+                        this->angle_params.at("w1"),
+                        this->angle_params.at("w2"),
+                        this->angle_params.at("theta1"),
+                        this->angle_params.at("theta2"),
+                        this->config.kT,
+                        this->rng,
+                        this->uniform_dist
+                    );
+                };
+            }
+
+            // Generate bond lengths, bond angles, and dihedral angles 
+            Matrix<T, Dynamic, 1> lengths(n_candidates, n_reptate),
+                                  angles(n_candidates, n_reptate), 
+                                  dihedrals(n_candidates, n_reptate);
+            for (int i = 0; i < n_candidates; ++i)
+            {
+                for (int j = 0; j < n_reptate; ++j)
+                {
+                    lengths(i, j) = sampleFene<T>(
+                        this->lj_params.at("eps"), this->lj_params.at("sigma"),
+                        this->fene_params.at("K"), this->fene_params.at("R0"),
+                        this->config.kT, this->rng, this->uniform_dist, 50 
+                    );
+                    angles(i, j) = sample_angle();
+                    dihedrals(i, j) = sampleDihedralHarmonic<T>(
+                        this->dihedral_params.at("K"), this->config.kT, this->rng,
+                        this->uniform_dist
+                    );
+                }
+            }
+             
+            if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
+            {
+                // Generate new candidate atomic positions at the head
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    Matrix<T, Dynamic, 3> segment_i(n_reptate, 3);
+                   
+                    // Generate the j-th atom along the segment, downwards from
+                    // j = n_reptate - 1 to j = 0, starting from atom 0 in the
+                    // polymer
+                    for (int j = 0; j < n_reptate; ++j)
+                    {
+                        Matrix<T, 3, 1> r1, r2, r3; 
+                        if (j == 0)         // Last atom in the segment (closest to the polymer)
+                        {
+                            r1 = this->r.row(2); 
+                            r2 = this->r.row(1); 
+                            r3 = this->r.row(0); 
+                        } 
+                        else if (j == 1)    // Second-to-last
+                        {
+                            r1 = this->r.row(1); 
+                            r2 = this->r.row(0); 
+                            r3 = segment_i.row(n_reptate - 1); 
+                        }
+                        else if (j == 2)    // Third-to-last
+                        {
+                            r1 = this->r.row(0); 
+                            r2 = segment_i.row(n_reptate - 1); 
+                            r3 = segment_i.row(n_reptate - 2); 
+                        }
+                        else 
+                        {
+                            r1 = segment_i.row(n_reptate - 1 - j + 3); 
+                            r2 = segment_i.row(n_reptate - 1 - j + 2); 
+                            r3 = segment_i.row(n_reptate - 1 - j + 1);  
+                        }
+                        int idx = n_reptate - 1 - j; 
+                        segment_i.row(idx) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j), 
+                            dihedrals(i, j), this->rng, this->uniform_dist,
+                            (dihedrals(i, 0) > 0 ? 1 : -1)
+                        );
+                        moves(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
+                    }
+
+                    // Get the non-bonded energy difference due to reptation
+                    //
+                    // TODO Implement this
+                    energy_diffs(i) = this->config.getMultimerReptationNonbondedEnergyDifference(
+                        ReptationDirection::HEAD, segment_i, 
+                        this->lj_params, this->neighbor_threshold
+                    ); 
+                }
+            }
+            else        // Reptate towards the tail 
+            {
+                // Generate new candidate atomic positions at the tail 
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    Matrix<T, Dynamic, 3> segment_i(n_reptate, 3);
+                    
+                    // Move forward from atom (n - 1) in the polymer 
+                    for (int j = 0; j < n_reptate; ++j)
+                    {
+                        Matrix<T, 3, 1> r1, r2, r3; 
+                        if (j == 0)
+                        {
+                            r1 = this->r.row(n - 3); 
+                            r2 = this->r.row(n - 2); 
+                            r3 = this->r.row(n - 1); 
+                        }
+                        else if (j == 1)
+                        {
+                            r1 = this->r.row(n - 2); 
+                            r2 = this->r.row(n - 1);
+                            r3 = segment_i.row(0); 
+                        }
+                        else if (j == 2)
+                        {
+                            r1 = this->r.row(n - 1); 
+                            r2 = segment_i.row(0); 
+                            r3 = segment_i.row(1); 
+                        }
+                        else 
+                        {
+                            r1 = segment_i.row(j - 3);
+                            r2 = segment_i.row(j - 2); 
+                            r3 = segment_i.row(j - 1);  
+                        } 
+                        segment_i.row(j) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j),
+                            dihedrals(i, j), this->rng, this->uniform_dist,
+                            (dihedrals(i, 0) > 0 ? 1 : -1)
+                        );
+                        moves(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
+                    }
+
+                    // Get the non-bonded energy difference due to reptation
+                    energy_diffs(i) = this->config.getMultimerReptationNonbondedEnergyDifference(
+                        ReptationDirection::TAIL, segment_i, 
+                        this->lj_params, this->neighbor_threshold
+                    ); 
+                }
+            }
+
+            return std::make_pair(moves, energy_diffs); 
+        }
+
+        /**
+         * Generate possible multimer reptation moves from the given
+         * configuration (which may differ from the current configuration).
+         *
+         * @param direction Reptation direction.
+         * @param n_reptate Multimer length.  
+         * @param n_candidates Number of candidate moves to generate. 
+         * @param coords Input array of atomic coordinates.  
+         * @returns Arrays of candidate atomic positions for the new atom and
+         *          the corresponding reptation energy differences.  
+         */
+        std::pair<Matrix<T, Dynamic, Dynamic>,
+                  Matrix<T, Dynamic, 1> > generateMultimerReptationMoves(const ReptationDirection direction,
+                                                                         const int n_reptate, 
+                                                                         const int n_candidates,
+                                                                         const Ref<const Matrix<T, Dynamic, 3> >& coords)
+        {
+            const int n = this->length; 
+            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3 * n_reptate);
+            Matrix<T, Dynamic, 1> energy_diffs(n_candidates);
+
+            // Generate new configuration with the given coordinates 
+            PolymerConfiguration<T> config_(
+                coords, this->config.getUnits(), this->config.getTemp()
+            );    
+
+            // Define the angle sampling function  
+            std::function<T()> sample_angle;
+            if (this->angle_mode == AngleMode::COSINE)
+            {
+                sample_angle = [this]() -> T
+                {
+                    return sampleAngleCosine<T>(
+                        this->angle_params.at("K"),
+                        this->angle_params.at("theta0"),
+                        this->config.kT,
+                        this->rng, 
+                        this->uniform_dist
+                    );
+                };
+            } 
+            else     // this->angle_mode == AngleMode::GAUSSIAN
+            {
+                sample_angle = [this]() -> T
+                {
+                    return sampleAngleDualGaussianMixture<T>(
+                        this->angle_params.at("A1"),
+                        this->angle_params.at("A2"),
+                        this->angle_params.at("w1"),
+                        this->angle_params.at("w2"),
+                        this->angle_params.at("theta1"),
+                        this->angle_params.at("theta2"),
+                        this->config.kT,
+                        this->rng,
+                        this->uniform_dist
+                    );
+                };
+            }
+
+            // Generate bond lengths, bond angles, and dihedral angles 
+            Matrix<T, Dynamic, 1> lengths(n_candidates, n_reptate),
+                                  angles(n_candidates, n_reptate), 
+                                  dihedrals(n_candidates, n_reptate);
+            for (int i = 0; i < n_candidates; ++i)
+            {
+                for (int j = 0; j < n_reptate; ++j)
+                {
+                    lengths(i, j) = sampleFene<T>(
+                        this->lj_params.at("eps"), this->lj_params.at("sigma"),
+                        this->fene_params.at("K"), this->fene_params.at("R0"),
+                        this->config.kT, this->rng, this->uniform_dist, 50 
+                    );
+                    angles(i, j) = sample_angle();
+                    dihedrals(i, j) = sampleDihedralHarmonic<T>(
+                        this->dihedral_params.at("K"), this->config.kT, this->rng,
+                        this->uniform_dist
+                    );
+                }
+            }
+             
+            if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
+            {
+                // Generate new candidate atomic positions at the head
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    Matrix<T, Dynamic, 3> segment_i(n_reptate, 3);
+                   
+                    // Generate the j-th atom along the segment, downwards from
+                    // j = n_reptate - 1 to j = 0, starting from atom 0 in the
+                    // polymer
+                    for (int j = 0; j < n_reptate; ++j)
+                    {
+                        Matrix<T, 3, 1> r1, r2, r3; 
+                        if (j == 0)         // Last atom in the segment (closest to the polymer)
+                        {
+                            r1 = coords.row(2); 
+                            r2 = coords.row(1); 
+                            r3 = coords.row(0); 
+                        } 
+                        else if (j == 1)    // Second-to-last
+                        {
+                            r1 = coords.row(1); 
+                            r2 = coords.row(0); 
+                            r3 = segment_i.row(n_reptate - 1); 
+                        }
+                        else if (j == 2)    // Third-to-last
+                        {
+                            r1 = coords.row(0); 
+                            r2 = segment_i.row(n_reptate - 1); 
+                            r3 = segment_i.row(n_reptate - 2); 
+                        }
+                        else 
+                        {
+                            r1 = segment_i.row(n_reptate - 1 - j + 3); 
+                            r2 = segment_i.row(n_reptate - 1 - j + 2); 
+                            r3 = segment_i.row(n_reptate - 1 - j + 1);  
+                        }
+                        int idx = n_reptate - 1 - j; 
+                        segment_i.row(idx) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j), 
+                            dihedrals(i, j), this->rng, this->uniform_dist,
+                            (dihedrals(i, 0) > 0 ? 1 : -1)
+                        );
+                        moves(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
+                    }
+
+                    // Get the non-bonded energy difference due to reptation
+                    //
+                    // TODO Implement this
+                    energy_diffs(i) = config_.getMultimerReptationNonbondedEnergyDifference(
+                        ReptationDirection::HEAD, segment_i, 
+                        this->lj_params, this->neighbor_threshold
+                    ); 
+                }
+            }
+            else        // Reptate towards the tail 
+            {
+                // Generate new candidate atomic positions at the tail 
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    Matrix<T, Dynamic, 3> segment_i(n_reptate, 3);
+                    
+                    // Move forward from atom (n - 1) in the polymer 
+                    for (int j = 0; j < n_reptate; ++j)
+                    {
+                        Matrix<T, 3, 1> r1, r2, r3; 
+                        if (j == 0)
+                        {
+                            r1 = coords.row(n - 3); 
+                            r2 = coords.row(n - 2); 
+                            r3 = coords.row(n - 1); 
+                        }
+                        else if (j == 1)
+                        {
+                            r1 = coords.row(n - 2); 
+                            r2 = coords.row(n - 1);
+                            r3 = segment_i.row(0); 
+                        }
+                        else if (j == 2)
+                        {
+                            r1 = coords.row(n - 1); 
+                            r2 = segment_i.row(0); 
+                            r3 = segment_i.row(1); 
+                        }
+                        else 
+                        {
+                            r1 = segment_i.row(j - 3);
+                            r2 = segment_i.row(j - 2); 
+                            r3 = segment_i.row(j - 1);  
+                        } 
+                        segment_i.row(j) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j),
+                            dihedrals(i, j), this->rng, this->uniform_dist,
+                            (dihedrals(i, 0) > 0 ? 1 : -1)
+                        );
+                        moves(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
+                    }
+
+                    // Get the non-bonded energy difference due to reptation
+                    //
+                    // TODO Implement this
+                    energy_diffs(i) = config_.getMultimerReptationNonbondedEnergyDifference(
+                        ReptationDirection::TAIL, segment_i, 
+                        this->lj_params, this->neighbor_threshold
+                    ); 
+                }
+            }
+
+            return std::make_pair(moves, energy_diffs); 
+        }
+
+        /** -------------------------------------------------------------- // 
          *                 MOVE GENERATION: TERMINAL SEGMENT               // 
          *  -------------------------------------------------------------- */
         /**
@@ -1416,7 +1793,7 @@ class PolymerCBMCSampler
 
             // Specify a reptation direction if desired 
             ReptationDirection rept_dir = ReptationDirection::HEAD;  
-            if (move_type == CBMCMoveType::REPTATION)
+            if (move_type == CBMCMoveType::REPTATION || move_type == CBMCMoveType::MULTIMER_REPTATION)
             {
                 const T p = this->uniform_dist(this->rng); 
                 rept_dir = (p < 0.5 ? ReptationDirection::HEAD : ReptationDirection::TAIL);
@@ -1449,6 +1826,14 @@ class PolymerCBMCSampler
                     rept_dir, n_candidates
                 );
                 forward_moves = forward_result.first;
+                forward_diffs = forward_result.second; 
+            }
+            else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
+            {
+                auto forward_result = this->generateMultimerReptationMoves(
+                    rept_dir, segment_length, n_candidates
+                );
+                forward_moves = forward_result.first; 
                 forward_diffs = forward_result.second; 
             }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
@@ -1610,6 +1995,13 @@ class PolymerCBMCSampler
                     config_chosen.reptateTowardsTail(r_new); 
                 }
             }
+            else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
+            {
+                if (rept_dir = ReptationDirection::HEAD)
+                    config_chosen.reptateTowardsHead(move); 
+                else 
+                    config_chosen.reptateTowardsTail(move); 
+            }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
             {
                 if (terminal_end == TerminalSegmentEnd::HEAD)
@@ -1637,6 +2029,22 @@ class PolymerCBMCSampler
                 // Generate reverse moves and energy differences  
                 auto reverse_result = this->generateReptationMoves(
                     reverse_dir, n_candidates, coords_chosen 
+                );
+                reverse_moves = reverse_result.first;
+                reverse_diffs = reverse_result.second;
+            }
+            else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
+            {
+                // Identify the reverse direction
+                ReptationDirection reverse_dir; 
+                if (rept_dir == ReptationDirection::HEAD)
+                    reverse_dir = ReptationDirection::TAIL; 
+                else 
+                    reverse_dir = ReptationDirection::HEAD;
+
+                // Generate reverse moves and energy differences
+                auto reverse_result = this->generateMultimerReptationMoves(
+                    reverse_dir, segment_length, n_candidates, coords_chosen 
                 );
                 reverse_moves = reverse_result.first;
                 reverse_diffs = reverse_result.second;
@@ -1797,20 +2205,53 @@ class PolymerCBMCSampler
                 if (rept_dir == ReptationDirection::HEAD)
                 { 
                     reverse_moves.row(0) = this->r.row(n - 1); 
-                    reverse_diffs(0)
-                        = config_chosen.getReptationNonbondedEnergyDifference(
-                            ReptationDirection::TAIL, this->r.row(n - 1),
-                            this->lj_params, this->neighbor_threshold
-                        );
+                    //reverse_diffs(0)
+                    //    = config_chosen.getReptationNonbondedEnergyDifference(
+                    //        ReptationDirection::TAIL, this->r.row(n - 1),
+                    //        this->lj_params, this->neighbor_threshold
+                    //    );
+                    reverse_diffs(0) = -forward_diffs(0); 
                 }
                 else 
                 {
                     reverse_moves.row(0) = this->r.row(0); 
-                    reverse_diffs(0)
-                        = config_chosen.getReptationNonbondedEnergyDifference(
-                            ReptationDirection::HEAD, this->r.row(0),
-                            this->lj_params, this->neighbor_threshold
-                        ); 
+                    //reverse_diffs(0)
+                    //    = config_chosen.getReptationNonbondedEnergyDifference(
+                    //        ReptationDirection::HEAD, this->r.row(0),
+                    //        this->lj_params, this->neighbor_threshold
+                    //    );
+                    reverse_diffs(0) = -forward_diffs(0);  
+                }
+            }
+            else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
+            {
+                if (rept_dir == ReptationDirection::HEAD)
+                {
+                    // Extract the original configuration along the tail segment
+                    Matrix<T, Dynamic, 3> segment = this->r(
+                        Eigen::seqN(n - segment_length, segment_length), Eigen::all
+                    );
+                    for (int i = 0; i < segment_length; ++i)
+                    {
+                        reverse_moves(0, 3 * i) = segment(i, 0); 
+                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
+                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
+                    }
+                    reverse_diffs(0) = -forward_diffs(0); 
+                }
+                else 
+                {
+                    // Extract the original configuration along the head segment 
+                    Matrix<T, Dynamic, 3> segment = this->r(
+                        Eigen::seqN(0, segment_length), Eigen::all
+                    );
+                    for (int i = 0; i < segment_length; ++i)
+                    {
+                        reverse_moves(0, 3 * i) = segment(i, 0); 
+                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
+                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
+                    }
+                    reverse_diffs(0) = -forward_diffs(0); 
                 }
             }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
@@ -1827,10 +2268,11 @@ class PolymerCBMCSampler
                         reverse_moves(0, 3 * i + 1) = segment(i, 1); 
                         reverse_moves(0, 3 * i + 2) = segment(i, 2); 
                     }
-                    reverse_diffs(0)
-                        = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
-                            segment, 0, this->lj_params, this->neighbor_threshold 
-                        );
+                    //reverse_diffs(0)
+                    //    = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
+                    //        segment, 0, this->lj_params, this->neighbor_threshold 
+                    //    );
+                    reverse_diffs(0) = -forward_diffs(0); 
                 }
                 else 
                 {
@@ -1844,11 +2286,12 @@ class PolymerCBMCSampler
                         reverse_moves(0, 3 * i + 1) = segment(i, 1); 
                         reverse_moves(0, 3 * i + 2) = segment(i, 2); 
                     }
-                    reverse_diffs(0)
-                        = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
-                            segment, n - segment_length, this->lj_params,
-                            this->neighbor_threshold
-                        ); 
+                    //reverse_diffs(0)
+                    //    = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
+                    //        segment, n - segment_length, this->lj_params,
+                    //        this->neighbor_threshold
+                    //    );
+                    reverse_diffs(0) = -forward_diffs(0);  
                 }
             }
             else    // move_type == CBMCMoveType::INTERNAL_SEGMENT
@@ -1863,13 +2306,14 @@ class PolymerCBMCSampler
                     reverse_moves(0, 3 * i + 1) = segment(i, 1); 
                     reverse_moves(0, 3 * i + 2) = segment(i, 2); 
                 }
-                reverse_diffs(0)
-                    = config_chosen.getSegmentReplacementEnergyDifference(
-                        segment, segment_idx, this->lj_params,
-                        this->neighbor_threshold, this->fene_params, 
-                        this->angle_mode, this->angle_params,
-                        this->dihedral_params
-                    );
+                //reverse_diffs(0)
+                //    = config_chosen.getSegmentReplacementEnergyDifference(
+                //        segment, segment_idx, this->lj_params,
+                //        this->neighbor_threshold, this->fene_params, 
+                //        this->angle_mode, this->angle_params,
+                //        this->dihedral_params
+                //    );
+                reverse_diffs(0) = -forward_diffs(0); 
             }
 
             // Calculate the reverse Rosenbluth factor
@@ -1900,6 +2344,14 @@ class PolymerCBMCSampler
                         this->config.reptateTowardsTail(r_new); 
                     }
                 }
+                else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
+                {
+                    // Reptate towards the head 
+                    if (rept_dir = ReptationDirection::HEAD)
+                        this->config.reptateTowardsHead(move); 
+                    else    // Reptate towards the tail 
+                        this->config.reptateTowardsTail(move); 
+                }
                 else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
                 {
                     // Move the terminal segment at the head 
@@ -1922,7 +2374,7 @@ class PolymerCBMCSampler
             // acceptance probability, whether the move was taken, and all 
             // additional information about the move (depending on move type)
             std::unordered_map<std::string, T> move_info; 
-            if (move_type == CBMCMoveType::REPTATION)
+            if (move_type == CBMCMoveType::REPTATION || move_type == CBMCMoveType::MULTIMER_REPTATION)
             {
                 move_info["direction"] = (rept_dir == ReptationDirection::HEAD ? 0 : 1);
             }
@@ -1957,6 +2409,7 @@ class PolymerCBMCSampler
          * @param internal_move_params Additional parameters for generating
          *                             internal segment moves.  
          * @param move_probs Array of probabilities for choosing each move type.
+         * @param multimer_reptation_length Multimer reptation length. 
          * @param terminal_segment_length Segment length for terminal segment
          *                                moves. 
          * @param internal_segment_length Segment length for internal segment 
@@ -1977,7 +2430,8 @@ class PolymerCBMCSampler
          */
         Matrix<T, Dynamic, Dynamic> run(const int n_candidates, 
                                         std::unordered_map<std::string, T>& internal_move_params, 
-                                        const Ref<const Matrix<T, 3, 1> >& move_probs,
+                                        const Ref<const Matrix<T, 4, 1> >& move_probs,
+                                        const int multimer_reptation_length, 
                                         const int terminal_segment_length, 
                                         const int internal_segment_length,
                                         const int max_iter, const int n_burnin,
@@ -2007,10 +2461,14 @@ class PolymerCBMCSampler
                     << internal_move_params["armijo_const"] << std::endl
                     << "## move_prob_reptation = "
                     << move_probs(0) << std::endl
-                    << "## move_prob_terminal_segment = "
+                    << "## move_prob_multimer_reptation = "
                     << move_probs(1) << std::endl
-                    << "## move_prob_internal_segment = "
+                    << "## move_prob_terminal_segment = "
                     << move_probs(2) << std::endl
+                    << "## move_prob_internal_segment = "
+                    << move_probs(3) << std::endl
+                    << "## multimer_reptation_length = "
+                    << multimer_reptation_length << std::endl
                     << "## terminal_segment_length = "
                     << terminal_segment_length << std::endl
                     << "## internal_segment_length = "
@@ -2044,7 +2502,7 @@ class PolymerCBMCSampler
             );  
 
             // Tabulate average acceptance probabilities for each move type 
-            Matrix<T, 3, 1> accept_probs = Matrix<T, 3, 1>::Zero();
+            Matrix<T, 4, 1> accept_probs = Matrix<T, 4, 1>::Zero();
 
             // Tabulate probability of proposing at least one nontrivial 
             // internal segment move
@@ -2068,15 +2526,19 @@ class PolymerCBMCSampler
                 T r = uniform_dist(rng);
                 CBMCMoveType move_type;         
                 if (r < move_probs(0))
-                    move_type = CBMCMoveType::REPTATION; 
+                    move_type = CBMCMoveType::REPTATION;
                 else if (r < move_probs(0) + move_probs(1))
+                    move_type = CBMCMoveType::MULTIMER_REPTATION;  
+                else if (r < move_probs(0) + move_probs(1) + move_probs(2))
                     move_type = CBMCMoveType::TERMINAL_SEGMENT; 
                 else 
                     move_type = CBMCMoveType::INTERNAL_SEGMENT; 
 
                 // Generate and accept/reject a corresponding move 
-                int segment_length = 0; 
-                if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
+                int segment_length = 0;
+                if (move_type == CBMCMoveType::MULTIMER_REPTATION)
+                    segment_length = multimer_reptation_length;  
+                else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
                     segment_length = terminal_segment_length; 
                 else if (move_type == CBMCMoveType::INTERNAL_SEGMENT)
                     segment_length = internal_segment_length;
@@ -2087,13 +2549,11 @@ class PolymerCBMCSampler
                 CBMCMoveResult accepted_move = std::get<4>(result);  
                 auto move_info = std::get<5>(result);
 
-                // Update average acceptance probabilities 
-                if (move_type == CBMCMoveType::REPTATION)
-                    accept_probs(0) += ((prob_accept - accept_probs(0)) / (curr_idx + 1));
-                else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
-                    accept_probs(1) += ((prob_accept - accept_probs(1)) / (curr_idx + 1));
-                else 
-                    accept_probs(2) += ((prob_accept - accept_probs(2)) / (curr_idx + 1));
+                // Update average acceptance probabilities
+                int move_type_idx = static_cast<int>(move_type);  
+                accept_probs(move_type_idx) += (
+                    (prob_accept - accept_probs(move_type_idx)) / (curr_idx + 1)
+                );
 
                 // If an internal segment move was made ... 
                 if (move_type == CBMCMoveType::INTERNAL_SEGMENT)
@@ -2150,7 +2610,8 @@ class PolymerCBMCSampler
                               << ", accept probs = ["
                               << accept_probs(0) << ", "
                               << accept_probs(1) << ", "
-                              << accept_probs(2) << "]"
+                              << accept_probs(2) << ", "
+                              << accept_probs(3) << "]"
                               << ", new internal move prob = " 
                               << internal_new_move_prob
                               << ", null internal move prob = "
@@ -2256,7 +2717,7 @@ class PolymerCBMCSampler
          * @param verbose If true, print intermittent output to stdout.  
          * @returns Representative sub-sample of sampled configurations.  
          */
-        Matrix<T, Dynamic, Dynamic> run(std::string& filename,
+        Matrix<T, Dynamic, Dynamic> run(const std::string& filename,
                                         const int n_collect,
                                         std::ofstream& outfile,  
                                         const bool verbose = false)
@@ -2268,114 +2729,35 @@ class PolymerCBMCSampler
                 mod_write, max_stall; 
             const int n_burnin = 0;    // Set burn-in to zero
 
-            // Parse the given file ... 
-            //
-            // First, parse the sampling parameters
-            std::ifstream infile(filename);  
-            std::string line;
-            while (std::getline(infile, line))
-            {
-                // If the line starts with "##", then parse
-                if (line.find("##") == 0)
-                {
-                    std::string token = line.substr(3, line.find(" = ") - 3);   // Remove leading "## "
-                    line.erase(0, line.find(" = ") + 3);
-                    if (token == "n_candidates")
-                        n_candidates = std::stoi(line);
-                    else if (token == "internal_move_tangent_stepsize")
-                        internal_move_params["tangent_stepsize"] = static_cast<T>(std::stod(line));
-                    else if (token == "internal_move_generation_mode")
-                        internal_move_params["mode"] = static_cast<T>(std::stoi(line));
-                    else if (token == "internal_move_n_attempts") 
-                        internal_move_params["n_attempts"] = static_cast<T>(std::stoi(line));  
-                    else if (token == "internal_move_dx")
-                        internal_move_params["dx"] = static_cast<T>(std::stod(line)); 
-                    else if (token == "internal_move_newton_tol")
-                        internal_move_params["newton_tol"] = static_cast<T>(std::stod(line)); 
-                    else if (token == "internal_move_min_newton_stepsize")
-                        internal_move_params["min_newton_stepsize"] = static_cast<T>(std::stod(line));
-                    else if (token == "internal_move_max_newton_iter")
-                        internal_move_params["max_newton_iter"] = static_cast<T>(std::stoi(line)); 
-                    else if (token == "internal_move_armijo_const")
-                        internal_move_params["armijo_const"] = static_cast<T>(std::stod(line));  
-                    else if (token == "move_prob_reptation")
-                        move_probs(0) = static_cast<T>(std::stod(line));  
-                    else if (token == "move_prob_terminal_segment")
-                        move_probs(1) = static_cast<T>(std::stod(line)); 
-                    else if (token == "move_prob_internal_segment")
-                        move_probs(2) = static_cast<T>(std::stod(line)); 
-                    else if (token == "terminal_segment_length")
-                        terminal_segment_length = std::stoi(line); 
-                    else if (token == "internal_segment_length")
-                        internal_segment_length = std::stoi(line); 
-                    else if (token == "mod_collect")
-                        mod_collect = std::stoi(line); 
-                    else if (token == "mod_write")
-                        mod_write = std::stoi(line); 
-                    else if (token == "max_stall")
-                        max_stall = std::stoi(line);
-                }
-                // If not, then we have encountered the first configuration,
-                // so we must break 
-                else 
-                {
-                    break; 
-                }
-            }
+            // Parse the given file
+            auto result = parseFinalConfig(
+                filename, this->config.getUnits(), this->config.getTemp()
+            );
+            PolymerConfiguration<T> config = result.first; 
+            std::unordered_map<std::string, T> params = result.second; 
+            n_candidates = static_cast<int>(params["n_candidates"]);
+            internal_move_params["tangent_stepsize"] = params["tangent_stepsize"]; 
+            internal_move_params["mode"] = params["mode"]; 
+            internal_move_params["n_attempts"] = params["n_attempts"]; 
+            internal_move_params["dx"] = params["dx"];
+            internal_move_params["newton_tol"] = params["newton_tol"]; 
+            internal_move_params["min_newton_stepsize"] = params["min_newton_stepsize"]; 
+            internal_move_params["max_newton_iter"] = params["max_newton_iter"]; 
+            internal_move_params["armijo_const"] = params["armijo_const"];
+            move_probs << params["move_prob_reptation"], 
+                          params["move_prob_terminal_segment"], 
+                          params["move_prob_internal_segment"]; 
+            terminal_segment_length = static_cast<int>(params["terminal_segment_length"]); 
+            internal_segment_length = static_cast<int>(params["internal_segment_length"]);
+            mod_collect = static_cast<int>(params["mod_collect"]); 
+            mod_write = static_cast<int>(params["mod_write"]); 
+            max_stall = static_cast<int>(params["max_stall"]);             
 
             // Fix number of sampling iterations 
             const int max_iter = n_collect * mod_collect; 
-
-            // Now parse the first configuration, to get the polymer length
-            int length = 0;
-            while (std::getline(infile, line))
-            {
-                if (line.find("# CONFIG") == 0)   // If we reach the next configuration, break
-                    break;
-                else
-                    length++; 
-            }
-
-            // Now parse the rest of the file to get the final configuration 
-            Matrix<T, Dynamic, 3> coords(length, 3);
-            int curr_idx = 0; 
-            while (std::getline(infile, line))
-            {
-                // If we reach a new configuration, keep parsing
-                if (line.find("# CONFIG") == 0)
-                {
-                    curr_idx = 0;
-                }
-                // If we reach an ensemble-level output line at the end of
-                // the file, stop parsing
-                else if (line.find("##" ) == 0)
-                {
-                    break; 
-                }
-                // If we reach a configuration-level output line, keep parsing
-                else if (line.find("# ") == 0)
-                {
-                    // Do nothing
-                }
-                // Otherwise, the line specifies coordinates that should be
-                // collected 
-                else 
-                {
-                    std::stringstream ss; 
-                    ss << line;
-                    std::string token;  
-                    std::getline(ss, token, '\t');    // x-coordinate 
-                    coords(curr_idx, 0) = static_cast<T>(std::stod(token));
-                    std::getline(ss, token, '\t');    // y-coordinate
-                    coords(curr_idx, 1) = static_cast<T>(std::stod(token));
-                    std::getline(ss, token, '\t');    // z-coordinate
-                    coords(curr_idx, 2) = static_cast<T>(std::stod(token));
-                    curr_idx++; 
-                }
-            }
             
             // Update the stored configuration
-            this->config.replaceSegment(coords, 0); 
+            this->config.replaceSegment(config.getSegment(0, config.getLength()), 0); 
             this->updateCoords(); 
 
             // Run the sampling
