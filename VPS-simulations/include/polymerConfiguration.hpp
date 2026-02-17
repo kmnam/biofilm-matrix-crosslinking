@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/15/2026
+ *     2/16/2026
  */
 
 #ifndef POLYMER_CONFIGURATION_HPP
@@ -873,6 +873,44 @@ class PolymerConfiguration
         }
 
         /**
+         * Change the polymer according to a multimer reptation move towards
+         * the tail, i.e., remove the first m atoms and add the given segment
+         * to the other end. 
+         * 
+         * @param segment Atomic coordinates of new segment to be added to 
+         *                the tail.
+         */
+        void reptateTowardsTail(const Ref<const Matrix<T, Dynamic, 3> >& segment)
+        {
+            // Copy over the current polymer coordinates
+            const int m = segment.rows();  
+            this->r(Eigen::seqN(0, this->length - m), Eigen::all)
+                = this->r(Eigen::seqN(m, this->length - m), Eigen::all).eval();
+
+            // Add the new segment 
+            this->r(Eigen::seqN(this->length - m, m), Eigen::all) = segment; 
+        }
+
+        /**
+         * Change the polymer according to a multimer reptation move towards
+         * the head, i.e., remove the final m atoms and add the given segment
+         * to the other end. 
+         * 
+         * @param segment Atomic coordinates of new segment to be added to 
+         *                the head.
+         */
+        void reptateTowardsHead(const Ref<const Matrix<T, Dynamic, 3> >& segment)
+        {
+            // Copy over the current polymer coordinates
+            const int m = segment.rows();  
+            this->r(Eigen::seqN(m, this->length - m), Eigen::all)
+                = this->r(Eigen::seqN(0, this->length - m), Eigen::all).eval();
+
+            // Add the new segment 
+            this->r(Eigen::seqN(0, m), Eigen::all) = segment;
+        }
+
+        /**
          * Rotate the segment [0, ..., idx - 1] by the given angle about the 
          * given axis, with the indicated atom serving as the center.
          *
@@ -1143,13 +1181,6 @@ class PolymerConfiguration
          * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @param neighbor_threshold Distance threshold for identifying
          *                           neighboring (non-bonded) atoms. 
-         * @param fene_params FENE parameters. 
-         * @param angle_mode Angle potential type.  
-         * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0) or
-         *                     the dual Gaussian mixture potential parameters
-         *                     (A1, A2, w1, w2, theta1, theta2). 
-         * @param dihedral_params Dihedral angle potential parameters. 
          * @returns Nonbonded energy difference due to reptation. 
          */
         T getReptationNonbondedEnergyDifference(const ReptationDirection direction, 
@@ -1437,6 +1468,111 @@ class PolymerConfiguration
 
             // Return the energy difference 
             return energy_new - energy_curr;
+        }
+
+        /**
+         * Get the *non-bonded* energy difference between the current polymer
+         * configuration and the configuration that would arise from reptating
+         * the polymer in the given direction by the given segment.
+         *
+         * This function omits the non-bonded energetic contribution between
+         * the old/new terminal atoms and their bonded neighbors.  
+         *
+         * @param direction Reptation direction. 
+         * @param segment Atomic coordinates of new segment.
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @returns Nonbonded energy difference due to multimer reptation. 
+         */
+        T getMultimerReptationNonbondedEnergyDifference(const ReptationDirection direction, 
+                                                        const Ref<const Matrix<T, Dynamic, 3> >& segment, 
+                                                        std::unordered_map<std::string, T>& lj_params,  
+                                                        const T neighbor_threshold) const
+        {
+            const int n = this->length;
+            const int m = segment.rows();    // Segment length 
+            T energy_curr = 0; 
+            T energy_new = 0; 
+            if (direction == ReptationDirection::HEAD)
+            {
+                // Get the non-bonded energy contribution from the final m 
+                // atoms (n - m, ..., n - 1) in the current configuration
+                //
+                // Omit the interaction between (n - m - 1) and (n - m) 
+                for (int i = 0; i < n - m; ++i)
+                {
+                    int min_idx = (i == n - m - 1 ? n - m + 1 : n - m); 
+                    for (int j = min_idx; j < n; ++j)
+                    {
+                        T dij = (this->r.row(i) - this->r.row(j)).norm(); 
+                        if (dij < neighbor_threshold)
+                            energy_curr += lj<T>(
+                                dij, lj_params["eps"], lj_params["sigma"], true
+                            );
+                    } 
+                }
+
+                // Get the energy contribution that would arise from
+                // introducing the new segment at the head and removing
+                // the final m atoms
+                //
+                // Omit the interaction between atom 0 in the current 
+                // configuration and the last atom in the new segment 
+                for (int i = 0; i < n - m; ++i)
+                {
+                    int max_idx = (i == 0 ? m - 2 : m - 1); 
+                    for (int j = 0; j <= max_idx; ++j)
+                    {
+                        T dij = (this->r.row(i) - segment.row(j)).norm(); 
+                        if (dij < neighbor_threshold)
+                            energy_new += lj<T>(
+                                dij, lj_params["eps"], lj_params["sigma"], true
+                            );
+                    } 
+                }
+            }
+            else 
+            {
+                // Get the energy contribution from the first m atoms in the
+                // current configuration 
+                //
+                // Omit the interaction between (m - 1) and m
+                for (int i = m; i < n; ++i)
+                {
+                    int max_idx = (i == m ? m - 2 : m - 1); 
+                    for (int j = 0; j <= max_idx; ++j)
+                    {
+                        T dij = (this->r.row(i) - this->r.row(j)).norm(); 
+                        if (dij < neighbor_threshold)
+                            energy_curr += lj<T>(
+                                dij, lj_params["eps"], lj_params["sigma"], true
+                            );
+                    } 
+                }
+
+                // Get the energy contribution that would arise from
+                // introducing the new segment at the tail and removing the
+                // first m atoms 
+                //
+                // Omit the interaction between atom (n - 1) in the current
+                // configuration and the first atom in the new segment 
+                for (int i = m; i < n; ++i)
+                {
+                    int min_idx = (i == n - 1 ? 0 : 1); 
+                    for (int j = min_idx; j < m; ++j)
+                    {
+                        T dij = (this->r.row(i) - segment.row(j)).norm(); 
+                        if (dij < neighbor_threshold)
+                            energy_new += lj<T>(
+                                dij, lj_params["eps"], lj_params["sigma"], true
+                            );
+                    } 
+                }
+            }
+
+            // Return the energy difference 
+            return energy_new - energy_curr; 
         }
 
         /**
