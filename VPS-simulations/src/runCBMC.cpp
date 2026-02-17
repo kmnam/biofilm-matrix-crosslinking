@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/15/2026
+ *     2/16/2026
  */
 
 #include <iostream>
@@ -71,12 +71,14 @@ int main(int argc, char** argv)
     const int max_stall = json_data["max_stall_iter"].as_int64();
 
     // Fix move probabilities 
-    Matrix<double, 3, 1> move_probs; 
-    move_probs << json_data["reptation_prob"].as_double(), 
+    Matrix<double, 4, 1> move_probs; 
+    move_probs << json_data["reptation_prob"].as_double(),
+                  json_data["multimer_reptation_prob"].as_double(), 
                   json_data["terminal_segment_move_prob"].as_double(), 
                   json_data["internal_segment_move_prob"].as_double();  
 
-    // Parse terminal and internal segment lengths
+    // Parse multimer reptation length and terminal and internal segment lengths
+    const int multimer_reptation_length = json_data["multimer_reptation_length"].as_int64(); 
     const int terminal_segment_length = json_data["terminal_segment_length"].as_int64(); 
     const int internal_segment_length = json_data["internal_segment_length"].as_int64();
 
@@ -177,9 +179,10 @@ int main(int argc, char** argv)
     else    // Otherwise, start a new run
     {
         ensemble_coords = sampler.run(
-            n_candidates, internal_move_params, move_probs, terminal_segment_length,
-            internal_segment_length, max_iter, n_burnin, mod_collect, mod_write,
-            max_stall, outfile, true
+            n_candidates, internal_move_params, move_probs,
+            multimer_reptation_length, terminal_segment_length,
+            internal_segment_length, max_iter, n_burnin, mod_collect,
+            mod_write, max_stall, outfile, true
         );
     } 
     const int n_ensemble = ensemble_coords.rows();  
