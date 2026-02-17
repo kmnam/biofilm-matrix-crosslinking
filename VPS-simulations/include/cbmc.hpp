@@ -2503,6 +2503,7 @@ class PolymerCBMCSampler
 
             // Tabulate average acceptance probabilities for each move type 
             Matrix<T, 4, 1> accept_probs = Matrix<T, 4, 1>::Zero();
+            Matrix<int, 4, 1> move_frequencies = Matrix<int, 4, 1>::Zero(); 
 
             // Tabulate probability of proposing at least one nontrivial 
             // internal segment move
@@ -2552,8 +2553,9 @@ class PolymerCBMCSampler
                 // Update average acceptance probabilities
                 int move_type_idx = static_cast<int>(move_type);  
                 accept_probs(move_type_idx) += (
-                    (prob_accept - accept_probs(move_type_idx)) / (curr_idx + 1)
+                    (prob_accept - accept_probs(move_type_idx)) / (move_frequencies(move_type_idx) + 1)
                 );
+                move_frequencies(move_type_idx) += 1; 
 
                 // If an internal segment move was made ... 
                 if (move_type == CBMCMoveType::INTERNAL_SEGMENT)
