@@ -880,7 +880,7 @@ class PolymerConfiguration
          * @param segment Atomic coordinates of new segment to be added to 
          *                the tail.
          */
-        void reptateTowardsTail(const Ref<const Matrix<T, Dynamic, 3> >& segment)
+        void reptateTowardsTailMultimer(const Ref<const Matrix<T, Dynamic, 3> >& segment)
         {
             // Copy over the current polymer coordinates
             const int m = segment.rows();  
@@ -899,7 +899,7 @@ class PolymerConfiguration
          * @param segment Atomic coordinates of new segment to be added to 
          *                the head.
          */
-        void reptateTowardsHead(const Ref<const Matrix<T, Dynamic, 3> >& segment)
+        void reptateTowardsHeadMultimer(const Ref<const Matrix<T, Dynamic, 3> >& segment)
         {
             // Copy over the current polymer coordinates
             const int m = segment.rows();  
@@ -1556,10 +1556,10 @@ class PolymerConfiguration
                 // first m atoms 
                 //
                 // Omit the interaction between atom (n - 1) in the current
-                // configuration and the first atom in the new segment 
+                // configuration and the first atom in the new segment
                 for (int i = m; i < n; ++i)
                 {
-                    int min_idx = (i == n - 1 ? 0 : 1); 
+                    int min_idx = (i == n - 1 ? 1 : 0); 
                     for (int j = min_idx; j < m; ++j)
                     {
                         T dij = (this->r.row(i) - segment.row(j)).norm(); 
