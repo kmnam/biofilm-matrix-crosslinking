@@ -649,10 +649,10 @@ TEST_CASE("Tests for internal segment moves", "[moveOnce()]")
         REQUIRE_THAT(
             weights_forward(move_idx) * weights_reverse(0),
             Catch::Matchers::WithinAbs(1.0, tol)
-        ); 
+        );
 
         // Check that the ratio of Rosenbluth factors is equal to the acceptance 
-        // probability  
+        // probability 
         REQUIRE_THAT(
             min(1.0, forward_rosenbluth / reverse_rosenbluth),
             Catch::Matchers::WithinAbs(prob_accept, tol)
