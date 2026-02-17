@@ -1087,6 +1087,21 @@ TEST_CASE(
         Catch::Matchers::WithinAbs(energy2_total - energy1_total, tol)
     );
 
+    // Check the non-bonded reptation energy difference 
+    double nonbonded_reptate_energy_12 = config.getReptationNonbondedEnergyDifference(
+        ReptationDirection::TAIL, r_tail, lj_params, neighbor_threshold
+    );
+    double energy1_nonbonded_nc = config.getNonbondedEnergy(
+        lj_params, neighbor_threshold, true
+    );
+    double energy2_nonbonded_nc = config2.getNonbondedEnergy(
+        lj_params, neighbor_threshold, true
+    );
+    REQUIRE_THAT(
+        nonbonded_reptate_energy_12, 
+        Catch::Matchers::WithinAbs(energy2_nonbonded_nc - energy1_nonbonded_nc, tol)
+    );
+
     // Generate the reverse reptated configuration 
     PolymerConfiguration<double> config3(config2); 
     config3.reptateTowardsHead(coords.row(0));
@@ -1098,6 +1113,13 @@ TEST_CASE(
         fene_params, AngleMode::COSINE, angle_params, dihedral_params
     );
     REQUIRE_THAT(reptate_energy_23, Catch::Matchers::WithinAbs(-reptate_energy_12, tol));
+    double nonbonded_reptate_energy_23 = config2.getReptationNonbondedEnergyDifference(
+        ReptationDirection::HEAD, coords.row(0), lj_params, neighbor_threshold
+    ); 
+    REQUIRE_THAT(
+        nonbonded_reptate_energy_23,
+        Catch::Matchers::WithinAbs(-nonbonded_reptate_energy_12, tol)
+    ); 
 
     // Introduce a new atom at the head
     bond_length = 0.82 * fene_params["R0"];
@@ -1132,6 +1154,18 @@ TEST_CASE(
         Catch::Matchers::WithinAbs(energy4_total - energy1_total, tol)
     );
 
+    // Check the non-bonded reptation energy difference 
+    double nonbonded_reptate_energy_14 = config.getReptationNonbondedEnergyDifference(
+        ReptationDirection::HEAD, r_head, lj_params, neighbor_threshold
+    );
+    double energy4_nonbonded_nc = config4.getNonbondedEnergy(
+        lj_params, neighbor_threshold, true
+    );
+    REQUIRE_THAT(
+        nonbonded_reptate_energy_14, 
+        Catch::Matchers::WithinAbs(energy4_nonbonded_nc - energy1_nonbonded_nc, tol)
+    );
+
     // Generate the reverse reptated configuration 
     PolymerConfiguration<double> config5(config4); 
     config5.reptateTowardsTail(coords.row(length - 1));
@@ -1144,6 +1178,14 @@ TEST_CASE(
         dihedral_params
     );
     REQUIRE_THAT(reptate_energy_45, Catch::Matchers::WithinAbs(-reptate_energy_14, tol));
+    double nonbonded_reptate_energy_45 = config4.getReptationNonbondedEnergyDifference(
+        ReptationDirection::TAIL, coords.row(length - 1), lj_params,
+        neighbor_threshold
+    ); 
+    REQUIRE_THAT(
+        nonbonded_reptate_energy_45,
+        Catch::Matchers::WithinAbs(-nonbonded_reptate_energy_14, tol)
+    ); 
 }
 
 /**
