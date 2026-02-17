@@ -793,9 +793,9 @@ class PolymerCBMCSampler
             }
 
             // Generate bond lengths, bond angles, and dihedral angles 
-            Matrix<T, Dynamic, 1> lengths(n_candidates, n_reptate),
-                                  angles(n_candidates, n_reptate), 
-                                  dihedrals(n_candidates, n_reptate);
+            Matrix<T, Dynamic, Dynamic> lengths(n_candidates, n_reptate),
+                                        angles(n_candidates, n_reptate), 
+                                        dihedrals(n_candidates, n_reptate);
             for (int i = 0; i < n_candidates; ++i)
             {
                 for (int j = 0; j < n_reptate; ++j)
@@ -860,8 +860,6 @@ class PolymerCBMCSampler
                     }
 
                     // Get the non-bonded energy difference due to reptation
-                    //
-                    // TODO Implement this
                     energy_diffs(i) = this->config.getMultimerReptationNonbondedEnergyDifference(
                         ReptationDirection::HEAD, segment_i, 
                         this->lj_params, this->neighbor_threshold
@@ -982,9 +980,9 @@ class PolymerCBMCSampler
             }
 
             // Generate bond lengths, bond angles, and dihedral angles 
-            Matrix<T, Dynamic, 1> lengths(n_candidates, n_reptate),
-                                  angles(n_candidates, n_reptate), 
-                                  dihedrals(n_candidates, n_reptate);
+            Matrix<T, Dynamic, Dynamic> lengths(n_candidates, n_reptate),
+                                        angles(n_candidates, n_reptate), 
+                                        dihedrals(n_candidates, n_reptate);
             for (int i = 0; i < n_candidates; ++i)
             {
                 for (int j = 0; j < n_reptate; ++j)
@@ -1834,7 +1832,7 @@ class PolymerCBMCSampler
                     rept_dir, segment_length, n_candidates
                 );
                 forward_moves = forward_result.first; 
-                forward_diffs = forward_result.second; 
+                forward_diffs = forward_result.second;
             }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
             {
@@ -1997,10 +1995,10 @@ class PolymerCBMCSampler
             }
             else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
             {
-                if (rept_dir = ReptationDirection::HEAD)
-                    config_chosen.reptateTowardsHead(move); 
+                if (rept_dir == ReptationDirection::HEAD)
+                    config_chosen.reptateTowardsHeadMultimer(move); 
                 else 
-                    config_chosen.reptateTowardsTail(move); 
+                    config_chosen.reptateTowardsTailMultimer(move);
             }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
             {
@@ -2347,10 +2345,10 @@ class PolymerCBMCSampler
                 else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
                 {
                     // Reptate towards the head 
-                    if (rept_dir = ReptationDirection::HEAD)
-                        this->config.reptateTowardsHead(move); 
+                    if (rept_dir == ReptationDirection::HEAD)
+                        this->config.reptateTowardsHeadMultimer(move); 
                     else    // Reptate towards the tail 
-                        this->config.reptateTowardsTail(move); 
+                        this->config.reptateTowardsTailMultimer(move); 
                 }
                 else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
                 {
@@ -2724,9 +2722,9 @@ class PolymerCBMCSampler
         {
             int n_candidates; 
             std::unordered_map<std::string, T> internal_move_params; 
-            Matrix<T, 3, 1> move_probs;
-            int terminal_segment_length, internal_segment_length, mod_collect,
-                mod_write, max_stall; 
+            Matrix<T, 4, 1> move_probs;
+            int multimer_reptation_length, terminal_segment_length,
+                internal_segment_length, mod_collect, mod_write, max_stall; 
             const int n_burnin = 0;    // Set burn-in to zero
 
             // Parse the given file
@@ -2744,9 +2742,11 @@ class PolymerCBMCSampler
             internal_move_params["min_newton_stepsize"] = params["min_newton_stepsize"]; 
             internal_move_params["max_newton_iter"] = params["max_newton_iter"]; 
             internal_move_params["armijo_const"] = params["armijo_const"];
-            move_probs << params["move_prob_reptation"], 
+            move_probs << params["move_prob_reptation"],
+                          params["move_prob_multimer_reptation"], 
                           params["move_prob_terminal_segment"], 
-                          params["move_prob_internal_segment"]; 
+                          params["move_prob_internal_segment"];
+            multimer_reptation_length = static_cast<int>(params["multimer_reptation_length"]);  
             terminal_segment_length = static_cast<int>(params["terminal_segment_length"]); 
             internal_segment_length = static_cast<int>(params["internal_segment_length"]);
             mod_collect = static_cast<int>(params["mod_collect"]); 
@@ -2763,9 +2763,9 @@ class PolymerCBMCSampler
             // Run the sampling
             return this->run(
                 n_candidates, internal_move_params, move_probs, 
-                terminal_segment_length, internal_segment_length, max_iter, 
-                n_burnin, mod_collect, mod_write, max_stall, outfile, 
-                verbose 
+                multimer_reptation_length, terminal_segment_length,
+                internal_segment_length, max_iter, n_burnin, mod_collect,
+                mod_write, max_stall, outfile, verbose 
             );  
         }
 };
