@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/11/2026
+ *     2/16/2026
  */
 
 #include <iostream>
@@ -289,16 +289,15 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
         }
     }
 
-    // Check that the reverse move corresponding to the chosen move is
-    // reversion to the original configuration
+    // Check that the 0-th reverse move is reversion to the original configuration
     if (direction == ReptationDirection::HEAD)
         REQUIRE_THAT(
-            (reverse_moves.row(move_idx) - coords.row(9)).norm(), 
+            (reverse_moves.row(0) - coords.row(9)).norm(),
             Catch::Matchers::WithinAbs(0, tol)
         ); 
     else 
         REQUIRE_THAT(
-            (reverse_moves.row(move_idx) - coords.row(0)).norm(), 
+            (reverse_moves.row(0) - coords.row(0)).norm(), 
             Catch::Matchers::WithinAbs(0, tol)
         );
 
@@ -414,16 +413,15 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
         }
     }
 
-    // Check that the reverse move corresponding to the chosen move is
-    // reversion to the original configuration
+    // Check that the 0-th reverse move is reversion to the original configuration
     if (direction == ReptationDirection::HEAD)
         REQUIRE_THAT(
-            (reverse_moves.row(move_idx) - coords2.row(9)).norm(), 
+            (reverse_moves.row(0) - coords2.row(9)).norm(), 
             Catch::Matchers::WithinAbs(0, tol)
         ); 
     else 
         REQUIRE_THAT(
-            (reverse_moves.row(move_idx) - coords2.row(0)).norm(), 
+            (reverse_moves.row(0) - coords2.row(0)).norm(), 
             Catch::Matchers::WithinAbs(0, tol)
         );
 
