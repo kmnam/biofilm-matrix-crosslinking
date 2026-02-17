@@ -2208,7 +2208,7 @@ class PolymerCBMCSampler
                     //        ReptationDirection::TAIL, this->r.row(n - 1),
                     //        this->lj_params, this->neighbor_threshold
                     //    );
-                    reverse_diffs(0) = -forward_diffs(0); 
+                    reverse_diffs(0) = -forward_diffs(move_idx); 
                 }
                 else 
                 {
@@ -2218,7 +2218,7 @@ class PolymerCBMCSampler
                     //        ReptationDirection::HEAD, this->r.row(0),
                     //        this->lj_params, this->neighbor_threshold
                     //    );
-                    reverse_diffs(0) = -forward_diffs(0);  
+                    reverse_diffs(0) = -forward_diffs(move_idx);  
                 }
             }
             else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
@@ -2235,7 +2235,7 @@ class PolymerCBMCSampler
                         reverse_moves(0, 3 * i + 1) = segment(i, 1); 
                         reverse_moves(0, 3 * i + 2) = segment(i, 2); 
                     }
-                    reverse_diffs(0) = -forward_diffs(0); 
+                    reverse_diffs(0) = -forward_diffs(move_idx); 
                 }
                 else 
                 {
@@ -2249,7 +2249,7 @@ class PolymerCBMCSampler
                         reverse_moves(0, 3 * i + 1) = segment(i, 1); 
                         reverse_moves(0, 3 * i + 2) = segment(i, 2); 
                     }
-                    reverse_diffs(0) = -forward_diffs(0); 
+                    reverse_diffs(0) = -forward_diffs(move_idx); 
                 }
             }
             else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
@@ -2270,7 +2270,7 @@ class PolymerCBMCSampler
                     //    = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
                     //        segment, 0, this->lj_params, this->neighbor_threshold 
                     //    );
-                    reverse_diffs(0) = -forward_diffs(0); 
+                    reverse_diffs(0) = -forward_diffs(move_idx); 
                 }
                 else 
                 {
@@ -2289,7 +2289,7 @@ class PolymerCBMCSampler
                     //        segment, n - segment_length, this->lj_params,
                     //        this->neighbor_threshold
                     //    );
-                    reverse_diffs(0) = -forward_diffs(0);  
+                    reverse_diffs(0) = -forward_diffs(move_idx);  
                 }
             }
             else    // move_type == CBMCMoveType::INTERNAL_SEGMENT
@@ -2311,7 +2311,7 @@ class PolymerCBMCSampler
                 //        this->angle_mode, this->angle_params,
                 //        this->dihedral_params
                 //    );
-                reverse_diffs(0) = -forward_diffs(0); 
+                reverse_diffs(0) = -forward_diffs(move_idx); 
             }
 
             // Calculate the reverse Rosenbluth factor
