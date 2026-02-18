@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     1/30/2026
+ *     2/18/2026
  */
 
 #include <iostream>
@@ -133,7 +133,7 @@ TEST_CASE(
     // Sample bond lengths ... 
     boost::random::mt19937 rng(1234567890);
     boost::random::uniform_01<> uniform_dist;
-    const int n = 2000; 
+    const int n = 1000000; 
     const double kT = 1.380649e-2 * 300; 
     const double eps = kT;
     const double sigma = 0.9;  
@@ -206,8 +206,8 @@ TEST_CASE(
     // Sample bond angles according to the dual Gaussian mixture potential ... 
     double A1 = 0.7; 
     double A2 = 0.3; 
-    const double w1 = 2 * sqrt(1.0 / 10.0);
-    const double w2 = 2 * sqrt(1.0 / 8.0);
+    double w1 = 2 * sqrt(1.0 / 10.0);
+    double w2 = 2 * sqrt(1.0 / 8.0);
     const double theta1 = 160 * boost::math::constants::pi<double>() / 180;
     const double theta2 = boost::math::constants::half_pi<double>(); 
     Array<double, Dynamic, 1> sample_angles_gaussian(n); 
@@ -220,7 +220,7 @@ TEST_CASE(
     REQUIRE((sample_angles_gaussian >= 0).all()); 
     REQUIRE((sample_angles_gaussian < boost::math::constants::pi<double>()).all()); 
 
-    // Sample from just one Gaussian component
+    // Sample from just one Gaussian component (mean = theta2 = \pi/2)
     A1 = 0.0; 
     A2 = 1.0; 
     for (int i = 0; i < n; ++i)
@@ -279,7 +279,7 @@ TEST_CASE(
 
     // Check that the dihedral angles are within [-\pi, \pi)
     REQUIRE((sample_dihedrals >= -boost::math::constants::pi<double>()).all()); 
-    REQUIRE((sample_dihedrals < boost::math::constants::pi<double>()).all()); 
+    REQUIRE((sample_dihedrals <= boost::math::constants::pi<double>()).all()); 
 
     // Estimate the mean of the underlying von Mises distribution
     double mean_dihedral = 0; 
@@ -311,6 +311,31 @@ TEST_CASE(
     }
     var_dihedral /= (sample_dihedrals.size() - 1); 
     std::cout << "Empirical vs. theoretical variances from dihedrals: "
-              << var_dihedral << ", " << kT / K_dihedral << std::endl;  
+              << var_dihedral << ", " << kT / K_dihedral << std::endl; 
+
+    // Sample from a dual mixture with calibrated weights 
+    w1 = 2 / sqrt(20);     // Concentration = 20 ==> standard deviation = sqrt(1/20)
+    w2 = 2 / sqrt(20);  
+    A1 = 0.962103305;      // This should ideally yield a 90%/10% mixture
+    A2 = 1 - A1; 
+    for (int i = 0; i < n; ++i)
+        sample_angles_gaussian(i) = sampleAngleDualGaussianMixture<double>(
+            A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist
+        );
+
+    // Check that there are roughly two types of angles 
+    int n1 = 0;     // Corresponding to larger component (theta1) 
+    int n2 = 0;     // Corresponding to smaller component (theta2)
+    double avg_theta = (theta1 + theta2) / 2; 
+    for (int i = 0; i < n; ++i)
+    {
+        if (sample_angles_gaussian(i) > avg_theta)
+            n1++; 
+        else 
+            n2++; 
+    }
+    double p1 = 1.0 * n1 / n; 
+    double p2 = 1.0 * n2 / n; 
+    std::cout << p1 << " " << p2 << std::endl; 
 }
 

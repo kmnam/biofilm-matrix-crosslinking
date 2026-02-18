@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/2/2026
+ *     2/18/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -595,16 +595,11 @@ T sampleAngleCosine(const T K, const T theta0, const T kT,
         // (minus the Jacobian) 
         theta = vonMises<T>(theta0, kappa, rng, uniform_dist);
 
-        // The von Mises distribution runs from -\pi to \pi; make all negative
-        // angles positive 
-        if (theta < 0)
-            theta *= -1;
-
-        // Accept with probability sin(theta)
-        accept = (uniform_dist(rng) < sin(theta)); 
+        // Accept with probability sin(abs(theta))
+        accept = (uniform_dist(rng) < sin(abs(theta))); 
     }
 
-    return theta;  
+    return abs(theta);  
 }
 
 /**
@@ -664,15 +659,11 @@ T sampleAngleDualGaussianMixture(const T A1, const T A2, const T w1, const T w2,
         else    // choice == 3
             theta = vonMises<T>(mu4, kappa4, rng, uniform_dist);
 
-        // Fold the distribution back into [0, \pi)
-        if (theta < 0)
-            theta *= -1;
-        
-        // Accept with probability sin(theta)
-        accept = (uniform_dist(rng) < sin(theta)); 
+        // Accept with probability sin(abs(theta))
+        accept = (uniform_dist(rng) < sin(abs(theta))); 
     }
 
-    return theta;  
+    return abs(theta);  
 }
 
 /**
