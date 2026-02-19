@@ -335,7 +335,8 @@ TEST_CASE(
             n2++; 
     }
     double p1 = 1.0 * n1 / n; 
-    double p2 = 1.0 * n2 / n; 
-    std::cout << p1 << " " << p2 << std::endl; 
+    double p2 = 1.0 * n2 / n;
+    std::cout << "Empirical fractions from Gaussian mixture: " << p1 << ", " << p2
+              << " (theoretical values = 0.9, 0.1)\n";  
 }
 
