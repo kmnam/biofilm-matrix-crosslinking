@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/15/2026
+ *     2/22/2026
  */
 
 #ifndef POLYMER_ENSEMBLE_HPP
@@ -156,11 +156,15 @@ std::pair<PolymerEnsemble<T>, std::unordered_map<std::string, T> > parseEnsemble
             else if (token == "internal_move_armijo_const")
                 params["armijo_const"] = static_cast<T>(std::stod(line));  
             else if (token == "move_prob_reptation")
-                params["move_prob_reptation"] = static_cast<T>(std::stod(line));  
+                params["move_prob_reptation"] = static_cast<T>(std::stod(line));
+            else if (token == "move_prob_multimer_reptation")
+                params["move_prob_multimer_reptation"] = static_cast<T>(std::stod(line)); 
             else if (token == "move_prob_terminal_segment")
                 params["move_prob_terminal_segment"] = static_cast<T>(std::stod(line)); 
             else if (token == "move_prob_internal_segment")
-                params["move_prob_internal_segment"] = static_cast<T>(std::stod(line)); 
+                params["move_prob_internal_segment"] = static_cast<T>(std::stod(line));
+            else if (token == "multimer_reptation_length")
+                params["multimer_reptation_length"] = static_cast<T>(std::stoi(line));  
             else if (token == "terminal_segment_length")
                 params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
             else if (token == "internal_segment_length")
@@ -283,10 +287,14 @@ std::pair<PolymerConfiguration<T>, std::unordered_map<std::string, T> > parseFin
                 params["armijo_const"] = static_cast<T>(std::stod(line));  
             else if (token == "move_prob_reptation")
                 params["move_prob_reptation"] = static_cast<T>(std::stod(line));  
+            else if (token == "move_prob_multimer_reptation")
+                params["move_prob_multimer_reptation"] = static_cast<T>(std::stod(line)); 
             else if (token == "move_prob_terminal_segment")
                 params["move_prob_terminal_segment"] = static_cast<T>(std::stod(line)); 
             else if (token == "move_prob_internal_segment")
-                params["move_prob_internal_segment"] = static_cast<T>(std::stod(line)); 
+                params["move_prob_internal_segment"] = static_cast<T>(std::stod(line));
+            else if (token == "multimer_reptation_length")
+                params["multimer_reptation_length"] = static_cast<T>(std::stoi(line));  
             else if (token == "terminal_segment_length")
                 params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
             else if (token == "internal_segment_length")
