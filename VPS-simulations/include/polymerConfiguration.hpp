@@ -2137,9 +2137,9 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
     // Generate a PolymerConfiguration<T> instance with the first 2 atoms 
     Matrix<T, Dynamic, 3> coords(K, 3); 
     coords.row(0) = r0; 
-    coords(1, 0) = length; 
-    coords(1, 1) = 0; 
-    coords(1, 2) = 0;
+    coords(1, 0) = r0(0) + length; 
+    coords(1, 1) = r0(1); 
+    coords(1, 2) = r0(2);
     PolymerConfiguration<T> config(coords(Eigen::seqN(0, 2), Eigen::all), units, temp); 
 
     // Define a collision function 
@@ -2325,9 +2325,9 @@ PolymerConfiguration<T> generateKMer(const int K,
     // Generate a PolymerConfiguration<T> instance with the first 2 atoms 
     Matrix<T, Dynamic, 3> coords(K, 3); 
     coords.row(0) = r0; 
-    coords(1, 0) = length; 
-    coords(1, 1) = 0; 
-    coords(1, 2) = 0;
+    coords(1, 0) = r0(0) + length; 
+    coords(1, 1) = r0(1); 
+    coords(1, 2) = r0(2);
     PolymerConfiguration<T> config(coords(Eigen::seqN(0, 2), Eigen::all), units, temp); 
 
     // Define a collision function 
@@ -2450,9 +2450,9 @@ PolymerConfiguration<T> generateKMerRandomCoil(const int K, const T bond_length,
     // Start with the first two atoms 
     Matrix<T, Dynamic, 3> coords(K, 3); 
     coords.row(0) = r0; 
-    coords(1, 0) = bond_length; 
-    coords(1, 1) = 0; 
-    coords(1, 2) = 0;
+    coords(1, 0) = r0(0) + bond_length; 
+    coords(1, 1) = r0(1); 
+    coords(1, 2) = r0(2);
 
     // Then generate each subsequent atom with a random bond angle
     for (int i = 2; i < K; ++i)
@@ -2500,9 +2500,9 @@ PolymerConfiguration<T> generateKMerFreelyRotatingChain(const int K,
     // Start with the first two atoms 
     Matrix<T, Dynamic, 3> coords(K, 3); 
     coords.row(0) = r0; 
-    coords(1, 0) = bond_length; 
-    coords(1, 1) = 0; 
-    coords(1, 2) = 0;
+    coords(1, 0) = r0(0) + bond_length; 
+    coords(1, 1) = r0(1); 
+    coords(1, 2) = r0(2);
 
     // Then generate each subsequent atom with the same bond length and angle,
     // but with a random dihedral 
