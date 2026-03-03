@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/16/2026
+ *     3/2/2026
  */
 
 #ifndef POLYMER_CONFIGURATION_HPP
@@ -696,6 +696,17 @@ class PolymerConfiguration
         T getMinDist(const Ref<const Matrix<T, 3, 1> >& p) const 
         {
             return (this->r.rowwise() - p.transpose()).rowwise().norm().minCoeff(); 
+        }
+
+        /**
+         * Get the center of mass of the polymer, assuming that every atom 
+         * has the same mass. 
+         *
+         * @returns Center of mass. 
+         */
+        Matrix<T, 3, 1> centerOfMass() const 
+        {
+            return this->r.colwise().mean(); 
         }
 
         /**
