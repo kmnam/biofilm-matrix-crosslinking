@@ -792,9 +792,7 @@ class PolymerConfiguration
         }
 
         /**
-         * Append the given atom onto the tail of the polymer. 
-         *
-         * @param r Atom coordinates for the new atom. 
+         * Pop the atom at the tail of the polymer. 
          */
         void popAtomFromTail()
         {
@@ -803,9 +801,7 @@ class PolymerConfiguration
         }
 
         /**
-         * Append the given atom onto the head of the polymer. 
-         *
-         * @param r Atom coordinates for the new atom. 
+         * Pop the atom at the head of the polymer. 
          */
         void popAtomFromHead()
         {
