@@ -752,8 +752,8 @@ class PolymerConfiguration
         {
             this->length++; 
             this->r.conservativeResize(this->length, 3);
-            this->r(Eigen::seqN(1, this->length - 1))
-                = this->r(Eigen::seqN(0, this->length - 1)).eval();  
+            this->r(Eigen::seqN(1, this->length - 1), Eigen::all)
+                = this->r(Eigen::seqN(0, this->length - 1), Eigen::all).eval();  
             this->r.row(0) = r; 
         }
 
@@ -805,8 +805,8 @@ class PolymerConfiguration
          */
         void popAtomFromHead()
         {
-            this->r(Eigen::seqN(1, this->length - 1))
-                = this->r(Eigen::seqN(0, this->length - 1)).eval(); 
+            this->r(Eigen::seqN(1, this->length - 1), Eigen::all)
+                = this->r(Eigen::seqN(0, this->length - 1), Eigen::all).eval(); 
             this->r.conservativeResize(this->length, 3);
             this->length--;
         }
@@ -2198,8 +2198,7 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
             n_tries++; 
         }
 
-        // If the maximum number of iterations has been reached, move onto
-        // the next atom 
+        // If there is no collision, move onto the next atom
         if (!found_collision)
         {
             coords.row(curr_idx) = new_atom; 
