@@ -1621,6 +1621,7 @@ std::tuple<PolymerMeltConfiguration<T>,
  */
 template <typename T>
 PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist, 
+                                             const T center_dist_tol, 
                                              std::unordered_map<std::string, T>& lj_params,
                                              std::unordered_map<std::string, T>& fene_params,
                                              const AngleMode angle_mode,  
@@ -1674,12 +1675,15 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
         max_n_backtracks, rng, uniform_dist, units, temp
     ); 
     Matrix<T, Dynamic, 3> coords1 = config1.getSegment(0, K);
+    Matrix<T, 3, 1> center1 = config1.centerOfMass(); 
+
+    // Generate the target center-of-mass for the second K-mer
+    Matrix<T, 3, 1> dir = randomDir<T, 3>(rng, uniform_dist);
+    Matrix<T, 3, 1> target_center = center1 + dist * dir;
 
     // Initialize coordinates for the second K-mer
     Matrix<T, Dynamic, 3> coords2(1, 3); 
-    const int n_start = K / 2;
-    Matrix<T, 3, 1> dir = randomDir<T, 3>(rng, uniform_dist);  
-    coords2.row(0) = coords1.row(n_start) + dist * dir;
+    coords2.row(0) = target_center.transpose();
     PolymerConfiguration<T> config2(coords2, units, temp); 
 
     // Define a collision function with the first K-mer 
@@ -1696,7 +1700,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
 
     // Add the remaining atoms ... 
     T length, angle, dihedral;
-    int n_backtracks = 0;  
+    int n_backtracks = 0;
     while (config2.getLength() < K)
     {
         // If we have exceeded the maximum number of backtracks, raise 
@@ -1711,31 +1715,41 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
 
         // Get the current polymer coordinates
         int n2 = config2.getLength(); 
-        coords2 = config2.getSegment(0, n2); 
+        coords2 = config2.getSegment(0, n2);
 
         // First add an atom at the tail of the current segment
         //
         // If we are merely adding the second atom, just sample a bond length
         Matrix<T, 3, 1> new_atom;
         int n_tries = 0; 
-        bool found_collision = true; 
+        bool found_new_atom = false; 
         if (n2 == 1)
         {
-            while (found_collision && n_tries < max_tries_per_atom)
+            while (!found_new_atom && n_tries < max_tries_per_atom)
             {
                 length = sampleFene<T>(
                     lj_params["eps"], lj_params["sigma"], fene_params["K"],
                     fene_params["R0"], config2.kT, rng, uniform_dist, 50 
                 );
                 dir = randomDir<T, 3>(rng, uniform_dist);  
-                new_atom = coords2.row(n2 - 1) + length * dir;
-                found_collision = collision1(new_atom);
+                new_atom = coords2.row(n2 - 1) + length * dir.transpose();
+
+                // Check if there is a collision
+                if (!collision1(new_atom))
+                {
+                    // Check if the proposed new atom does not change the 
+                    // center of mass within the given tolerance
+                    Matrix<T, 3, 1> new_center = (coords2.row(0) + new_atom.transpose()) / 2; 
+                    T curr_dist = (center1 - new_center).norm();  
+                    if (abs(curr_dist - dist) < center_dist_tol)
+                        found_new_atom = true;  
+                }
                 n_tries++; 
             } 
         }
         else    // coords2.rows() should be >= 3
         {
-            while (found_collision && n_tries < max_tries_per_atom) 
+            while (!found_new_atom && n_tries < max_tries_per_atom) 
             {
                 length = sampleFene<T>(
                     lj_params["eps"], lj_params["sigma"], fene_params["K"],
@@ -1751,16 +1765,27 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
                 new_atom = generateNextAtomDihedral<T>(
                     r1, r2, r3, length, angle, dihedral, rng, uniform_dist
                 );
-                found_collision = (collision1(new_atom) || collision2(config2, new_atom));
+
+                // Check if there is a collision
+                if (!collision1(new_atom) && !collision2(config2, new_atom))
+                {
+                    // Check if the proposed new atom does not change the 
+                    // center of mass within the given tolerance
+                    Matrix<T, 3, 1> curr_center = coords2.colwise().mean();
+                    Matrix<T, 3, 1> new_center = (n2 * curr_center + new_atom) / (n2 + 1);
+                    T curr_dist = (center1 - new_center).norm(); 
+                    if (abs(curr_dist - dist) < center_dist_tol)
+                        found_new_atom = true;  
+                }
                 n_tries++; 
             }
         }
 
-        // If there is no collision, move onto the next atom
-        if (!found_collision)
+        // If a new atom was successfully found, move onto the next 
+        if (found_new_atom)
         { 
-            // Add the atom to the tail 
-            config2.appendAtomToTail(new_atom); 
+            // Add the atom to the tail
+            config2.appendAtomToTail(new_atom);
         }
         // Otherwise, backtrack to the previous atom unless doing so 
         // encroaches into the first 3 atoms 
@@ -1781,7 +1806,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
 
         // Have we reached the desired polymer length?
         n2 = config2.getLength();
-        coords2 = config2.getSegment(0, n2); 
+        coords2 = config2.getSegment(0, n2);
         if (n2 == K)
             break;  
 
@@ -1791,10 +1816,10 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
         // and a bond angle 
         new_atom = Matrix<T, 3, 1>::Zero();
         n_tries = 0;
-        found_collision = true;  
+        found_new_atom = false; 
         if (n2 == 2)
         {
-            while (found_collision && n_tries < max_tries_per_atom)
+            while (!found_new_atom && n_tries < max_tries_per_atom)
             {
                 length = sampleFene<T>(
                     lj_params["eps"], lj_params["sigma"], fene_params["K"],
@@ -1806,13 +1831,24 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
                 new_atom = generateNextAtom<T>(
                     r1, r2, length, angle, rng, uniform_dist
                 );
-                found_collision = (collision1(new_atom) || collision2(config2, new_atom));
+                
+                // Check if there is a collision
+                if (!collision1(new_atom) && !collision2(config2, new_atom))
+                {
+                    // Check if the proposed new atom does not change the 
+                    // center of mass within the given tolerance
+                    Matrix<T, 3, 1> curr_center = coords2.colwise().mean();
+                    Matrix<T, 3, 1> new_center = (2 * curr_center + new_atom) / 3;
+                    T curr_dist = (center1 - new_center).norm(); 
+                    if (abs(curr_dist - dist) < center_dist_tol)
+                        found_new_atom = true; 
+                }
                 n_tries++;  
             } 
         }
         else    // coords2.rows() should be >= 4
         {
-            while (found_collision && n_tries < max_tries_per_atom)
+            while (!found_new_atom && n_tries < max_tries_per_atom)
             {
                 length = sampleFene<T>(
                     lj_params["eps"], lj_params["sigma"], fene_params["K"],
@@ -1828,13 +1864,24 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
                 new_atom = generateNextAtomDihedral<T>(
                     r1, r2, r3, length, angle, dihedral, rng, uniform_dist
                 );
-                found_collision = (collision1(new_atom) || collision2(config2, new_atom));
+
+                // Check if there is a collision
+                if (!collision1(new_atom) && !collision2(config2, new_atom))
+                {
+                    // Check if the proposed new atom does not change the 
+                    // center of mass within the given tolerance
+                    Matrix<T, 3, 1> curr_center = coords2.colwise().mean();
+                    Matrix<T, 3, 1> new_center = (n2 * curr_center + new_atom) / (n2 + 1); 
+                    T curr_dist = (center1 - new_center).norm(); 
+                    if (abs(curr_dist - dist) < center_dist_tol)
+                        found_new_atom = true; 
+                }
                 n_tries++; 
             }
         }
 
-        // If there is no collision, move onto the next atom
-        if (!found_collision)
+        // If a new atom was successfully found, move onto the next 
+        if (found_new_atom)
         { 
             // Add the atom to the head 
             config2.appendAtomToHead(new_atom); 
@@ -1856,7 +1903,8 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
             ); 
         }
 
-        // TODO Do some distance control?  
+        n2 = config2.getLength();
+        coords2 = config2.getSegment(0, n2);
     }
    
     coords2 = config2.getSegment(0, config2.getLength());
