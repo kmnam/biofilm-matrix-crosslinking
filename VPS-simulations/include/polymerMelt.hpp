@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/3/2026
+ *     3/4/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -327,7 +327,8 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            this->configs[i].appendAtomToTail(r); 
+            this->configs[i].appendAtomToTail(r);
+            this->lengths[i] += 1;  
         }
 
         /**
@@ -342,7 +343,8 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            this->configs[i].appendAtomToHead(r); 
+            this->configs[i].appendAtomToHead(r);
+            this->lengths[i] += 1;  
         }
 
         /**
@@ -358,7 +360,8 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            this->configs[i].appendSegmentToTail(segment); 
+            this->configs[i].appendSegmentToTail(segment);
+            this->lengths[i] += segment.rows(); 
         }
 
         /**
@@ -374,7 +377,8 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            this->configs[i].appendSegmentToHead(segment); 
+            this->configs[i].appendSegmentToHead(segment);
+            this->lengths[i] += segment.rows(); 
         }
 
         /**
@@ -388,7 +392,8 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            this->configs[i].popAtomFromTail(); 
+            this->configs[i].popAtomFromTail();
+            this->lengths[i] -= 1;  
         }
 
         /**
@@ -402,7 +407,8 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            this->configs[i].popAtomFromHead(); 
+            this->configs[i].popAtomFromHead();
+            this->lengths[i] -= 1; 
         }
 
         /**
@@ -417,7 +423,9 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            this->configs[i].popSegmentFromTail(atom_idx); 
+            this->configs[i].popSegmentFromTail(atom_idx);
+            const int tail_length = this->lengths[i] - atom_idx; 
+            this->lengths[i] -= tail_length; 
         }
 
         /**
@@ -432,7 +440,9 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            this->configs[i].popSegmentFromHead(atom_idx); 
+            this->configs[i].popSegmentFromHead(atom_idx);
+            const int head_length = atom_idx + 1; 
+            this->lengths[i] -= head_length;  
         }
 
         /**
