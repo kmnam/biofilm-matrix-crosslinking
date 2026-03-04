@@ -771,7 +771,7 @@ class PolymerMeltConfiguration
             }
 
             // Return the energy difference 
-            return energy_within_diff + energy_new - energy_curr; 
+            return energy_diff_within + energy_new - energy_curr; 
         }
 
         /**
@@ -1715,7 +1715,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
             {
                 length = sampleFene<T>(
                     lj_params["eps"], lj_params["sigma"], fene_params["K"],
-                    fene_params["R0"], config.kT, rng, uniform_dist, 50 
+                    fene_params["R0"], config2.kT, rng, uniform_dist, 50 
                 );
                 dir = randomDir<T, 3>(rng, uniform_dist);  
                 new_atom = coords2.row(n2 - 1) + length * dir;
@@ -1729,11 +1729,11 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
             {
                 length = sampleFene<T>(
                     lj_params["eps"], lj_params["sigma"], fene_params["K"],
-                    fene_params["R0"], config.kT, rng, uniform_dist, 50 
+                    fene_params["R0"], config2.kT, rng, uniform_dist, 50 
                 );
                 angle = sample_angle(rng);
                 dihedral = sampleDihedralHarmonic<T>(
-                    dihedral_params["K"], config.kT, rng, uniform_dist
+                    dihedral_params["K"], config2.kT, rng, uniform_dist
                 );
                 Matrix<T, 3, 1> r1 = coords2.row(n2 - 3); 
                 Matrix<T, 3, 1> r2 = coords2.row(n2 - 2); 
@@ -1750,14 +1750,14 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
         if (!found_collision)
         { 
             // Add the atom to the tail 
-            config2.appendAtomToTail<T>(new_atom); 
+            config2.appendAtomToTail(new_atom); 
         }
         // Otherwise, backtrack to the previous atom unless doing so 
         // encroaches into the first 3 atoms 
         else if (n2 > 3) 
         {
             // Remove the atom at the tail
-            config2.popAtomFromTail<T>(); 
+            config2.popAtomFromTail(); 
             n_backtracks++; 
             continue;  
         }
@@ -1788,7 +1788,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
             {
                 length = sampleFene<T>(
                     lj_params["eps"], lj_params["sigma"], fene_params["K"],
-                    fene_params["R0"], config.kT, rng, uniform_dist, 50 
+                    fene_params["R0"], config2.kT, rng, uniform_dist, 50 
                 );
                 angle = sample_angle(rng);
                 Matrix<T, 3, 1> r1 = coords2.row(1); 
@@ -1806,11 +1806,11 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
             {
                 length = sampleFene<T>(
                     lj_params["eps"], lj_params["sigma"], fene_params["K"],
-                    fene_params["R0"], config.kT, rng, uniform_dist, 50 
+                    fene_params["R0"], config2.kT, rng, uniform_dist, 50 
                 );
                 angle = sample_angle(rng);
                 dihedral = sampleDihedralHarmonic<T>(
-                    dihedral_params["K"], config.kT, rng, uniform_dist
+                    dihedral_params["K"], config2.kT, rng, uniform_dist
                 );
                 Matrix<T, 3, 1> r1 = coords2.row(2); 
                 Matrix<T, 3, 1> r2 = coords2.row(1); 
@@ -1834,7 +1834,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
         else if (n2 > 3) 
         {
             // Remove the atom at the tail
-            config2.popAtomFromHead<T>(); 
+            config2.popAtomFromHead(); 
             n_backtracks++; 
             continue;  
         }
