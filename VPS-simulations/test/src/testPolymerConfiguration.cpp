@@ -955,14 +955,14 @@ TEST_CASE(
     neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
     double replace_energy_45 = config4.getSegmentReplacementEnergyDifference(
         coords5(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN, 
         angle_params, dihedral_params
     );
 
     // Calculate the reverse segment replacement energy difference
     double replace_energy_54 = config5.getSegmentReplacementEnergyDifference(
         coords4(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN, 
         angle_params, dihedral_params
     );
     REQUIRE_THAT(replace_energy_45, Catch::Matchers::WithinAbs(-replace_energy_54, tol)); 
@@ -970,11 +970,11 @@ TEST_CASE(
     // Calculate the total energy of the two configurations 
     double energy4_nonbonded = config4.getNonbondedEnergy(lj_params, neighbor_threshold); 
     double energy4_bond = config4.getBondEnergy(fene_params); 
-    double energy4_angle = config4.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy4_angle = config4.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
     double energy4_dihedral = config4.getDihedralAngleEnergy(dihedral_params); 
     double energy5_nonbonded = config5.getNonbondedEnergy(lj_params, neighbor_threshold); 
     double energy5_bond = config5.getBondEnergy(fene_params); 
-    double energy5_angle = config5.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy5_angle = config5.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
     double energy5_dihedral = config5.getDihedralAngleEnergy(dihedral_params);
     double energy4_total = energy4_nonbonded + energy4_bond + energy4_angle + energy4_dihedral;
     double energy5_total = energy5_nonbonded + energy5_bond + energy5_angle + energy5_dihedral;
@@ -1001,14 +1001,14 @@ TEST_CASE(
     // Calculate the segment replacement energy difference
     double replace_energy_46 = config4.getSegmentReplacementEnergyDifference(
         coords6(Eigen::seqN(2, 4), Eigen::all), 2, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN, 
         angle_params, dihedral_params
     );
 
     // Calculate the reverse segment replacement energy difference
     double replace_energy_64 = config6.getSegmentReplacementEnergyDifference(
         coords4(Eigen::seqN(2, 4), Eigen::all), 2, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
+        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN, 
         angle_params, dihedral_params
     );
     REQUIRE_THAT(replace_energy_46, Catch::Matchers::WithinAbs(-replace_energy_64, tol)); 
@@ -1016,7 +1016,7 @@ TEST_CASE(
     // Calculate the total energy of the two configurations 
     double energy6_nonbonded = config6.getNonbondedEnergy(lj_params, neighbor_threshold); 
     double energy6_bond = config6.getBondEnergy(fene_params); 
-    double energy6_angle = config6.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
+    double energy6_angle = config6.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
     double energy6_dihedral = config6.getDihedralAngleEnergy(dihedral_params);
     double energy6_total = energy6_nonbonded + energy6_bond + energy6_angle + energy6_dihedral;
 
