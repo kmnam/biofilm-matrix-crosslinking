@@ -582,9 +582,88 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            return this->configs[i].getNonbondedEnergy(
+            // Start with the non-bonded energy of the i-th polymer by itself 
+            T energy = this->configs[i].getNonbondedEnergy(
                 lj_params, neighbor_threshold, nonconsecutive
-            ); 
+            );
+
+            // Look for further non-bonded interactions with the other polymers
+            const int ni = this->lengths[i]; 
+            Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);  
+            for (int j = 0; j < this->n; ++j)
+            {
+                if (i != j)
+                {
+                    const int nj = this->lengths[j]; 
+                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj);  
+                    for (int k = 0; k < nj; ++k)
+                    {
+                        for (int p = 0; p < ni; ++p)
+                        {
+                            T dij = (rj.row(k) - ri.row(p)).norm();
+                            if (dij < neighbor_threshold) 
+                                energy += lj<T>(
+                                    dij, lj_params["eps"], lj_params["sigma"], true
+                                );
+                        }
+                    }
+                }
+            }
+
+            return energy;  
+        } 
+
+        /**
+         * Get the energetic contributions of the non-bonded (repulsive)
+         * interactions between all atoms in the melt. 
+         *
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms.
+         * @param nonconsecutive If true, omit interactions between consecutive
+         *                       atoms.  
+         * @returns Non-bonded interaction energy for the i-th polymer.  
+         */
+        T getTotalNonbondedEnergy(std::unordered_map<std::string, T>& lj_params, 
+                                  const T neighbor_threshold,
+                                  const bool nonconsecutive = false) const
+        {
+            // Start with the non-bonded energy within each polymer ... 
+            T energy = 0; 
+            for (int i = 0; i < this->n; ++i)
+            {
+                energy += this->configs[i].getNonbondedEnergy(
+                    lj_params, neighbor_threshold, nonconsecutive
+                );
+            }
+
+            // Then get the non-bonded energy between each pair of polymers ...
+            for (int i = 0; i < this->n; ++i)
+            { 
+                const int ni = this->lengths[i]; 
+                Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);  
+                for (int j = 0; j < this->n; ++j)
+                {
+                    if (i != j)
+                    {
+                        const int nj = this->lengths[j]; 
+                        Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj);  
+                        for (int k = 0; k < nj; ++k)
+                        {
+                            for (int p = 0; p < ni; ++p)
+                            {
+                                T dij = (rj.row(k) - ri.row(p)).norm();
+                                if (dij < neighbor_threshold) 
+                                    energy += lj<T>(
+                                        dij, lj_params["eps"], lj_params["sigma"], true
+                                    );
+                            }
+                        }
+                    }
+                }
+            }
+
+            return energy;  
         } 
 
         /**
@@ -614,6 +693,31 @@ class PolymerMeltConfiguration
         }
 
         /**
+         * Get the energetic contributions of the bonded interactions between
+         * consecutive atoms to the energy of the entire melt. 
+         *
+         * The energetic contributions of repulsive Lennard-Jones interactions 
+         * between consecutive atoms is also included, if desired. 
+         *
+         * @param fene_params FENE parameters.
+         * @param include_lj If true, include the energetic contributions of 
+         *                   repulsive Lennard-Jones interactions between 
+         *                   consecutive atoms. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @returns Bonded interaction energy for the i-th polymer. 
+         */
+        T getTotalBondEnergy(std::unordered_map<std::string, T>& fene_params,
+                             const bool include_lj = false, 
+                             const std::unordered_map<std::string, T>& lj_params = {}) const
+        {
+            T energy = 0; 
+            for (int i = 0; i < this->n; ++i)
+                energy += this->getBondEnergy(i, fene_params, include_lj, lj_params);
+
+            return energy; 
+        }
+
+        /**
          * Get the energetic contributions of the bond angles to the energy 
          * of the i-th polymer configuration.
          *
@@ -636,6 +740,27 @@ class PolymerMeltConfiguration
         }
 
         /**
+         * Get the energetic contributions of the bond angles to the energy 
+         * of the entire melt. 
+         *
+         * @param angle_mode Angle potential type.  
+         * @param angle_params Angle potential parameters. Must include the 
+         *                     cosine potential parameters (K and theta0) or
+         *                     the dual Gaussian mixture potential parameters
+         *                     (A1, A2, w1, w2, theta1, theta2). 
+         * @returns Bond angle energy for the i-th polymer.  
+         */
+        T getTotalBondAngleEnergy(const AngleMode angle_mode, 
+                                  std::unordered_map<std::string, T>& angle_params) const
+        {
+            T energy = 0;
+            for (int i = 0; i < this->n; ++i)
+                energy += this->getBondAngleEnergy(i, angle_mode, angle_params); 
+            
+            return energy; 
+        }
+
+        /**
          * Get the energetic contributions of the dihedral angles along the 
          * polymer to the energy of the i-th polymer configuration.
          *
@@ -651,6 +776,22 @@ class PolymerMeltConfiguration
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].getDihedralAngleEnergy(dihedral_params); 
+        }
+
+        /**
+         * Get the energetic contributions of the dihedral angles along the 
+         * polymer to the energy of the entire melt. 
+         *
+         * @param dihedral_params Dihedral angle potential parameters. 
+         * @returns Dihedral angle energy for the i-th polymer. 
+         */
+        T getTotalDihedralAngleEnergy(std::unordered_map<std::string, T>& dihedral_params) const
+        {
+            T energy = 0;
+            for (int i = 0; i < this->n; ++i)
+                energy += this->getDihedralAngleEnergy(i, dihedral_params); 
+            
+            return energy; 
         }
 
         /**
@@ -1412,9 +1553,9 @@ std::tuple<PolymerMeltConfiguration<T>,
            std::unordered_map<std::string, T>,
            AngleMode,
            std::unordered_map<std::string, T>,
-           std::unordered_map<std::string, T> > parseLammps(const std::string& filename,
-                                                            const Units units, 
-                                                            const T temp)
+           std::unordered_map<std::string, T> > parseMeltLammps(const std::string& filename,
+                                                                const Units units, 
+                                                                const T temp)
 {
     std::ifstream infile(filename);
 
