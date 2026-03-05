@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/16/2026
+ *     3/4/2026
  */
 
 #include <iostream>
@@ -473,6 +473,8 @@ TEST_CASE("Tests for k-mer generation", "[generateKMer()]")
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
     gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
     dihedral_params["K"] = 10 * kT;
+    dihedral_params["d"] = 1; 
+    dihedral_params["n"] = 1; 
     const double collision_threshold = 0.1;
     const int max_tries_per_atom = 50;
     const int max_n_backtracks = 50;  
@@ -534,6 +536,8 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
     gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
     dihedral_params["K"] = 10 * kT;
+    dihedral_params["d"] = 1; 
+    dihedral_params["n"] = 1; 
     const double collision_threshold = 0.1;
     const int max_tries_per_atom = 50;
     const int max_n_backtracks = 50;  
@@ -697,7 +701,7 @@ TEST_CASE(
     std::unordered_map<std::string, double> dihedral_params = std::get<5>(result);
 
     // Calculate energies via LAMMPS
-    std::string cmd = "python3 run_lammps_get_energy.py cosine"; 
+    std::string cmd = "python3 run_lammps_get_energy.py configs/test_10mer_cosine.txt"; 
     int rc = std::system(cmd.c_str()); 
     if (rc != 0)
         throw std::runtime_error("Failed to run run_lammps_get_energy.py");
@@ -761,7 +765,7 @@ TEST_CASE(
     dihedral_params = std::get<5>(result);
 
     // Calculate energies via LAMMPS
-    cmd = "python3 run_lammps_get_energy.py gaussian"; 
+    cmd = "python3 run_lammps_get_energy.py configs/test_10mer_gaussian.txt"; 
     rc = std::system(cmd.c_str()); 
     if (rc != 0)
         throw std::runtime_error("Failed to run run_lammps_get_energy.py");
