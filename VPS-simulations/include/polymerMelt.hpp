@@ -1690,8 +1690,7 @@ std::tuple<PolymerMeltConfiguration<T>,
         ss.clear(); 
         ss.str(std::string()); 
         ss << line;
-        std::getline(ss, token, ' ');    // Atom ID 
-        int atom_id = std::stoi(token); 
+        std::getline(ss, token, ' ');    // Atom ID (skip) 
         std::getline(ss, token, ' ');    // Molecule ID
         int mol_id = std::stoi(token); 
         std::getline(ss, token, ' ');    // Atom type (skip)
