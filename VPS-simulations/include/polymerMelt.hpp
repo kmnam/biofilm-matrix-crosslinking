@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/4/2026
+ *     3/18/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -1737,7 +1737,8 @@ std::tuple<PolymerMeltConfiguration<T>,
  * given distance.
  *
  * @param K Polymer length.
- * @param dist Distance between centers of mass of the two K-mers.  
+ * @param center_dist Distance between centers of mass of the two K-mers. 
+ * @param center_dist_tol Tolerance for center-to-center distance.  
  * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
  * @param neighbor_threshold Distance threshold for identifying
  *                           neighboring (non-bonded) atoms. 
@@ -1760,7 +1761,7 @@ std::tuple<PolymerMeltConfiguration<T>,
  * @returns Resulting polymer configuration.  
  */
 template <typename T>
-PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist, 
+PolymerMeltConfiguration<T> generateKMerPair(const int K, const T center_dist, 
                                              const T center_dist_tol, 
                                              std::unordered_map<std::string, T>& lj_params,
                                              std::unordered_map<std::string, T>& fene_params,
@@ -1819,7 +1820,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
 
     // Generate the target center-of-mass for the second K-mer
     Matrix<T, 3, 1> dir = randomDir<T, 3>(rng, uniform_dist);
-    Matrix<T, 3, 1> target_center = center1 + dist * dir;
+    Matrix<T, 3, 1> target_center = center1 + center_dist * dir;
 
     // Initialize coordinates for the second K-mer
     Matrix<T, Dynamic, 3> coords2(1, 3); 
@@ -1881,7 +1882,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
                     // center of mass within the given tolerance
                     Matrix<T, 3, 1> new_center = (coords2.row(0) + new_atom.transpose()) / 2; 
                     T curr_dist = (center1 - new_center).norm();  
-                    if (abs(curr_dist - dist) < center_dist_tol)
+                    if (abs(curr_dist - center_dist) < center_dist_tol)
                         found_new_atom = true;  
                 }
                 n_tries++; 
@@ -1914,7 +1915,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
                     Matrix<T, 3, 1> curr_center = coords2.colwise().mean();
                     Matrix<T, 3, 1> new_center = (n2 * curr_center + new_atom) / (n2 + 1);
                     T curr_dist = (center1 - new_center).norm(); 
-                    if (abs(curr_dist - dist) < center_dist_tol)
+                    if (abs(curr_dist - center_dist) < center_dist_tol)
                         found_new_atom = true;  
                 }
                 n_tries++; 
@@ -1980,7 +1981,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
                     Matrix<T, 3, 1> curr_center = coords2.colwise().mean();
                     Matrix<T, 3, 1> new_center = (2 * curr_center + new_atom) / 3;
                     T curr_dist = (center1 - new_center).norm(); 
-                    if (abs(curr_dist - dist) < center_dist_tol)
+                    if (abs(curr_dist - center_dist) < center_dist_tol)
                         found_new_atom = true; 
                 }
                 n_tries++;  
@@ -2013,7 +2014,7 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
                     Matrix<T, 3, 1> curr_center = coords2.colwise().mean();
                     Matrix<T, 3, 1> new_center = (n2 * curr_center + new_atom) / (n2 + 1); 
                     T curr_dist = (center1 - new_center).norm(); 
-                    if (abs(curr_dist - dist) < center_dist_tol)
+                    if (abs(curr_dist - center_dist) < center_dist_tol)
                         found_new_atom = true; 
                 }
                 n_tries++; 
@@ -2052,6 +2053,293 @@ PolymerMeltConfiguration<T> generateKMerPair(const int K, const T dist,
     coords_all.push_back(coords1); 
     coords_all.push_back(coords2); 
     PolymerMeltConfiguration<T> melt_config(2, coords_all, units, temp); 
+
+    return melt_config;  
+}
+
+/**
+ * Generate a configuration of a melt of M K-mers, in which the inter-atom
+ * distances, bond lengths, bond angles, and dihedral angles follow the given
+ * potentials.
+ *
+ * @param K Polymer length.
+ * @param M Number of polymers. 
+ * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+ * @param neighbor_threshold Distance threshold for identifying
+ *                           neighboring (non-bonded) atoms. 
+ * @param fene_params FENE parameters. 
+ * @param angle_mode Angle potential type.  
+ * @param angle_params Angle potential parameters. Must include the 
+ *                     cosine potential parameters (K and theta0) or
+ *                     the dual Gaussian mixture potential parameters
+ *                     (A1, A2, w1, w2, theta1, theta2). 
+ * @param dihedral_params Dihedral angle potential parameters. 
+ * @param collision_threshold Distance threshold for identifying atoms that 
+ *                            are too close to each other. 
+ * @param max_tries_per_atom Maximum number of attempts to place each atom
+ *                           before backtracking. 
+ * @param max_n_backtracks Maximum number of backtracks. 
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution. 
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin). 
+ * @returns Resulting polymer configuration.  
+ */
+template <typename T>
+PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M, 
+                                             std::unordered_map<std::string, T>& lj_params,
+                                             std::unordered_map<std::string, T>& fene_params,
+                                             const AngleMode angle_mode,  
+                                             std::unordered_map<std::string, T>& angle_params, 
+                                             std::unordered_map<std::string, T>& dihedral_params,
+                                             const T collision_threshold, 
+                                             const int max_tries_per_atom,
+                                             const int max_tries_per_kmer,
+                                             const int max_tries_per_seed,  
+                                             const int max_n_backtracks,  
+                                             boost::random::mt19937& rng,
+                                             boost::random::uniform_01<>& uniform_dist,
+                                             const T xmax, const T ymax,
+                                             const T zmax, 
+                                             const Units units = Units::NANO,
+                                             const T temp = 300, 
+                                             const bool verbose = false)
+{
+    const T kT = (
+        units == Units::MICRO ? static_cast<T>(1.380649e-8) * temp : 
+        static_cast<T>(1.380649e-2) * temp
+    ); 
+
+    // Define the angle sampling function  
+    std::function<T(boost::random::mt19937&)> sample_angle;
+    if (angle_mode == AngleMode::COSINE)
+    {
+        sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleAngleCosine<T>(
+                angle_params["K"], angle_params["theta0"], kT, rng_, 
+                uniform_dist
+            );
+        };
+    } 
+    else if (angle_mode == AngleMode::GAUSSIAN)
+    {
+        sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleAngleDualGaussianMixture<T>(
+                angle_params["A1"], angle_params["A2"], angle_params["w1"],
+                angle_params["w2"], angle_params["theta1"], angle_params["theta2"],
+                kT, rng_, uniform_dist
+            );
+        };
+    }
+    else 
+    {
+        throw std::runtime_error("Invalid angle potential mode specified"); 
+    }
+
+    // Generate a new position for the first K-mer 
+    Matrix<T, 3, 1> r0; 
+    r0 << -xmax + 2 * xmax * uniform_dist(rng), 
+          -ymax + 2 * ymax * uniform_dist(rng), 
+          -zmax + 2 * zmax * uniform_dist(rng);  
+
+    // Generate the first K-mer
+    PolymerConfiguration<T> config = generateKMer<T>(
+        K, lj_params, fene_params, angle_mode, angle_params, dihedral_params, 
+        r0, collision_threshold, max_tries_per_atom, max_n_backtracks, rng,
+        uniform_dist, units, temp
+    ); 
+    Matrix<T, Dynamic, 3> coords = config.getSegment(0, K);
+    Matrix<T, Dynamic, 3> coords_all(coords);
+    if (verbose)
+        std::cout << "... generated chain 0\n"; 
+
+    // Iteratively generate each subsequent K-mer
+    int n_collected = 1; 
+    int n_tries_per_kmer = 0;
+    while (n_collected < M && n_tries_per_kmer < max_tries_per_kmer) 
+    {
+        // Define a collision function with every K-mer generated thus far 
+        auto collision = [&coords_all, &collision_threshold](const Ref<const Matrix<T, 3, 1> >& r) -> bool
+        {
+            return ((coords_all.rowwise() - r.transpose()).rowwise().norm().minCoeff() < collision_threshold);
+        };
+
+        // Generate a new random point that is far from every K-mer generated
+        // thus far 
+        Matrix<T, 3, 1> r0_new;
+        int n_tries_per_seed = 0;
+        while (n_tries_per_seed < max_tries_per_seed)
+        {
+            r0_new << -xmax + 2 * xmax * uniform_dist(rng), 
+                      -ymax + 2 * ymax * uniform_dist(rng), 
+                      -zmax + 2 * zmax * uniform_dist(rng); 
+            if (!collision(r0_new))
+                break; 
+            else 
+                n_tries_per_seed++; 
+        }
+        // If the polymer could not be seed, raise an exception 
+        if (n_tries_per_seed >= max_tries_per_seed)
+        {
+            throw std::runtime_error(
+                "Sampling procedure exceeded maximum number of polymer seeding "
+                "attempts"
+            ); 
+        }
+
+        // Generate a new K-mer, ensuring that each new atom does not collide
+        // with the growing K-mer as well as the other K-mers
+        //
+        // Generate a PolymerConfiguration<T> instance with the first 2 atoms 
+        Matrix<T, Dynamic, 3> new_coords(K, 3);
+        T length = sampleFene<T>(
+            lj_params["eps"], lj_params["sigma"], fene_params["K"],
+            fene_params["R0"], config.kT, rng, uniform_dist, 50
+        );
+        new_coords.row(0) = r0_new;
+        new_coords.row(1) = r0_new + length * randomDir<T, 3>(rng, uniform_dist);  
+        PolymerConfiguration<T> new_config(
+            new_coords(Eigen::seqN(0, 2), Eigen::all), units, temp
+        ); 
+
+        // Define another collision function for the growing K-mer 
+        auto collision2 = [&new_config, &collision_threshold](const Ref<const Matrix<T, 3, 1> >& r) -> bool
+        {
+            return (new_config.getMinDist(r) < collision_threshold);
+        };  
+
+        // Add a 3rd atom ...
+        //
+        // Keep generating a new atom until no collision is detected 
+        Matrix<T, 3, 1> new_atom;
+        bool found_collision = true;  
+        while (found_collision)
+        {
+            length = sampleFene<T>(
+                lj_params["eps"], lj_params["sigma"], fene_params["K"],
+                fene_params["R0"], new_config.kT, rng, uniform_dist, 50 
+            );
+            T angle = sample_angle(rng); 
+            new_atom = generateNextAtom<T>(
+                new_coords.row(0), new_coords.row(1), length, angle, rng,
+                uniform_dist
+            );
+            found_collision = collision2(new_atom);  
+        }
+        new_coords.row(2) = new_atom; 
+        new_config.appendAtomToTail(new_atom); 
+
+        // Add the remaining atoms ...
+        int curr_idx = 3;
+        int n_backtracks = 0;  
+        while (curr_idx < K)
+        {
+            Matrix<T, 3, 1> r1 = new_coords.row(curr_idx - 3); 
+            Matrix<T, 3, 1> r2 = new_coords.row(curr_idx - 2); 
+            Matrix<T, 3, 1> r3 = new_coords.row(curr_idx - 1); 
+
+            // Keep generating a new atom until no collision is detected or 
+            // the maximum number of iterations is reached  
+            int n_tries = 0;
+            found_collision = true; 
+            while (found_collision && n_tries < max_tries_per_atom)
+            { 
+                length = sampleFene<T>(
+                    lj_params["eps"], lj_params["sigma"], fene_params["K"],
+                    fene_params["R0"], new_config.kT, rng, uniform_dist, 50 
+                );
+                T angle = sample_angle(rng);
+                T dihedral = sampleDihedralHarmonic<T>(
+                    dihedral_params["K"], new_config.kT, rng, uniform_dist
+                );
+                new_atom = generateNextAtomDihedral<T>(
+                    r1, r2, r3, length, angle, dihedral, rng, uniform_dist 
+                );
+                found_collision = collision2(new_atom); 
+                n_tries++; 
+            }
+
+            // If the maximum number of iterations has been reached, move onto
+            // the next atom 
+            if (!found_collision)
+            {
+                new_coords.row(curr_idx) = new_atom; 
+                new_config.appendAtomToTail(new_atom);
+                curr_idx++;
+            } 
+            // Otherwise, backtrack to the previous atom unless doing so
+            // encroaches into the first 3 atoms 
+            else if (curr_idx > 3) 
+            {
+                new_config.popAtomFromTail(); 
+                curr_idx--; 
+                n_backtracks++;  
+            }
+            else
+            {
+                throw std::runtime_error(
+                    "Sampling procedure backtracked into first 3 atoms; try "
+                    "sampling more positions per atom"
+                ); 
+            }
+
+            // If we have exceeded the maximum number of backtracks, raise 
+            // an exception 
+            if (n_backtracks > max_n_backtracks)
+            {
+                throw std::runtime_error(
+                    "Sampling procedure exceeded maximum number of backtracks; try "
+                    "sampling more positions per atom"
+                );
+            } 
+        }
+        
+        // ... then test that the new K-mer does not collide with every K-mer 
+        // generated thus far 
+        new_coords = new_config.getSegment(0, K); 
+        bool collect_config = true;
+        for (int j = 0; j < K; ++j)
+        {
+            if (collision(new_coords.row(j)))
+            {
+                collect_config = false; 
+                break;
+            } 
+        }
+
+        // If so, collect that K-mer 
+        if (collect_config)
+        {
+            coords_all.conservativeResize((n_collected + 1) * K, 3);
+            coords_all(Eigen::seqN(n_collected * K, K), Eigen::all) = new_coords;
+            n_collected++; 
+            n_tries_per_kmer = 0; 
+            if (verbose) 
+                std::cout << "... generated chain " << n_collected - 1 << std::endl;  
+        }
+        else 
+        {
+            n_tries_per_kmer++; 
+        }
+    }
+
+    // If the desired number of K-mers could not be generated, raise an
+    // exception
+    if (n_collected < M)
+    {
+        throw std::runtime_error(
+            "Sampling procedure exceeded maximum number of polymer generation "
+            "attempts"
+        );
+    }
+
+    // Generate the polymer melt 
+    std::vector<Matrix<T, Dynamic, 3> > coords_all_vec;
+    for (int i = 0; i < M; ++i) 
+        coords_all_vec.push_back(coords_all(Eigen::seqN(i * K, K), Eigen::all)); 
+    PolymerMeltConfiguration<T> melt_config(M, coords_all_vec, units, temp); 
 
     return melt_config;  
 }
