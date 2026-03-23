@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/18/2026
+ *     3/23/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -585,18 +585,29 @@ T sampleAngleCosine(const T K, const T theta0, const T kT,
                     boost::random::mt19937& rng,
                     boost::random::uniform_01<>& uniform_dist)
 {
-    // Run the rejection sampling procedure ... 
-    T theta = theta0; 
-    T kappa = K / kT;
-    bool accept = false; 
-    while (!accept)
+    // If K == 0, then simply sample with probability proportional to sin(theta)
+    //
+    // This can be done by sampling from [-1, 1] and taking arccos of that value
+    if (K == 0)
     {
-        // Try sampling the next value from the Boltzmann distribution
-        // (minus the Jacobian) 
-        theta = vonMises<T>(theta0, kappa, rng, uniform_dist);
+        T u = -1 + 2 * uniform_dist(rng);
+        return acosSafe<T>(u);  
+    }
+    // Otherwise, run the rejection sampling procedure ...
+    else
+    { 
+        T theta = theta0; 
+        T kappa = K / kT;
+        bool accept = false; 
+        while (!accept)
+        {
+            // Try sampling the next value from the Boltzmann distribution
+            // (minus the Jacobian) 
+            theta = vonMises<T>(theta0, kappa, rng, uniform_dist);
 
-        // Accept with probability sin(abs(theta))
-        accept = (uniform_dist(rng) < sin(abs(theta))); 
+            // Accept with probability sin(abs(theta))
+            accept = (uniform_dist(rng) < sin(abs(theta))); 
+        }
     }
 
     return abs(theta);  
@@ -694,8 +705,18 @@ T sampleDihedralHarmonic(const T K, const T kT, boost::random::mt19937& rng,
     //
     // which is proportional to the von Mises probability with mean \pi and 
     // concentration K / kT
-    T kappa = K / kT;
-    return vonMises<T>(boost::math::constants::pi<T>(), kappa, rng, uniform_dist); 
+    //
+    // If K is zero, then simply return a uniformly distributed value between
+    // -\pi and \pi
+    if (K == 0)
+    {
+        return -boost::math::constants::pi<T>() + boost::math::constants::two_pi<T>() * uniform_dist(rng); 
+    }
+    else 
+    {
+        T kappa = K / kT;
+        return vonMises<T>(boost::math::constants::pi<T>(), kappa, rng, uniform_dist);
+    } 
 }
 
 /**
