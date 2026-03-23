@@ -608,9 +608,8 @@ T sampleAngleCosine(const T K, const T theta0, const T kT,
             // Accept with probability sin(abs(theta))
             accept = (uniform_dist(rng) < sin(abs(theta))); 
         }
+        return abs(theta);  
     }
-
-    return abs(theta);  
 }
 
 /**
