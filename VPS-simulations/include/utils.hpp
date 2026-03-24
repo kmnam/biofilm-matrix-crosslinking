@@ -486,12 +486,200 @@ T dihedralHarmonic(const T phi, const T K, const int d, const int n)
 }
 
 /**
+ * Generate an empirical CDF corresponding to the FENE potential.
+ *
+ * This function generates a CDF corresponding to the probability distribution
+ * that arises upon assigning to each bond length r the weight, 
+ *
+ * r^2 \exp{\{ -E / kT \}}, 
+ * 
+ * where E is the corresponding FENE energy plus the corresponding Weeks-
+ * Chandler-Andersen energy. 
+ *
+ * @param eps Lennard-Jones (Weeks-Chandler-Andersen) energy parameter. 
+ * @param sigma Lennard-Jones (Weeks-Chandler-Andersen) length-scale parameter. 
+ * @param K FENE energy parameter. 
+ * @param R0 Maximum bond length.
+ * @param kT Boltzmann's constant times temperature (in the appropriate units).
+ * @param n_bins Number of bins.
+ * @param delta Bins range from delta to R0 - delta. 
+ */
+template <typename T>
+Matrix<T, Dynamic, 2> getFeneCDF(const T eps, const T sigma, const T K, 
+                                 const T R0, const T kT, const int n_bins,
+                                 const T delta = 1e-6)
+{
+    // Evaluate the FENE density at each point along the range 
+    Matrix<T, Dynamic, 1> bins = Matrix<T, Dynamic, 1>::LinSpaced(
+        n_bins + 1, delta, R0 - delta
+    );
+    Matrix<T, Dynamic, 1> density = Matrix<T, Dynamic, 1>::Zero(n_bins + 1);
+    for (int i = 0; i < n_bins + 1; ++i)
+    {
+        // The density is proportional to r^2 * \exp{\{ -E / kT \}}, where 
+        // E is the total energy (FENE and WCA)
+        T energy = lj<T>(bins(i), eps, sigma, true) + bondFene<T>(bins(i), K, R0);
+        density(i) = bins(i) * bins(i) * exp(-energy / kT); 
+    }
+
+    // Normalize the density by its integral 
+    T total = density.sum(); 
+    density /= total;
+
+    // Get the CDF 
+    Matrix<T, Dynamic, 2> cdf = Matrix<T, Dynamic, 2>::Zero(n_bins + 1, 2);
+    cdf(0, 0) = bins(0);  
+    for (int i = 1; i < n_bins + 1; ++i)
+    {
+        cdf(i, 0) = bins(i); 
+        cdf(i, 1) = cdf(i - 1, 1) + density(i); 
+    }
+
+    return cdf;  
+}
+
+/**
+ * Identify, via binary search, the index of the nearest value to the given
+ * query, x, in the given array.
+ *
+ * The values are assumed to be distinct and sorted in ascending order.
+ *
+ * @param values Input array.
+ * @param x Query value. 
+ * @returns Index of nearest value to x.  
+ */
+template <typename T>
+int nearestValue(const Ref<const Matrix<T, Dynamic, 1> >& values, const T x)
+{
+    // Quickly check if x is less than the first value or greater than the
+    // last value
+    if (x <= values(0))
+        return 0; 
+    else if (x >= values(values.size() - 1))
+        return values.size() - 1;  
+
+    // Otherwise, do binary search 
+    int low = 0; 
+    int high = values.size() - 1;
+    int nearest_idx = 0;
+    while (low <= high)
+    {
+        int mid = (low + high) / 2;
+
+        // If x falls between values(mid) and values(mid + 1), set mid 
+        // as the nearest index
+        if (values(mid) <= x && x < values(mid + 1))
+        {
+            nearest_idx = mid; 
+            break;
+        }
+        // If x is greater than values(mid + 1), then increase low 
+        else if (x >= values(mid + 1))
+        {
+            low = mid + 1;
+        }
+        // If x is less than values(mid), then decrease high  
+        else
+        {
+            high = mid - 1;
+        }
+    }
+
+    // Note that this loop cannot have exited due to low > high
+    if (low > high)
+        throw std::runtime_error("Unexpected error during binary search");
+
+    // Check which of the two endpoints of the interval is nearest
+    if (x - values(nearest_idx) < values(nearest_idx + 1) - x)
+        return nearest_idx; 
+    else 
+        return nearest_idx + 1;  
+}
+
+/**
+ * Sample a bond length according to the FENE potential.
+ *
+ * This function samples from the probability distribution that arises upon
+ * assigning to each bond length r the weight
+ *
+ * r^2 \exp{\{ -E / kT \}}, 
+ * 
+ * where E is the corresponding FENE energy plus the corresponding Weeks-
+ * Chandler-Andersen energy.
+ *
+ * This function uses a pre-computed CDF for this distribution.  
+ *
+ * @param rng Random number generator.
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param cdf Pre-computed CDF for this distribution. 
+ * @returns Sampled bond length. 
+ */
+template <typename T>
+T sampleFene(boost::random::mt19937& rng, boost::random::uniform_01<>& uniform_dist,
+             const Ref<const Matrix<T, Dynamic, 2> >& cdf)
+{
+    // Sample a value from [0, 1], then get the pre-image of that value via
+    // the CDF
+    T u = uniform_dist(rng); 
+    int idx = nearestValue<T>(cdf.col(1), u);
+
+    // If the chosen input value is exactly u, return the chosen CDF value
+    if (cdf(idx, 0) == u)
+    {
+        return cdf(idx, 1); 
+    }
+    // If the chosen input value is smaller than u ... 
+    else if (cdf(idx, 0) < u)
+    {
+        // If the chosen value is the very last value in the array, then 
+        // return it 
+        if (idx == cdf.rows() - 1)
+        {
+            return cdf(idx, 1);
+        } 
+        // Otherwise, interpolate between the chosen value and the one above it
+        else
+        { 
+            T x1 = cdf(idx, 0); 
+            T x2 = cdf(idx + 1, 0); 
+            T y1 = cdf(idx, 1); 
+            T y2 = cdf(idx + 1, 1);
+            return y1 + (y2 - y1) * (u - x1) / (x2 - x1); 
+        } 
+    }
+    else    // Otherwise ...  
+    {
+        // If the chosen value is the very first value in the array, then
+        // return it 
+        if (idx == 0)
+        {
+            return cdf(idx, 1); 
+        }
+        // Otherwise, interpolate between the chosen value and the one below it
+        else 
+        {
+            T x1 = cdf(idx - 1, 0); 
+            T x2 = cdf(idx, 0); 
+            T y1 = cdf(idx - 1, 1); 
+            T y2 = cdf(idx, 1); 
+            return y1 + (y2 - y1) * (u - x1) / (x2 - x1); 
+        } 
+    } 
+}
+
+/**
  * Sample a bond length according to the FENE potential. 
  *
  * This function samples from the probability distribution that arises upon
- * assigning to each bond length r the weight r^2 \exp{\{ -E / kT \}}, 
- * where E is the corresponding FENE energy plus the corresponding 
- * Weeks-Chandler-Andersen energy. 
+ * assigning to each bond length r the weight
+ *
+ * r^2 \exp{\{ -E / kT \}}, 
+ * 
+ * where E is the corresponding FENE energy plus the corresponding Weeks-
+ * Chandler-Andersen energy.
+ *
+ * This function uses a Metropolis-Hastings-like strategy to perform this
+ * sampling. 
  *
  * @param eps Lennard-Jones (Weeks-Chandler-Andersen) energy parameter. 
  * @param sigma Lennard-Jones (Weeks-Chandler-Andersen) length-scale parameter. 
