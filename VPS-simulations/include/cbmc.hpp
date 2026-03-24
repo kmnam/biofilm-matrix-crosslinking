@@ -435,7 +435,10 @@ class PolymerCBMCSampler
 
         // Random number generator and standard uniform distribution instances 
         boost::random::mt19937 rng; 
-        boost::random::uniform_01<> uniform_dist;  
+        boost::random::uniform_01<> uniform_dist; 
+
+        // Bond length CDF
+        Matrix<T, Dynamic, 2> bond_length_cdf;  
 
         /**
          * Internal function for updating atomic coordinates after each 
@@ -457,7 +460,8 @@ class PolymerCBMCSampler
                            const AngleMode angle_mode, 
                            std::unordered_map<std::string, T>& angle_params, 
                            std::unordered_map<std::string, T>& dihedral_params, 
-                           boost::random::mt19937& rng)
+                           boost::random::mt19937& rng, 
+                           const int n_bins = 10000)
         {
             this->config = config;
             this->length = this->config.getLength();
@@ -468,7 +472,41 @@ class PolymerCBMCSampler
             this->angle_mode = angle_mode; 
             this->angle_params = angle_params; 
             this->dihedral_params = dihedral_params;
-            this->rng = rng;  
+            this->rng = rng;
+            this->bond_length_cdf = getFeneCDF<T>(
+                this->lj_params.at("eps"), 
+                this->lj_params.at("sigma"), 
+                this->fene_params.at("K"), 
+                this->fene_params.at("R0"), 
+                this->config.kT,
+                n_bins 
+            );   
+        }
+
+        /**
+         * Constructor with pre-computed FENE bond length density.
+         */
+        PolymerCBMCSampler(PolymerConfiguration<T>& config,
+                           std::unordered_map<std::string, T>& lj_params, 
+                           const T neighbor_threshold, 
+                           std::unordered_map<std::string, T>& fene_params, 
+                           const AngleMode angle_mode, 
+                           std::unordered_map<std::string, T>& angle_params, 
+                           std::unordered_map<std::string, T>& dihedral_params, 
+                           boost::random::mt19937& rng, 
+                           const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf)
+        {
+            this->config = config;
+            this->length = this->config.getLength();
+            this->r = this->config.getSegment(0, this->length); 
+            this->lj_params = lj_params; 
+            this->neighbor_threshold = neighbor_threshold;
+            this->fene_params = fene_params; 
+            this->angle_mode = angle_mode; 
+            this->angle_params = angle_params; 
+            this->dihedral_params = dihedral_params;
+            this->rng = rng;
+            this->bond_length_cdf = bond_length_cdf; 
         }
 
         /**
@@ -567,9 +605,7 @@ class PolymerCBMCSampler
             for (int i = 0; i < n_candidates; ++i)
             {
                 lengths(i) = sampleFene<T>(
-                    this->lj_params.at("eps"), this->lj_params.at("sigma"),
-                    this->fene_params.at("K"), this->fene_params.at("R0"),
-                    this->config.kT, this->rng, this->uniform_dist, 50 
+                    this->rng, this->uniform_dist, this->bond_length_cdf 
                 );
                 angles(i) = sample_angle();
                 dihedrals(i) = sampleDihedralHarmonic<T>(
@@ -684,9 +720,7 @@ class PolymerCBMCSampler
             for (int i = 0; i < n_candidates; ++i)
             {
                 lengths(i) = sampleFene<T>(
-                    this->lj_params.at("eps"), this->lj_params.at("sigma"),
-                    this->fene_params.at("K"), this->fene_params.at("R0"),
-                    config_.kT, this->rng, this->uniform_dist, 50 
+                    this->rng, this->uniform_dist, this->bond_length_cdf 
                 );
                 angles(i) = sample_angle();
                 dihedrals(i) = sampleDihedralHarmonic<T>(
@@ -801,9 +835,7 @@ class PolymerCBMCSampler
                 for (int j = 0; j < n_reptate; ++j)
                 {
                     lengths(i, j) = sampleFene<T>(
-                        this->lj_params.at("eps"), this->lj_params.at("sigma"),
-                        this->fene_params.at("K"), this->fene_params.at("R0"),
-                        this->config.kT, this->rng, this->uniform_dist, 50 
+                        this->rng, this->uniform_dist, this->bond_length_cdf 
                     );
                     angles(i, j) = sample_angle();
                     dihedrals(i, j) = sampleDihedralHarmonic<T>(
@@ -988,9 +1020,7 @@ class PolymerCBMCSampler
                 for (int j = 0; j < n_reptate; ++j)
                 {
                     lengths(i, j) = sampleFene<T>(
-                        this->lj_params.at("eps"), this->lj_params.at("sigma"),
-                        this->fene_params.at("K"), this->fene_params.at("R0"),
-                        this->config.kT, this->rng, this->uniform_dist, 50 
+                        this->rng, this->uniform_dist, this->bond_length_cdf 
                     );
                     angles(i, j) = sample_angle();
                     dihedrals(i, j) = sampleDihedralHarmonic<T>(
@@ -1175,9 +1205,7 @@ class PolymerCBMCSampler
                 for (int j = 0; j < segment_length; ++j)
                 {
                     lengths(i, j) = sampleFene<T>(
-                        this->lj_params.at("eps"), this->lj_params.at("sigma"),
-                        this->fene_params.at("K"), this->fene_params.at("R0"),
-                        this->config.kT, this->rng, this->uniform_dist, 50 
+                        this->rng, this->uniform_dist, this->bond_length_cdf
                     );
                     angles(i, j) = sample_angle();
                     dihedrals(i, j) = sampleDihedralHarmonic<T>(
@@ -1359,9 +1387,7 @@ class PolymerCBMCSampler
                 for (int j = 0; j < segment_length; ++j)
                 {
                     lengths(i, j) = sampleFene<T>(
-                        this->lj_params.at("eps"), this->lj_params.at("sigma"),
-                        this->fene_params.at("K"), this->fene_params.at("R0"),
-                        config_.kT, this->rng, this->uniform_dist, 50 
+                        this->rng, this->uniform_dist, this->bond_length_cdf 
                     );
                     angles(i, j) = sample_angle();
                     dihedrals(i, j) = sampleDihedralHarmonic<T>(
