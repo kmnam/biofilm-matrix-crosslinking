@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/23/2026
+ *     3/24/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -514,17 +514,26 @@ Matrix<T, Dynamic, 2> getFeneCDF(const T eps, const T sigma, const T K,
         n_bins + 1, delta, R0 - delta
     );
     Matrix<T, Dynamic, 1> density = Matrix<T, Dynamic, 1>::Zero(n_bins + 1);
+    Matrix<T, Dynamic, 1> log_density = Matrix<T, Dynamic, 1>::Zero(n_bins + 1); 
     for (int i = 0; i < n_bins + 1; ++i)
     {
         // The density is proportional to r^2 * \exp{\{ -E / kT \}}, where 
         // E is the total energy (FENE and WCA)
+        //
+        // Compute the log-density to avoid overflow
         T energy = lj<T>(bins(i), eps, sigma, true) + bondFene<T>(bins(i), K, R0);
-        density(i) = bins(i) * bins(i) * exp(-energy / kT); 
+        log_density(i) = 2 * log(bins(i)) - energy / kT; 
     }
 
-    // Normalize the density by its integral 
-    T total = density.sum(); 
-    density /= total;
+    // Shift then exponentiate 
+    T max_log_density = log_density.maxCoeff(); 
+    density = (log_density.array() - max_log_density).exp().matrix();
+
+    // Normalize the density
+    T integral = 0; 
+    for (int i = 1; i < n_bins + 1; ++i)
+        integral += ((bins(i) - bins(i - 1)) * density(i));
+    density /= integral;  
 
     // Get the CDF 
     Matrix<T, Dynamic, 2> cdf = Matrix<T, Dynamic, 2>::Zero(n_bins + 1, 2);
@@ -532,7 +541,7 @@ Matrix<T, Dynamic, 2> getFeneCDF(const T eps, const T sigma, const T K,
     for (int i = 1; i < n_bins + 1; ++i)
     {
         cdf(i, 0) = bins(i); 
-        cdf(i, 1) = cdf(i - 1, 1) + density(i); 
+        cdf(i, 1) = cdf(i - 1, 1) + (bins(i) - bins(i - 1)) * density(i); 
     }
 
     return cdf;  
@@ -620,30 +629,33 @@ T sampleFene(boost::random::mt19937& rng, boost::random::uniform_01<>& uniform_d
 {
     // Sample a value from [0, 1], then get the pre-image of that value via
     // the CDF
+    //
+    // Column 0 contains the bin edges (bond lengths), column 1 contains the CDF
     T u = uniform_dist(rng); 
     int idx = nearestValue<T>(cdf.col(1), u);
 
     // If the chosen input value is exactly u, return the chosen CDF value
-    if (cdf(idx, 0) == u)
+    if (cdf(idx, 1) == u)
     {
-        return cdf(idx, 1); 
+        return cdf(idx, 0); 
     }
     // If the chosen input value is smaller than u ... 
-    else if (cdf(idx, 0) < u)
+    else if (cdf(idx, 1) < u)
     {
         // If the chosen value is the very last value in the array, then 
         // return it 
         if (idx == cdf.rows() - 1)
         {
-            return cdf(idx, 1);
+            return cdf(idx, 0);
         } 
         // Otherwise, interpolate between the chosen value and the one above it
         else
-        { 
-            T x1 = cdf(idx, 0); 
-            T x2 = cdf(idx + 1, 0); 
-            T y1 = cdf(idx, 1); 
-            T y2 = cdf(idx + 1, 1);
+        {
+            // Map from CDF value to bond length  
+            T x1 = cdf(idx, 1); 
+            T x2 = cdf(idx + 1, 1); 
+            T y1 = cdf(idx, 0); 
+            T y2 = cdf(idx + 1, 0);
             return y1 + (y2 - y1) * (u - x1) / (x2 - x1); 
         } 
     }
@@ -653,15 +665,16 @@ T sampleFene(boost::random::mt19937& rng, boost::random::uniform_01<>& uniform_d
         // return it 
         if (idx == 0)
         {
-            return cdf(idx, 1); 
+            return cdf(idx, 0); 
         }
         // Otherwise, interpolate between the chosen value and the one below it
         else 
         {
-            T x1 = cdf(idx - 1, 0); 
-            T x2 = cdf(idx, 0); 
-            T y1 = cdf(idx - 1, 1); 
-            T y2 = cdf(idx, 1); 
+            // Map from CDF value to bond length  
+            T x1 = cdf(idx - 1, 1); 
+            T x2 = cdf(idx, 1); 
+            T y1 = cdf(idx - 1, 0); 
+            T y2 = cdf(idx, 0); 
             return y1 + (y2 - y1) * (u - x1) / (x2 - x1); 
         } 
     } 
