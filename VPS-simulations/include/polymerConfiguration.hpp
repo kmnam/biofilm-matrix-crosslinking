@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/2/2026
+ *     3/24/2026
  */
 
 #ifndef POLYMER_CONFIGURATION_HPP
