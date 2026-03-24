@@ -2091,6 +2091,7 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
                                      const int max_n_backtracks,  
                                      boost::random::mt19937& rng,
                                      boost::random::uniform_01<>& uniform_dist,
+                                     const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf, 
                                      const Units units = Units::NANO,
                                      const T temp = 300)
 {
@@ -2128,10 +2129,7 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
     }
 
     // Sample an initial bond length 
-    T length = sampleFene<T>(
-        lj_params["eps"], lj_params["sigma"], fene_params["K"],
-        fene_params["R0"], kT, rng, uniform_dist, 50 
-    );
+    T length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
     T angle, dihedral;  
 
     // Generate a PolymerConfiguration<T> instance with the first 2 atoms 
@@ -2155,10 +2153,7 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
     bool found_collision = true;  
     while (found_collision)
     {
-        length = sampleFene<T>(
-            lj_params["eps"], lj_params["sigma"], fene_params["K"],
-            fene_params["R0"], config.kT, rng, uniform_dist, 50 
-        );
+        length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
         angle = sample_angle(rng); 
         new_atom = generateNextAtom<T>(
             coords.row(0), coords.row(1), length, angle, rng, uniform_dist
@@ -2183,10 +2178,7 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
         found_collision = true; 
         while (found_collision && n_tries < max_tries_per_atom)
         { 
-            length = sampleFene<T>(
-                lj_params["eps"], lj_params["sigma"], fene_params["K"],
-                fene_params["R0"], config.kT, rng, uniform_dist, 50 
-            );
+            length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
             angle = sample_angle(rng);
             dihedral = sampleDihedralHarmonic<T>(
                 dihedral_params["K"], config.kT, rng, uniform_dist
@@ -2278,6 +2270,7 @@ PolymerConfiguration<T> generateKMer(const int K,
                                      const int max_n_backtracks,  
                                      boost::random::mt19937& rng,
                                      boost::random::uniform_01<>& uniform_dist,
+                                     const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf, 
                                      const Units units = Units::NANO,
                                      const T temp = 300)
 {
@@ -2315,10 +2308,7 @@ PolymerConfiguration<T> generateKMer(const int K,
     }
 
     // Sample an initial bond length 
-    T length = sampleFene<T>(
-        lj_params["eps"], lj_params["sigma"], fene_params["K"],
-        fene_params["R0"], kT, rng, uniform_dist, 50 
-    );
+    T length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
     T angle, dihedral;  
 
     // Generate a PolymerConfiguration<T> instance with the first 2 atoms 
@@ -2342,10 +2332,7 @@ PolymerConfiguration<T> generateKMer(const int K,
     bool found_collision = true;  
     while (found_collision)
     {
-        length = sampleFene<T>(
-            lj_params["eps"], lj_params["sigma"], fene_params["K"],
-            fene_params["R0"], config.kT, rng, uniform_dist, 50 
-        );
+        length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
         angle = sample_angle(rng); 
         new_atom = generateNextAtom<T>(
             coords.row(0), coords.row(1), length, angle, rng, uniform_dist
@@ -2370,10 +2357,7 @@ PolymerConfiguration<T> generateKMer(const int K,
         found_collision = true; 
         while (found_collision && n_tries < max_tries_per_atom)
         { 
-            length = sampleFene<T>(
-                lj_params["eps"], lj_params["sigma"], fene_params["K"],
-                fene_params["R0"], config.kT, rng, uniform_dist, 50 
-            );
+            length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
             angle = sample_angle(rng);
             dihedral = sampleDihedralHarmonic<T>(
                 dihedral_params["K"], config.kT, rng, uniform_dist
