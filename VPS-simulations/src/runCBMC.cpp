@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/16/2026
+ *     3/24/2026
  */
 
 #include <iostream>
@@ -152,10 +152,14 @@ int main(int argc, char** argv)
     boost::random::uniform_01<> uniform_dist;  
 
     // Generate an initial configuration
+    Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
+        lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
+        kT, 10000     // TODO Make editable
+    ); 
     PolymerConfiguration<double> config = generateKMer<double>(
         length, lj_params, fene_params, angle_mode, angle_params,
         dihedral_params, r0, collision_threshold, max_tries_per_atom, 
-        max_n_backtracks, rng, uniform_dist, Units::NANO, 300
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf, Units::NANO, 300
     );
 
     // Initialize output file 
@@ -166,7 +170,7 @@ int main(int argc, char** argv)
     const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
     PolymerCBMCSampler<double> sampler(
         config, lj_params, neighbor_threshold, fene_params, angle_mode, 
-        angle_params, dihedral_params, rng
+        angle_params, dihedral_params, rng, bond_length_cdf
     );
 
     // Determine if a prior run is to be continued
