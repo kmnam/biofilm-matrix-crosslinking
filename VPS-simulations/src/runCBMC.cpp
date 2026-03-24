@@ -62,6 +62,7 @@ int main(int argc, char** argv)
     const double collision_threshold = json_data["init_collision_threshold"].as_double(); 
     const int max_tries_per_atom = json_data["init_max_tries_per_atom"].as_int64();
     const int max_n_backtracks = json_data["init_max_n_backtracks"].as_int64();
+    const int n_bins = json_data["n_bins_fene_cdf"].as_int64(); 
     const int n_candidates = json_data["n_candidates"].as_int64(); 
     const int n_target = json_data["n_target_configs"].as_int64(); 
     const int n_burnin = json_data["n_burnin"].as_int64(); 
@@ -154,7 +155,7 @@ int main(int argc, char** argv)
     // Generate an initial configuration
     Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
         lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
-        kT, 10000     // TODO Make editable
+        kT, n_bins
     ); 
     PolymerConfiguration<double> config = generateKMer<double>(
         length, lj_params, fene_params, angle_mode, angle_params,
