@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/24/2026
+ *     3/25/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -42,7 +42,9 @@ using boost::multiprecision::acos;
 using std::atan2; 
 using boost::multiprecision::atan2;
 using std::fmod; 
-using boost::multiprecision::fmod; 
+using boost::multiprecision::fmod;
+using std::round; 
+using boost::multiprecision::round; 
 
 using namespace Eigen;
 
@@ -143,6 +145,55 @@ Matrix<T, 3, 3> getRotation(const Ref<const Matrix<T, 3, 1> >& u, const T theta)
            c1 + u(2) * u(2) * c2;
 
     return rot;  
+}
+
+/**
+ * Get the distance vector between the two given points, under periodic
+ * boundary conditions. 
+ *
+ * @param p First point. 
+ * @param q Second point. 
+ * @param xlen Length of periodic box in x. 
+ * @param ylen Length of periodic box in y. 
+ * @param zlen Length of periodic box in z. 
+ * @returns Periodic distance vector from p to q.  
+ */
+template <typename T>
+Matrix<T, 3, 1> periodicDistVec(const Ref<const Matrix<T, 3, 1> >& p, 
+                                const Ref<const Matrix<T, 3, 1> >& q, 
+                                const T xlen, const T ylen, const T zlen)
+{
+    T dx = p(0) - q(0); 
+    T dy = p(1) - q(1); 
+    T dz = p(2) - q(2); 
+    Matrix<T, 3, 1> dist; 
+    dist << dx - xlen * round(dx / xlen), 
+            dy - ylen * round(dy / ylen), 
+            dz - zlen * round(dz / zlen);
+
+    return dist;  
+}
+
+/**
+ * Map the given point into the fundamental cell (assumed to be centered at
+ * the origin) under periodic boundary conditions. 
+ *
+ * @param p Input point. 
+ * @param xlen Length of periodic box in x. 
+ * @param ylen Length of periodic box in y. 
+ * @param zlen Length of periodic box in z. 
+ * @returns Mapped point.  
+ */
+template <typename T>
+Matrix<T, 3, 1> mapToFundamentalCell(const Ref<const Matrix<T, 3, 1> >& p, 
+                                     const T xlen, const T ylen, const T zlen)
+{
+    Matrix<T, 3, 1> p_mapped; 
+    p_mapped << p(0) - xlen * floor((p(0) + 0.5 * xlen) / xlen),
+                p(1) - ylen * floor((p(1) + 0.5 * ylen) / ylen), 
+                p(2) - zlen * floor((p(2) + 0.5 * zlen) / zlen);
+
+    return p_mapped;  
 }
 
 /**
