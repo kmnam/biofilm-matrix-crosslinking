@@ -175,23 +175,27 @@ Matrix<T, 3, 1> periodicDistVec(const Ref<const Matrix<T, 3, 1> >& p,
 }
 
 /**
- * Map the given point into the fundamental cell (assumed to be centered at
- * the origin) under periodic boundary conditions. 
+ * Map the given point into the given fundamental cell under periodic boundary
+ * conditions. 
  *
  * @param p Input point. 
  * @param xlen Length of periodic box in x. 
  * @param ylen Length of periodic box in y. 
- * @param zlen Length of periodic box in z. 
+ * @param zlen Length of periodic box in z.
+ * @param xmin Lowest x-coordinate of periodic box. 
+ * @param ymin Lowest y-coordinate of periodic box. 
+ * @param zmin Lowest z-coordinate of periodic box. 
  * @returns Mapped point.  
  */
 template <typename T>
 Matrix<T, 3, 1> mapToFundamentalCell(const Ref<const Matrix<T, 3, 1> >& p, 
-                                     const T xlen, const T ylen, const T zlen)
+                                     const T xlen, const T ylen, const T zlen,
+                                     const T xmin, const T ymin, const T zmin)
 {
     Matrix<T, 3, 1> p_mapped; 
-    p_mapped << p(0) - xlen * floor((p(0) + 0.5 * xlen) / xlen),
-                p(1) - ylen * floor((p(1) + 0.5 * ylen) / ylen), 
-                p(2) - zlen * floor((p(2) + 0.5 * zlen) / zlen);
+    p_mapped << p(0) - xlen * floor((p(0) - xmin) / xlen),
+                p(1) - ylen * floor((p(1) - ymin) / ylen), 
+                p(2) - zlen * floor((p(2) - zmin) / zlen);
 
     return p_mapped;  
 }
