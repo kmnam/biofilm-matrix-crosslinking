@@ -699,6 +699,27 @@ class PolymerConfiguration
         }
 
         /**
+         * Get the minimum distance between the given atom and the polymer
+         * under periodic boundary conditions.  
+         *
+         * @param p Input atomic coordinates.
+         * @param xlen Length of periodic box in x. 
+         * @param ylen Length of periodic box in y. 
+         * @param zlen Length of periodic box in z. 
+         * @returns Minimum distance between the atom and the polymer, assuming
+         *          periodic boundary conditions. 
+         */
+        T getMinDistPeriodic(const Ref<const Matrix<T, 3, 1> >& p, const T xlen, 
+                             const T ylen, const T zlen) const 
+        {
+            Matrix<T, Dynamic, 1> periodic_dists(this->length);
+            for (int i = 0; i < this->length; ++i)
+                periodic_dists(i) = periodicDistVec<T>(p, this->r.row(i), xlen, ylen, zlen).norm(); 
+
+            return periodic_dists.minCoeff(); 
+        }
+
+        /**
          * Get the center of mass of the polymer, assuming that every atom 
          * has the same mass. 
          *
@@ -2074,7 +2095,8 @@ std::tuple<PolymerConfiguration<T>,
  *                           before backtracking. 
  * @param max_n_backtracks Maximum number of backtracks. 
  * @param rng Random number generator. 
- * @param uniform_dist Pre-defined instance of standard uniform distribution. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param bond_length_cdf Pre-defined CDF for bond length distribution.  
  * @param units Units for keeping track of Boltzmann's constant. 
  * @param temp Temperature (in Kelvin). 
  * @returns Resulting polymer configuration.  
@@ -2252,7 +2274,8 @@ PolymerConfiguration<T> generateKMer(std::unordered_map<std::string, T>& lj_para
  *                           before backtracking. 
  * @param max_n_backtracks Maximum number of backtracks. 
  * @param rng Random number generator. 
- * @param uniform_dist Pre-defined instance of standard uniform distribution. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param bond_length_cdf Pre-defined CDF for bond length distribution.  
  * @param units Units for keeping track of Boltzmann's constant. 
  * @param temp Temperature (in Kelvin). 
  * @returns Resulting polymer configuration.  
