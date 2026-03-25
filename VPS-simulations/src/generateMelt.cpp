@@ -63,6 +63,7 @@ int main(int argc, char** argv)
     const int max_tries_per_kmer = json_data["init_max_tries_per_kmer"].as_int64();
     const int max_tries_per_seed = json_data["init_max_tries_per_seed"].as_int64();  
     const int max_n_backtracks = json_data["init_max_n_backtracks"].as_int64();
+    const int n_bins = json_data["n_bins_fene_cdf"].as_int64(); 
     const double xmax = json_data["domain_xmax"].as_double(); 
     const double ymax = json_data["domain_ymax"].as_double(); 
     const double zmax = json_data["domain_zmax"].as_double();
@@ -76,7 +77,7 @@ int main(int argc, char** argv)
     // Pre-compute FENE bond length CDF 
     Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
         lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
-        kT, 10000    // TODO Add user input for number of bins
+        kT, n_bins
     ); 
 
     // Generate an initial configuration
