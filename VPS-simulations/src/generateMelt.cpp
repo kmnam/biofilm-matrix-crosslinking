@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/18/2026
+ *     3/25/2026
  */
 
 #include <iostream>
@@ -71,7 +71,13 @@ int main(int argc, char** argv)
     // Initialize random number generator 
     const int seed = std::stoi(argv[3]);
     boost::random::mt19937 rng(seed); 
-    boost::random::uniform_01<> uniform_dist;  
+    boost::random::uniform_01<> uniform_dist; 
+
+    // Pre-compute FENE bond length CDF 
+    Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
+        lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
+        kT, 10000    // TODO Add user input for number of bins
+    ); 
 
     // Generate an initial configuration
     const int n_chains = json_data["n_chains"].as_int64();
@@ -81,7 +87,7 @@ int main(int argc, char** argv)
         length, n_chains, lj_params, fene_params, angle_mode, angle_params,
         dihedral_params, collision_threshold, max_tries_per_atom, 
         max_tries_per_kmer, max_tries_per_seed, max_n_backtracks, rng,
-        uniform_dist, xmax, ymax, zmax, Units::NANO, 300, true
+        uniform_dist, xmax, ymax, zmax, bond_length_cdf, Units::NANO, 300, true
     );
 
     // Write the melt configuration to file
@@ -89,8 +95,8 @@ int main(int argc, char** argv)
     ss << "Melt of " << n_chains << " polymers of length " << length; 
     std::string header = ss.str(); 
     melt_config.writeLammps(
-        argv[2], lj_params, fene_params, angle_mode, angle_params, dihedral_params,
-        header, -xmax, xmax, -ymax, ymax, -zmax, zmax, mass
+        argv[2], lj_params, fene_params, angle_mode, angle_params,
+        dihedral_params, header, -xmax, xmax, -ymax, ymax, -zmax, zmax, mass
     ); 
 
     return 0; 
