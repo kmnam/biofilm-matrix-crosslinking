@@ -1232,91 +1232,14 @@ class PolymerConfiguration
             // The direction does not matter for this calculation 
             for (int i = 1; i < n - 1; ++i)    // Omit atoms 0 and (n - 1)
             {
-                T dij = (this->r.row(i) - r_new.transpose()).norm();
-                if (dij < neighbor_threshold)
+                T dist = (this->r.row(i) - r_new.transpose()).norm();
+                if (dist < neighbor_threshold)
                     energy += lj<T>(
-                        dij, lj_params["eps"], lj_params["sigma"], true
+                        dist, lj_params["eps"], lj_params["sigma"], true
                     ); 
             }
 
             return energy; 
-        }
-
-        /**
-         * Get the *non-bonded* energy difference between the current polymer
-         * configuration and the configuration that would arise from reptating
-         * the polymer in the given direction by adding the given atom.
-         *
-         * This function omits the non-bonded energetic contribution between
-         * the old/new terminal atoms and their bonded neighbors.  
-         *
-         * @param direction Reptation direction. 
-         * @param r_new Position of new atom. 
-         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
-         * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
-         * @returns Nonbonded energy difference due to reptation. 
-         */
-        T getReptationNonbondedEnergyDifference(const ReptationDirection direction, 
-                                                const Ref<const Matrix<T, 3, 1> >& r_new,
-                                                std::unordered_map<std::string, T>& lj_params,  
-                                                const T neighbor_threshold) const
-        {
-            const int n = this->length; 
-            T energy_curr = 0; 
-            T energy_new = 0; 
-            if (direction == ReptationDirection::HEAD)
-            {
-                // Get the non-bonded energy contribution from atom (n - 1)
-                // in the current configuration 
-                for (int i = 0; i < n - 2; ++i)    // Omit atom (n - 2)
-                {
-                    T dij = (this->r.row(i) - this->r.row(n - 1)).norm(); 
-                    if (dij < neighbor_threshold)
-                        energy_curr += lj<T>(
-                            dij, lj_params["eps"], lj_params["sigma"], true
-                        ); 
-                }
-
-                // Get the energy contribution that would arise from
-                // introducing the new atom at the head and removing atom 
-                // (n - 1)
-                for (int i = 1; i < n - 1; ++i)    // Omit atoms 0 and (n - 1)
-                {
-                    T dij = (this->r.row(i) - r_new.transpose()).norm();
-                    if (dij < neighbor_threshold)
-                        energy_new += lj<T>(
-                            dij, lj_params["eps"], lj_params["sigma"], true
-                        ); 
-                }
-            }
-            else 
-            {
-                // Get the energy contribution from atom 0 in the current 
-                // configuration 
-                for (int i = 2; i < n; ++i)        // Omit atom 1
-                {
-                    T dij = (this->r.row(i) - this->r.row(0)).norm(); 
-                    if (dij < neighbor_threshold)
-                        energy_curr += lj<T>(
-                            dij, lj_params["eps"], lj_params["sigma"], true
-                        ); 
-                }
-
-                // Get the energy contribution that would arise from
-                // introducing the new atom at the tail and removing atom 0
-                for (int i = 1; i < n - 1; ++i)    // Omit atoms 0 and (n - 1)
-                {
-                    T dij = (this->r.row(i) - r_new.transpose()).norm(); 
-                    if (dij < neighbor_threshold)
-                        energy_new += lj<T>(
-                            dij, lj_params["eps"], lj_params["sigma"], true
-                        ); 
-                }
-            }
-
-            // Return the energy difference 
-            return energy_new - energy_curr; 
         }
 
         /**
@@ -1542,6 +1465,111 @@ class PolymerConfiguration
 
             // Return the energy difference 
             return energy_new - energy_curr;
+        }
+
+        /**
+         * Get the residual (non-bonded) energy of the proposed position for 
+         * the i-th atom (for some i = 0, ..., K - 1) in a multimer (K-atom)
+         * reptation move.
+         *
+         * The positions of the previous atoms, j = 0, ..., i - 1, are also
+         * given. 
+         *
+         * This function calculates the non-bonded energy between the new atom
+         * and the other atoms that would remain in the polymer configuration
+         * after reptating by K atoms in either direction. 
+         *
+         * @param direction Reptation direction.
+         * @param K Number of atoms to reptate by. 
+         * @param i Index of the new atom in the reptation move. 
+         * @param segment Atomic coordinates of the preceding segment of atoms,
+         *                j = 0, ..., i - 1. Must have i rows. 
+         * @param r_new Position of new (i-th) atom. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @returns Residual energy of the proposed reptation move. 
+         */
+        T getMultimerReptationResidualEnergy(const ReptationDirection direction, 
+                                             const int K, const int i, 
+                                             const Ref<const Matrix<T, Dynamic, 3> >& segment, 
+                                             const Ref<const Matrix<T, 3, 1> >& r_new, 
+                                             std::unordered_map<std::string, T>& lj_params,  
+                                             const T neighbor_threshold) const
+        {
+            const int n = this->length;
+            if (K <= 0 || i < 0 || i >= K || segment.rows() != i)
+            {
+                throw std::runtime_error(
+                    "Invalid multimer reptation move data (K, i, segment)"
+                ); 
+            }
+            T energy = 0;
+
+            // Get the energy between the new atom and every other atom 
+            // that would not be bonded to it after reptation
+            if (direction == ReptationDirection::HEAD)
+            {
+                // Omit atoms n - K, ..., n - 1 within the current configuration
+                //
+                // If i == 0, then also omit atom 0, which would be bonded
+                // to the new atom after reptation
+                int min_idx = (i == 0 ? 1 : 0); 
+                for (int j = min_idx; j < n - K; ++j)
+                {
+                    T dist = (this->r.row(j) - r_new.transpose()).norm();
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Omit the final atom in the preceding segment
+                //
+                // Here, we assume that atom j == 0 is bonded to the 0-th
+                // atom in the current configuration, atom j == 1 is bonded 
+                // to atom j == 0, etc. 
+                for (int j = 0; j < i - 1; ++j)
+                {
+                    T dist = (segment.row(j) - r_new.transpose()).norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+            }
+            else    // direction == ReptationDirection::TAIL
+            {
+                // Omit atoms 0, ..., K - 1 within the current configuration
+                //
+                // If i == 0, then also omit atom n - 1, which would be bonded
+                // to the new atom after reptation
+                int max_idx = (i == 0 ? n - 2 : n - 1);    // Inclusive 
+                for (int j = K; j <= max_idx; ++j)
+                {
+                    T dist = (this->r.row(j) - r_new.transpose()).norm();
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Omit the final atom in the preceding segment
+                //
+                // Here, we assume that atom j == 0 is bonded to the (n-1)-th 
+                // atom in the current configuration, atom j == 1 is bonded
+                // to atom j == 0, etc. 
+                for (int j = 0; j < i - 1; ++j)
+                {
+                    T dist = (segment.row(j) - r_new.transpose()).norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+            }
+
+            return energy; 
         }
 
         /**
