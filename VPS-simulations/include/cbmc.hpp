@@ -627,10 +627,13 @@ class PolymerCBMCSampler
                     );
 
                     // Get the non-bonded energy difference due to reptation
-                    energy_diffs(i) = this->config.getReptationNonbondedEnergyDifference(
-                        ReptationDirection::HEAD, moves.row(i),
-                        this->lj_params, this->neighbor_threshold
-                    ); 
+                    //energy_diffs(i) = this->config.getReptationNonbondedEnergyDifference(
+                    //    ReptationDirection::HEAD, moves.row(i),
+                    //    this->lj_params, this->neighbor_threshold
+                    //);
+                    energy_diffs(i) = this->config.getReptationResidualEnergy(
+                        moves.row(i), this->lj_params, this->neighbor_threshold
+                    );  
                 }
             }
             else        // Reptate towards the tail 
@@ -646,10 +649,13 @@ class PolymerCBMCSampler
                     );
 
                     // Get the non-bonded energy difference due to reptation
-                    energy_diffs(i) = this->config.getReptationNonbondedEnergyDifference(
-                        ReptationDirection::TAIL, moves.row(i),
-                        this->lj_params, this->neighbor_threshold
-                    ); 
+                    //energy_diffs(i) = this->config.getReptationNonbondedEnergyDifference(
+                    //    ReptationDirection::TAIL, moves.row(i),
+                    //    this->lj_params, this->neighbor_threshold
+                    //);
+                    energy_diffs(i) = this->config.getReptationResidualEnergy(
+                        moves.row(i), this->lj_params, this->neighbor_threshold
+                    );  
                 }
             }
 
@@ -742,10 +748,13 @@ class PolymerCBMCSampler
                     );
 
                     // Get the non-bonded energy difference due to reptation
-                    energy_diffs(i) = config_.getReptationNonbondedEnergyDifference(
-                        ReptationDirection::HEAD, moves.row(i),
-                        this->lj_params, this->neighbor_threshold
-                    ); 
+                    //energy_diffs(i) = config_.getReptationNonbondedEnergyDifference(
+                    //    ReptationDirection::HEAD, moves.row(i),
+                    //    this->lj_params, this->neighbor_threshold
+                    //);
+                    energy_diffs(i) = config_.getReptationResidualEnergy(
+                        moves.row(i), this->lj_params, this->neighbor_threshold
+                    );  
                 }
             }
             else        // Reptate towards the tail 
@@ -761,10 +770,13 @@ class PolymerCBMCSampler
                     );
 
                     // Get the non-bonded energy difference due to reptation
-                    energy_diffs(i) = config_.getReptationNonbondedEnergyDifference(
-                        ReptationDirection::TAIL, moves.row(i),
-                        this->lj_params, this->neighbor_threshold
-                    ); 
+                    //energy_diffs(i) = config_.getReptationNonbondedEnergyDifference(
+                    //    ReptationDirection::TAIL, moves.row(i),
+                    //    this->lj_params, this->neighbor_threshold
+                    //);
+                    energy_diffs(i) = config_.getReptationResidualEnergy(
+                        moves.row(i), this->lj_params, this->neighbor_threshold
+                    );  
                 }
             }
 
@@ -2227,21 +2239,11 @@ class PolymerCBMCSampler
                 if (rept_dir == ReptationDirection::HEAD)
                 { 
                     reverse_moves.row(0) = this->r.row(n - 1); 
-                    //reverse_diffs(0)
-                    //    = config_chosen.getReptationNonbondedEnergyDifference(
-                    //        ReptationDirection::TAIL, this->r.row(n - 1),
-                    //        this->lj_params, this->neighbor_threshold
-                    //    );
                     reverse_diffs(0) = -forward_diffs(move_idx); 
                 }
                 else 
                 {
                     reverse_moves.row(0) = this->r.row(0); 
-                    //reverse_diffs(0)
-                    //    = config_chosen.getReptationNonbondedEnergyDifference(
-                    //        ReptationDirection::HEAD, this->r.row(0),
-                    //        this->lj_params, this->neighbor_threshold
-                    //    );
                     reverse_diffs(0) = -forward_diffs(move_idx);  
                 }
             }
