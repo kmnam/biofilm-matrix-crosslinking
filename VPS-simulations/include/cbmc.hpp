@@ -1077,8 +1077,6 @@ class PolymerCBMCSampler
                     }
 
                     // Get the non-bonded energy difference due to reptation
-                    //
-                    // TODO Implement this
                     energy_diffs(i) = config_.getMultimerReptationNonbondedEnergyDifference(
                         ReptationDirection::HEAD, segment_i, 
                         this->lj_params, this->neighbor_threshold
@@ -1129,8 +1127,6 @@ class PolymerCBMCSampler
                     }
 
                     // Get the non-bonded energy difference due to reptation
-                    //
-                    // TODO Implement this
                     energy_diffs(i) = config_.getMultimerReptationNonbondedEnergyDifference(
                         ReptationDirection::TAIL, segment_i, 
                         this->lj_params, this->neighbor_threshold
