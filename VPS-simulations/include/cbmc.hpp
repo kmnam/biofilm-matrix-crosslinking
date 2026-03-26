@@ -2666,23 +2666,52 @@ class PolymerCBMCSampler
                     for (int i = last_written_idx + 1; i < collect_idx; ++i)
                     {
                         // Instantiate polymer configuration and calculate 
-                        // its energy and radius of gyration
+                        // its energy and radius of gyration ... 
                         Matrix<T, Dynamic, 3> coords_i(this->length, 3); 
                         for (int j = 0; j < this->length; ++j)
                             coords_i.row(j) = ensemble_coords(i, Eigen::seqN(3 * j, 3)); 
                         PolymerConfiguration<T> config_i(
                             coords_i, this->config.getUnits(), this->config.getTemp()
-                        ); 
-                        T energy = config_i.getTotalEnergy(
+                        );
+
+                        // Exclude LJ terms between consecutive atoms from
+                        // the non-bonded energy
+                        T energy_nonbonded = config_i.getNonbondedEnergy(
+                            this->lj_params, this->neighbor_threshold, true
+                        );
+
+                        // Include LJ terms between consecutive atoms in 
+                        // the bond energy
+                        T energy_bond = config_i.getBondEnergy(
+                            this->fene_params, true, this->lj_params
+                        );
+
+                        // Calculate bond angle and dihedral energies 
+                        T energy_angle = config_i.getBondAngleEnergy( 
+                            this->angle_mode, this->angle_params
+                        );
+                        T energy_dihedral = config_i.getDihedralAngleEnergy(
+                            this->dihedral_params
+                        );
+
+                        // Re-calculate the total energy 
+                        T energy_total = config_i.getTotalEnergy(
                             this->lj_params, this->neighbor_threshold, 
                             this->fene_params, this->angle_mode,
                             this->angle_params, this->dihedral_params
                         );
+
+                        // Calculate the radius of gyration  
                         T radius = config_i.radiusOfGyration(); 
 
-                        // Write coordinates, energy, and radius of gyration to file  
+                        // Write coordinates, energy terms, and radius of
+                        // gyration to file  
                         outfile << "# CONFIG\t" << i << std::endl
-                                << "# ENERGY\t" << energy << std::endl 
+                                << "# ENERGY_TOTAL\t" << energy_total << std::endl
+                                << "# ENERGY_NONBONDED\t" << energy_nonbonded << std::endl
+                                << "# ENERGY_BOND\t" << energy_bond << std::endl
+                                << "# ENERGY_ANGLE\t" << energy_angle << std::endl
+                                << "# ENERGY_DIHEDRAL\t" << energy_dihedral << std::endl 
                                 << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
                         for (int j = 0; j < this->length; ++j)
                         {
@@ -2699,24 +2728,52 @@ class PolymerCBMCSampler
             // Write remaining configurations to file 
             for (int i = last_written_idx + 1; i < collect_idx; ++i)
             {
-                // Instantiate polymer configuration and calculate 
-                // its energy and radius of gyration
+                // Instantiate polymer configuration and calculate its energy
+                // and radius of gyration ... 
                 Matrix<T, Dynamic, 3> coords_i(length, 3); 
                 for (int j = 0; j < length; ++j)
                     coords_i.row(j) = ensemble_coords(i, Eigen::seqN(3 * j, 3)); 
                 PolymerConfiguration<T> config_i(
                     coords_i, this->config.getUnits(), this->config.getTemp()
-                ); 
-                T energy = config_i.getTotalEnergy(
+                );
+
+                // Exclude LJ terms between consecutive atoms from the
+                // non-bonded energy
+                T energy_nonbonded = config_i.getNonbondedEnergy(
+                    this->lj_params, this->neighbor_threshold, true
+                );
+
+                // Include LJ terms between consecutive atoms in the bond energy
+                T energy_bond = config_i.getBondEnergy(
+                    this->fene_params, true, this->lj_params
+                );
+
+                // Calculate bond angle and dihedral energies 
+                T energy_angle = config_i.getBondAngleEnergy( 
+                    this->angle_mode, this->angle_params
+                );
+                T energy_dihedral = config_i.getDihedralAngleEnergy(
+                    this->dihedral_params
+                );
+
+                // Re-calculate the total energy 
+                T energy_total = config_i.getTotalEnergy(
                     this->lj_params, this->neighbor_threshold, 
                     this->fene_params, this->angle_mode,
                     this->angle_params, this->dihedral_params
                 );
+
+                // Calculate the radius of gyration  
                 T radius = config_i.radiusOfGyration(); 
 
-                // Write coordinates, energy, and radius of gyration to file  
+                // Write coordinates, energy terms, and radius of
+                // gyration to file  
                 outfile << "# CONFIG\t" << i << std::endl
-                        << "# ENERGY\t" << energy << std::endl 
+                        << "# ENERGY_TOTAL\t" << energy_total << std::endl
+                        << "# ENERGY_NONBONDED\t" << energy_nonbonded << std::endl
+                        << "# ENERGY_BOND\t" << energy_bond << std::endl
+                        << "# ENERGY_ANGLE\t" << energy_angle << std::endl
+                        << "# ENERGY_DIHEDRAL\t" << energy_dihedral << std::endl 
                         << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
                 for (int j = 0; j < length; ++j)
                 {
