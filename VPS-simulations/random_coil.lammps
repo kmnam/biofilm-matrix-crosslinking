@@ -113,12 +113,6 @@ compute bond2 all bond/local dist engpot force
 dump sim2 all local ${nsteps_per_dump} ${bond_filename} index c_bond1[*] c_bond2[*]
 dump_modify sim2 sort 2
 
-# Write bond angles and energies to file 
-compute angle1 all property/local atype aatom1 aatom2 aatom3
-compute angle2 all angle/local theta eng
-dump sim3 all local ${nsteps_per_dump} ${angle_filename} index c_angle1[*] c_angle2[*]
-dump_modify sim3 sort 2
-
 # ====================================================================== #
 # SET UP ENSEMBLES
 # ================
