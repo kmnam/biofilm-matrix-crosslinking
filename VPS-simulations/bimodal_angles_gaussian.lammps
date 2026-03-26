@@ -84,7 +84,7 @@ special_bonds fene angle no
 # PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
 # ===================================================
 thermo 10
-thermo_style custom step temp pe ke etotal epair ebond eangle press
+thermo_style custom step temp etotal ke pe epair ebond eangle edihed press
 
 # ====================================================================== #
 # ENERGY MINIMIZATION
@@ -103,7 +103,7 @@ velocity all create ${temp} ${seed_velocity} rot yes dist gaussian
 # PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
 # =================================================
 thermo ${nsteps_per_dump}
-thermo_style custom step temp press vol pxx pyy pzz etotal epair ebond eangle
+thermo_style custom step temp press vol pxx pyy pzz etotal ke pe epair ebond eangle edihed
 
 # ====================================================================== #
 # SET UP SIMULATION
