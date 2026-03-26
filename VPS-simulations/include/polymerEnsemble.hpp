@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/22/2026
+ *     3/26/2026
  */
 
 #ifndef POLYMER_ENSEMBLE_HPP
@@ -168,7 +168,9 @@ std::pair<PolymerEnsemble<T>, std::unordered_map<std::string, T> > parseEnsemble
             else if (token == "terminal_segment_length")
                 params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
             else if (token == "internal_segment_length")
-                params["internal_segment_length"] = static_cast<T>(std::stoi(line)); 
+                params["internal_segment_length"] = static_cast<T>(std::stoi(line));
+            else if (token == "n_bins_fene_cdf")
+                params["n_bins_fene_cdf"] = static_cast<T>(std::stoi(line));  
             else if (token == "mod_collect")
                 params["mod_collect"] = static_cast<T>(std::stoi(line));  
             else if (token == "mod_write")
@@ -298,7 +300,9 @@ std::pair<PolymerConfiguration<T>, std::unordered_map<std::string, T> > parseFin
             else if (token == "terminal_segment_length")
                 params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
             else if (token == "internal_segment_length")
-                params["internal_segment_length"] = static_cast<T>(std::stoi(line)); 
+                params["internal_segment_length"] = static_cast<T>(std::stoi(line));
+            else if (token == "n_bins_fene_cdf")
+                params["n_bins_fene_cdf"] = static_cast<T>(std::stoi(line));  
             else if (token == "mod_collect")
                 params["mod_collect"] = static_cast<T>(std::stoi(line));  
             else if (token == "mod_write")
