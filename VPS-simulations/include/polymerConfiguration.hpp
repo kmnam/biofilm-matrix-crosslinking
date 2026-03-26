@@ -1737,6 +1737,9 @@ class PolymerConfiguration
         /**
          * Write the polymer configuration to file in LAMMPS data format.
          *
+         * The polymer coordinates are wrapped into the fundamental cell, 
+         * to enforce periodic boundary conditions.  
+         *
          * @param filename Output filename. 
          * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @param neighbor_threshold Distance threshold for identifying
@@ -1770,16 +1773,27 @@ class PolymerConfiguration
             // Write header 
             outfile << header << "\n\n"; 
 
-            // Write numbers of atoms, bonds, angles, and dihedrals 
+            // Write numbers of atoms, bonds, angles, and dihedrals
+            //
+            // Only count the numbers of angles or dihedrals if the potentials
+            // are non-trivial
+            const bool no_angles = (angle_mode == AngleMode::COSINE && angle_params["K"] == 0);
+            const bool no_dihedrals = (dihedral_params["K"] == 0); 
+            const int n_angles = (no_angles ? 0 : this->length - 2); 
+            const int n_dihedrals = (no_dihedrals ? 0 : this->length - 3);  
             outfile << this->length << " atoms\n"
                     << this->length - 1 << " bonds\n"
-                    << this->length - 2 << " angles\n"
-                    << this->length - 3 << " dihedrals\n"
+                    << n_angles << " angles\n"
+                    << n_dihedrals << " dihedrals\n"
                     << "0 impropers\n\n"; 
 
             // Write numbers of atom, bond, angle, and dihedral types
-            outfile << "1 atom types\n1 bond types\n1 angle types\n"
-                    << "1 dihedral types\n0 improper types\n\n";
+            int n_angle_types = !no_angles; 
+            int n_dihedral_types = !no_dihedrals;
+            outfile << "1 atom types\n1 bond types\n"
+                    << n_angle_types << " angle types\n"
+                    << n_dihedral_types << " dihedral types\n"
+                    << "0 improper types\n\n";
 
             // Write box dimensions 
             outfile << xmin << " " << xmax << " xlo xhi\n"
@@ -1803,14 +1817,14 @@ class PolymerConfiguration
                     << lj_params["eps"] << " "
                     << lj_params["sigma"] << "\n\n"; 
 
-            // Write angle potential parameters
-            if (angle_mode == AngleMode::COSINE)
+            // Write angle potential parameters, as long as they are not trivial
+            if (!no_angles && angle_mode == AngleMode::COSINE)
             {
                 outfile << "Angle Coeffs\n\n"
                         << "1 " << angle_params["K"] << " "
                         << 180 * angle_params["theta0"] / boost::math::constants::pi<T>() << "\n\n"; 
             }
-            else if (angle_mode == AngleMode::GAUSSIAN)
+            else if (!no_angles && angle_mode == AngleMode::GAUSSIAN)
             {
                 outfile << "Angle Coeffs\n\n"
                         << "1 " << this->temp << " "
@@ -1822,7 +1836,8 @@ class PolymerConfiguration
                         << 180 * angle_params["theta2"] / boost::math::constants::pi<T>() << "\n\n"; 
             }
 
-            // Write dihedral potential parameters
+            // Write dihedral potential parameters, as long as they are not
+            // trivial 
             T dihedral_d, dihedral_n;
             if (dihedral_params.find("d") == dihedral_params.end())
                 dihedral_d = 1; 
@@ -1831,22 +1846,39 @@ class PolymerConfiguration
             if (dihedral_params.find("n") == dihedral_params.end())
                 dihedral_n = 1; 
             else 
-                dihedral_n = dihedral_params["n"]; 
-            outfile << "Dihedral Coeffs\n\n"
-                    << "1 " << dihedral_params["K"] << " " 
-                    << dihedral_d << " "
-                    << dihedral_n << "\n\n";
+                dihedral_n = dihedral_params["n"];
+            if (!no_dihedrals)
+            {
+                outfile << "Dihedral Coeffs\n\n"
+                        << "1 " << dihedral_params["K"] << " " 
+                        << dihedral_d << " "
+                        << dihedral_n << "\n\n";
+            }
 
-            // Write atom coordinates 
+            // Write atom coordinates (all mapped to the fundamental cell
+            // under periodic boundary conditions) 
             outfile << "Atoms\n\n";
+            const int xlen = xmax - xmin; 
+            const int ylen = ymax - ymin;
+            const int zlen = zmax - zmin;
             for (int i = 0; i < this->length; ++i)
             {
                 // Atom ID, molecule ID, atom type, x, y, z
                 //
                 // Atom IDs must be 1-indexed
-                outfile << i + 1 << " 1 1 " << this->r(i, 0) << " "
-                        << this->r(i, 1) << " "
-                        << this->r(i, 2) << std::endl; 
+                //
+                // The last three values are the image flags 
+                Matrix<T, 3, 1> r_mapped = mapToFundamentalCell<T>(
+                    this->r.row(i), xlen, ylen, zlen, xmin, ymin, zmin
+                ); 
+                int image_x = static_cast<int>(floor((this->r(i, 0) - xmin) / xlen)); 
+                int image_y = static_cast<int>(floor((this->r(i, 1) - ymin) / ylen)); 
+                int image_z = static_cast<int>(floor((this->r(i, 2) - zmin) / zlen)); 
+                outfile << i + 1 << " 1 1 " << r_mapped(0) << " "
+                        << r_mapped(1) << " "
+                        << r_mapped(2) << " "
+                        << image_x << " " << image_y << " " << image_z 
+                        << std::endl; 
             }
             outfile << std::endl; 
 
@@ -1861,29 +1893,35 @@ class PolymerConfiguration
             }
             outfile << std::endl; 
 
-            // Write angles 
-            outfile << "Angles\n\n"; 
-            for (int i = 0; i < this->length - 2; ++i)
+            // Write angles, as long as they are not trivial
+            if (!no_angles)
             {
-                // Angle ID, angle type, atom i, atom j, atom k
-                //
-                // Atom IDs and angle IDs must be 1-indexed
-                outfile << i + 1 << " 1 " << i + 1 << " " << i + 2 << " "
-                        << i + 3 << std::endl; 
-            }
-            outfile << std::endl; 
+                outfile << "Angles\n\n"; 
+                for (int i = 0; i < this->length - 2; ++i)
+                {
+                    // Angle ID, angle type, atom i, atom j, atom k
+                    //
+                    // Atom IDs and angle IDs must be 1-indexed
+                    outfile << i + 1 << " 1 " << i + 1 << " " << i + 2 << " "
+                            << i + 3 << std::endl; 
+                }
+                outfile << std::endl;
+            } 
 
-            // Write dihedrals 
-            outfile << "Dihedrals\n\n"; 
-            for (int i = 0; i < this->length - 3; ++i)
-            {
-                // Dihedral ID, dihedral type, atom i, atom j, atom k, atom l
-                //
-                // Atom IDs and dihedral IDs must be 1-indexed
-                outfile << i + 1 << " 1 " << i + 1 << " " << i + 2 << " "
-                        << i + 3 << " " << i + 4 << std::endl; 
-            }
-            outfile << std::endl; 
+            // Write dihedrals, as long as they are not trivial
+            if (!no_dihedrals)
+            { 
+                outfile << "Dihedrals\n\n"; 
+                for (int i = 0; i < this->length - 3; ++i)
+                {
+                    // Dihedral ID, dihedral type, atom i, atom j, atom k, atom l
+                    //
+                    // Atom IDs and dihedral IDs must be 1-indexed
+                    outfile << i + 1 << " 1 " << i + 1 << " " << i + 2 << " "
+                            << i + 3 << " " << i + 4 << std::endl; 
+                }
+                outfile << std::endl;
+            } 
         }
 };
 
