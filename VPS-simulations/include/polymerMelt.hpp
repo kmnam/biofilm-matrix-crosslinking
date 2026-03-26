@@ -1474,18 +1474,25 @@ class PolymerMeltConfiguration
                 Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);  
                 for (int j = 0; j < ni; ++j)
                 {
-                    // Atom ID, molecule ID, atom type, x, y, z
+                    // Atom ID, molecule ID, atom type, x, y, z, nx, ny, nz
                     //
                     // Atom and molecule IDs must be 1-indexed
+                    //
+                    // The last three values are the image flags
                     int atom_id = offset + j + 1; 
                     int mol_id = i + 1; 
                     Matrix<T, 3, 1> rij_mapped = mapToFundamentalCell<T>(
                         ri.row(j), xlen, ylen, zlen, xmin, ymin, zmin
-                    ); 
+                    );
+                    int image_x = static_cast<int>(floor((ri(j, 0) - xmin) / xlen)); 
+                    int image_y = static_cast<int>(floor((ri(j, 1) - ymin) / ylen)); 
+                    int image_z = static_cast<int>(floor((ri(j, 2) - zmin) / zlen)); 
                     outfile << atom_id << " " << mol_id << " 1 "
                             << rij_mapped(0) << " "
                             << rij_mapped(1) << " "
-                            << rij_mapped(2) << std::endl; 
+                            << rij_mapped(2) << " "
+                            << image_x << " " << image_y << " " << image_z
+                            << std::endl; 
                 }
                 offset += ni;  
             }
