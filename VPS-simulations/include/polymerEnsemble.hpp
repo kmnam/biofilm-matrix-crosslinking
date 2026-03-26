@@ -242,6 +242,90 @@ std::pair<PolymerEnsemble<T>, std::unordered_map<std::string, T> > parseEnsemble
 }
 
 /**
+ * Parse the configurations in the given .lammpstrj file.
+ *
+ * The .lammpstrj file is assumed to contain the coordinates of one polymer
+ * molecule. 
+ *
+ * @param filename Input filename. 
+ * @param dt Timestep. 
+ * @param units Units for keeping track of Boltzmann's constant.
+ * @param temp Temperature (in Kelvin). 
+ * @returns Ensemble of polymer configurations in the given file.
+ */
+template <typename T>
+std::pair<PolymerEnsemble<T>, std::vector<T> > parseLammpstrj(const std::string& filename,
+                                                              const T dt, 
+                                                              const Units units = Units::NANO, 
+                                                              const T temp = 300.0)
+{
+    // Stitch together the ensemble, one configuration at a time ... 
+    PolymerEnsemble<T> ensemble;
+    std::vector<T> times; 
+
+    // Parse the given file ... 
+    std::ifstream infile(filename); 
+    std::string line; 
+    while (std::getline(infile, line))
+    {
+        // If we have arrived at a new timestep ... 
+        if (line.find("ITEM: TIMESTEP") == 0)
+        {
+            // Read the next line to get the timepoint
+            std::getline(infile, line);
+            times.push_back(std::stod(line) * dt);
+
+            // Read the next two lines to get the polymer length (which 
+            // should be the same throughout the file)
+            std::getline(infile, line); 
+            std::getline(infile, line); 
+            int length = std::stoi(line); 
+
+            // Skip over the next four lines, which give the box bounds 
+            std::getline(infile, line); 
+            std::getline(infile, line);  
+            std::getline(infile, line);  
+            std::getline(infile, line);
+
+            // Then parse the atom coordinates
+            std::getline(infile, line);    // Header line 
+            Matrix<T, Dynamic, 3> coords(length, 3); 
+            for (int i = 0; i < length; ++i)
+            {
+                // Parse the line 
+                std::getline(infile, line); 
+                std::stringstream ss; 
+                std::string token;
+                ss << line; 
+
+                // Atom index
+                std::getline(ss, token, ' '); 
+                int idx = std::stoi(token) - 1; 
+
+                // Skip over the next two tokens 
+                std::getline(ss, token, ' '); 
+                std::getline(ss, token, ' '); 
+
+                // x-, y-, and z-coordinates 
+                std::getline(ss, token, ' '); 
+                coords(idx, 0) = std::stod(token); 
+                std::getline(ss, token, ' '); 
+                coords(idx, 1) = std::stod(token); 
+                std::getline(ss, token, ' ');
+                coords(idx, 2) = std::stod(token);
+
+                // Skip over the remaining tokens 
+            }
+
+            // Collect the polymer configuration 
+            ensemble.emplace_back(PolymerConfiguration<T>(coords, units, temp)); 
+        }
+    } 
+
+    return std::pair(ensemble, times); 
+}
+
+/**
  * Parse the final configuration in the given file of polymer configurations. 
  *
  * @param filename Input filename.  
