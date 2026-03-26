@@ -160,7 +160,8 @@ int main(int argc, char** argv)
     PolymerConfiguration<double> config = generateKMer<double>(
         length, lj_params, fene_params, angle_mode, angle_params,
         dihedral_params, r0, collision_threshold, max_tries_per_atom, 
-        max_n_backtracks, rng, uniform_dist, bond_length_cdf, Units::NANO, 300
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf, 0, 0, 0,
+        Units::NANO, 300
     );
 
     // Initialize output file 

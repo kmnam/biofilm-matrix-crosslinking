@@ -2104,7 +2104,9 @@ PolymerConfiguration<T> generateKMer(const int K,
                                      const int max_n_backtracks,  
                                      boost::random::mt19937& rng,
                                      boost::random::uniform_01<>& uniform_dist,
-                                     const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf, 
+                                     const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf,
+                                     const T xmax = 0, const T ymax = 0, 
+                                     const T zmax = 0,
                                      const Units units = Units::NANO,
                                      const T temp = 300)
 {
@@ -2112,9 +2114,9 @@ PolymerConfiguration<T> generateKMer(const int K,
         units == Units::MICRO ? static_cast<T>(1.380649e-8) * temp : 
         static_cast<T>(1.380649e-2) * temp
     );
-    const T xlen = 2 * xmax; 
-    const T ylen = 2 * ymax; 
-    const T zlen = 2 * zmax;   
+    const T xlen = (xmax > 0 ? 2 * xmax : std::numeric_limits<T>::infinity());
+    const T ylen = (ymax > 0 ? 2 * ymax : std::numeric_limits<T>::infinity()); 
+    const T zlen = (zmax > 0 ? 2 * ymax : std::numeric_limits<T>::infinity());  
 
     // Define the angle sampling function  
     std::function<T(boost::random::mt19937&)> sample_angle;
@@ -2159,13 +2161,25 @@ PolymerConfiguration<T> generateKMer(const int K,
     {
         // Get the periodic distance with every atom within the growing 
         // K-mer (except for the atom to which it will be bonded)
-        Matrix<T, Dynamic, 3> coords = config.getSegment(0, config.getLength() - 1); 
-        for (int i = 0; i < coords.rows(); ++i)
+        Matrix<T, Dynamic, 3> coords = config.getSegment(0, config.getLength() - 1);
+        if (!isinf(xlen) && !isinf(ylen) && !isinf(zlen))
         {
-            if (periodicDistVec<T>(r, coords.row(i), xlen, ylen, zlen).norm() < collision_threshold)
-                return true;
+            for (int i = 0; i < coords.rows(); ++i)
+            {
+                if (periodicDistVec<T>(r, coords.row(i), xlen, ylen, zlen).norm() < collision_threshold)
+                    return true;
+            }
+            return false; 
         }
-        return false;
+        else 
+        {
+            for (int i = 0; i < coords.rows(); ++i)
+            {
+                if ((coords.row(i) - r.transpose()).norm() < collision_threshold)
+                    return true; 
+            }
+            return false;
+        }
     };  
 
     // Add a 3rd atom ...
