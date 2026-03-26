@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/24/2026
+ *     3/26/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -2499,6 +2499,8 @@ class PolymerCBMCSampler
                     << terminal_segment_length << std::endl
                     << "## internal_segment_length = "
                     << internal_segment_length << std::endl
+                    << "## n_bins_fene_cdf = "
+                    << this->bond_length_cdf.rows() - 1 << std::endl 
                     << "## max_iter = " << max_iter << std::endl
                     << "## mod_collect = " << mod_collect << std::endl
                     << "## mod_write = " << mod_write << std::endl
@@ -2753,7 +2755,7 @@ class PolymerCBMCSampler
             int n_candidates; 
             std::unordered_map<std::string, T> internal_move_params; 
             Matrix<T, 4, 1> move_probs;
-            int multimer_reptation_length, terminal_segment_length,
+            int n_bins, multimer_reptation_length, terminal_segment_length,
                 internal_segment_length, mod_collect, mod_write, max_stall; 
             const int n_burnin = 0;    // Set burn-in to zero
 
@@ -2776,12 +2778,23 @@ class PolymerCBMCSampler
                           params["move_prob_multimer_reptation"], 
                           params["move_prob_terminal_segment"], 
                           params["move_prob_internal_segment"];
+            n_bins = static_cast<int>(params["n_bins_fene_cdf"]); 
             multimer_reptation_length = static_cast<int>(params["multimer_reptation_length"]);  
             terminal_segment_length = static_cast<int>(params["terminal_segment_length"]); 
             internal_segment_length = static_cast<int>(params["internal_segment_length"]);
             mod_collect = static_cast<int>(params["mod_collect"]); 
             mod_write = static_cast<int>(params["mod_write"]); 
-            max_stall = static_cast<int>(params["max_stall"]);             
+            max_stall = static_cast<int>(params["max_stall"]);
+
+            // Re-generate the FENE bond length CDF 
+            this->bond_length_cdf = getFeneCDF<T>(
+                this->lj_params.at("eps"), 
+                this->lj_params.at("sigma"), 
+                this->fene_params.at("K"), 
+                this->fene_params.at("R0"), 
+                this->config.kT,
+                n_bins 
+            );   
 
             // Fix number of sampling iterations 
             const int max_iter = n_collect * mod_collect; 
