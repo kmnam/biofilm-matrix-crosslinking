@@ -1204,6 +1204,45 @@ class PolymerConfiguration
         }
 
         /**
+         * Get the residual (non-bonded) energy of the proposed reptation move.
+         *
+         * This function calculates the non-bonded energy between the new atom
+         * and the other atoms that would remain in the polymer configuration
+         * after reptating in either direction. 
+         *
+         * Note that the reptation direction does not matter for this
+         * calculation.
+         *
+         * @param r_new Position of new atom. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @returns Residual energy of the proposed reptation move. 
+         */
+        T getReptationResidualEnergy(const Ref<const Matrix<T, 3, 1> >& r_new, 
+                                     std::unordered_map<std::string, T>& lj_params,  
+                                     const T neighbor_threshold) const
+        {
+            const int n = this->length;
+            T energy = 0; 
+
+            // Get the energy between the new atom and every other atom 
+            // that would not be bonded to it after reptation
+            //
+            // The direction does not matter for this calculation 
+            for (int i = 1; i < n - 1; ++i)    // Omit atoms 0 and (n - 1)
+            {
+                T dij = (this->r.row(i) - r_new.transpose()).norm();
+                if (dij < neighbor_threshold)
+                    energy += lj<T>(
+                        dij, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+            }
+
+            return energy; 
+        }
+
+        /**
          * Get the *non-bonded* energy difference between the current polymer
          * configuration and the configuration that would arise from reptating
          * the polymer in the given direction by adding the given atom.
