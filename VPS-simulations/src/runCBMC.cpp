@@ -34,7 +34,7 @@ int main(int argc, char** argv)
     fene_params["K"] = json_data["fene_K"].as_double() * kT;
     fene_params["R0"] = json_data["fene_R0"].as_double();
     AngleMode angle_mode = (
-        json_data["angle_mode"] == 0 ? AngleMode::COSINE : AngleMode::GAUSSIAN
+        json_data["angle_mode"].as_int64() == 0 ? AngleMode::COSINE : AngleMode::GAUSSIAN
     ); 
     if (angle_mode == AngleMode::COSINE)
     { 
