@@ -56,6 +56,12 @@ enum class ReptationDirection
     TAIL
 };
 
+enum class TerminalSegmentEnd
+{
+    HEAD,
+    TAIL
+};
+
 /**
  * A class for storing, manipulating, analyzing, and comparing linear polymer
  * configurations. 
@@ -1573,108 +1579,109 @@ class PolymerConfiguration
         }
 
         /**
-         * Get the *non-bonded* energy difference between the current polymer
-         * configuration and the configuration that would arise from reptating
-         * the polymer in the given direction by the given segment.
+         * Get the residual (non-bonded) energy of the proposed position for 
+         * the i-th atom (for some i = 0, ..., K - 1) in a K-atom terminal
+         * segment move. 
          *
-         * This function omits the non-bonded energetic contribution between
-         * the old/new terminal atoms and their bonded neighbors.  
+         * The positions of the previous atoms, j = 0, ..., i - 1, are also
+         * given. 
          *
-         * @param direction Reptation direction. 
-         * @param segment Atomic coordinates of new segment.
+         * This function calculates the non-bonded energy between the new atom
+         * and the other atoms that would remain in the polymer configuration
+         * after applying the terminal segment move. 
+         *
+         * @param terminal_end Terminal segment to be moved. 
+         * @param K Terminal segment length. 
+         * @param i Index of the new atom in the terminal segment move. 
+         * @param segment Atomic coordinates of the preceding segment of atoms,
+         *                j = 0, ..., i - 1. Must have i rows. 
+         * @param r_new Position of new (i-th) atom. 
          * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @param neighbor_threshold Distance threshold for identifying
          *                           neighboring (non-bonded) atoms. 
-         * @returns Nonbonded energy difference due to multimer reptation. 
+         * @returns Residual energy of the proposed terminal segment move. 
          */
-        T getMultimerReptationNonbondedEnergyDifference(const ReptationDirection direction, 
-                                                        const Ref<const Matrix<T, Dynamic, 3> >& segment, 
-                                                        std::unordered_map<std::string, T>& lj_params,  
-                                                        const T neighbor_threshold) const
+        T getTerminalSegmentReplacementResidualEnergy(const TerminalSegmentEnd terminal_end, 
+                                                      const int K, const int i, 
+                                                      const Ref<const Matrix<T, Dynamic, 3> >& segment, 
+                                                      const Ref<const Matrix<T, 3, 1> >& r_new, 
+                                                      std::unordered_map<std::string, T>& lj_params,  
+                                                      const T neighbor_threshold) const
         {
             const int n = this->length;
-            const int m = segment.rows();    // Segment length 
-            T energy_curr = 0; 
-            T energy_new = 0; 
-            if (direction == ReptationDirection::HEAD)
+            if (K <= 0 || i < 0 || i >= K || segment.rows() != i)
             {
-                // Get the non-bonded energy contribution from the final m 
-                // atoms (n - m, ..., n - 1) in the current configuration
+                throw std::runtime_error(
+                    "Invalid terminal segment move data (K, i, segment)"
+                ); 
+            }
+            T energy = 0;
+
+            // Get the energy between the new atom and every other atom 
+            // that would not be bonded to it after the move 
+            if (terminal_end == TerminalSegmentEnd::HEAD)
+            {
+                // Omit atoms 0, ..., K - 1 within the current configuration
                 //
-                // Omit the interaction between (n - m - 1) and (n - m) 
-                for (int i = 0; i < n - m; ++i)
+                // If i == 0 (which corresponds to the closest atom to the 
+                // polymer, i.e., atom K - 1), then also omit atom K, which 
+                // would be bonded to the new atom after the move 
+                int min_idx = (i == 0 ? K + 1 : K); 
+                for (int j = min_idx; j < n; ++j)
                 {
-                    int min_idx = (i == n - m - 1 ? n - m + 1 : n - m); 
-                    for (int j = min_idx; j < n; ++j)
-                    {
-                        T dij = (this->r.row(i) - this->r.row(j)).norm(); 
-                        if (dij < neighbor_threshold)
-                            energy_curr += lj<T>(
-                                dij, lj_params["eps"], lj_params["sigma"], true
-                            );
-                    } 
+                    T dist = (this->r.row(j) - r_new.transpose()).norm();
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
                 }
 
-                // Get the energy contribution that would arise from
-                // introducing the new segment at the head and removing
-                // the final m atoms
+                // Omit the final atom in the preceding segment
                 //
-                // Omit the interaction between atom 0 in the current 
-                // configuration and the last atom in the new segment 
-                for (int i = 0; i < n - m; ++i)
+                // Here, we assume that atom j == 0 is bonded to the K-th
+                // atom in the current configuration, atom j == 1 is bonded 
+                // to atom j == 0, etc. 
+                for (int j = 0; j < i - 1; ++j)
                 {
-                    int max_idx = (i == 0 ? m - 2 : m - 1); 
-                    for (int j = 0; j <= max_idx; ++j)
-                    {
-                        T dij = (this->r.row(i) - segment.row(j)).norm(); 
-                        if (dij < neighbor_threshold)
-                            energy_new += lj<T>(
-                                dij, lj_params["eps"], lj_params["sigma"], true
-                            );
-                    } 
+                    T dist = (segment.row(j) - r_new.transpose()).norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
                 }
             }
-            else 
+            else    // terminal_end == TerminalSegmentEnd::TAIL
             {
-                // Get the energy contribution from the first m atoms in the
-                // current configuration 
+                // Omit atoms n - K, ..., n - 1 within the current configuration
                 //
-                // Omit the interaction between (m - 1) and m
-                for (int i = m; i < n; ++i)
+                // If i == 0, then also omit atom n - K - 1, which would be
+                // bonded to the new atom after reptation
+                int max_idx = (i == 0 ? n - K - 2 : n - K - 1);    // Inclusive 
+                for (int j = 0; j <= max_idx; ++j)
                 {
-                    int max_idx = (i == m ? m - 2 : m - 1); 
-                    for (int j = 0; j <= max_idx; ++j)
-                    {
-                        T dij = (this->r.row(i) - this->r.row(j)).norm(); 
-                        if (dij < neighbor_threshold)
-                            energy_curr += lj<T>(
-                                dij, lj_params["eps"], lj_params["sigma"], true
-                            );
-                    } 
+                    T dist = (this->r.row(j) - r_new.transpose()).norm();
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
                 }
 
-                // Get the energy contribution that would arise from
-                // introducing the new segment at the tail and removing the
-                // first m atoms 
+                // Omit the final atom in the preceding segment
                 //
-                // Omit the interaction between atom (n - 1) in the current
-                // configuration and the first atom in the new segment
-                for (int i = m; i < n; ++i)
+                // Here, we assume that atom j == 0 is bonded to the (n-K-1)-th 
+                // atom in the current configuration, atom j == 1 is bonded
+                // to atom j == 0, etc. 
+                for (int j = 0; j < i - 1; ++j)
                 {
-                    int min_idx = (i == n - 1 ? 1 : 0); 
-                    for (int j = min_idx; j < m; ++j)
-                    {
-                        T dij = (this->r.row(i) - segment.row(j)).norm(); 
-                        if (dij < neighbor_threshold)
-                            energy_new += lj<T>(
-                                dij, lj_params["eps"], lj_params["sigma"], true
-                            );
-                    } 
+                    T dist = (segment.row(j) - r_new.transpose()).norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
                 }
             }
 
-            // Return the energy difference 
-            return energy_new - energy_curr; 
+            return energy; 
         }
 
         /**

@@ -36,12 +36,6 @@ using boost::multiprecision::isinf;
 using std::ceil; 
 using boost::multiprecision::ceil; 
 
-enum class TerminalSegmentEnd
-{
-    HEAD,
-    TAIL
-};
-
 enum class CBMCMoveType
 {
     REPTATION,
@@ -925,7 +919,8 @@ class PolymerCBMCSampler
                     {
                         residuals_i(j) = this->config.getMultimerReptationResidualEnergy(
                             ReptationDirection::HEAD, n_reptate, i, segment,
-                            candidates_i.row(j), lj_params, neighbor_threshold
+                            candidates_i.row(j), this->lj_params,
+                            this->neighbor_threshold
                         ); 
                     }
 
@@ -996,7 +991,8 @@ class PolymerCBMCSampler
                     {
                         residuals_i(j) = this->config.getMultimerReptationResidualEnergy(
                             ReptationDirection::TAIL, n_reptate, i, segment,
-                            candidates_i.row(j), lj_params, neighbor_threshold
+                            candidates_i.row(j), this->lj_params,
+                            this->neighbor_threshold
                         ); 
                     }
 
@@ -1282,23 +1278,23 @@ class PolymerCBMCSampler
          *                 MOVE GENERATION: TERMINAL SEGMENT               // 
          *  -------------------------------------------------------------- */
         /**
-         * Generate possible terminal segment moves from the current 
-         * configuration.
+         * Iteratively generate and select a terminal segment move from the
+         * current configuration.
          *
+         * This function should be interpreted as yielding *forward* moves 
+         * from the current configuration. 
+         *
+         * @param segment_length Segment length.  
          * @param direction Choice of terminal segment to move. 
          * @param n_candidates Number of candidate moves to generate. 
-         * @param segment_length Segment length.  
-         * @returns Arrays of candidate atomic positions for the new segment
-         *          and the corresponding energy differences. 
+         * @returns The chosen terminal segment move and its corresponding 
+         *          (total) Rosenbluth weight. 
          */
-        std::pair<Matrix<T, Dynamic, Dynamic>,
-                  Matrix<T, Dynamic, 1> > generateTerminalSegmentMoves(const int segment_length, 
-                                                                       const TerminalSegmentEnd direction,
-                                                                       const int n_candidates)
+        std::pair<Matrix<T, Dynamic, 3>, T> generateForwardTerminalSegmentMove(const int segment_length, 
+                                                                               const TerminalSegmentEnd direction,
+                                                                               const int n_candidates)
         {
             const int n = this->length;
-            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3 * segment_length); 
-            Matrix<T, Dynamic, 1> energy_diffs(n_candidates);
 
             // Define the angle sampling function  
             std::function<T()> sample_angle;
@@ -1334,148 +1330,208 @@ class PolymerCBMCSampler
             }
 
             // Generate bond lengths, bond angles, and dihedral angles 
-            Matrix<T, Dynamic, Dynamic> lengths(n_candidates, segment_length),
-                                        angles(n_candidates, segment_length),
-                                        dihedrals(n_candidates, segment_length);
-            for (int i = 0; i < n_candidates; ++i)
+            Matrix<T, Dynamic, Dynamic> lengths(segment_length, n_candidates),
+                                        angles(segment_length, n_candidates),
+                                        dihedrals(segment_length, n_candidates);
+            for (int i = 0; i < segment_length; ++i)
             {
-                for (int j = 0; j < segment_length; ++j)
+                for (int j = 0; j < n_candidates; ++j)
                 {
                     lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf
                     );
                     angles(i, j) = sample_angle();
                     dihedrals(i, j) = sampleDihedralHarmonic<T>(
-                        this->dihedral_params.at("K"), this->config.kT,
-                        this->rng, this->uniform_dist
+                        this->dihedral_params.at("K"), this->config.kT, this->rng,
+                        this->uniform_dist
                     );
                 }
             }
+
+            // Keep track of the growing segment and the total Rosenbluth weight
+            Matrix<T, Dynamic, 3> segment(0, 3); 
+            T rosenbluth_total = 1; 
              
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
             {
-                // Generate new candidate atomic positions for the head segment
-                for (int i = 0; i < n_candidates; ++i)
+                // For each atom in the terminal segment ...
+                for (int i = 0; i < segment_length; ++i)
                 {
-                    Matrix<T, Dynamic, 3> segment_i(segment_length, 3); 
-
-                    // Move backwards from atom (segment_length) in the polymer  
-                    for (int j = 0; j < segment_length; ++j)
+                    // Generate a collection of candidate positions for the 
+                    // i-th atom 
+                    Matrix<T, Dynamic, 3> candidates_i(n_candidates, 3);
+                    Matrix<T, 3, 1> r1, r2, r3;  
+                    for (int j = 0; j < n_candidates; ++j)
                     {
-                        Matrix<T, 3, 1> r1, r2, r3; 
-                        if (j == 0)         // Last atom in the segment (closest to the polymer)
+                        // Last atom in the segment (closest to the polymer)
+                        if (i == 0)
                         {
                             r1 = this->r.row(segment_length + 2);
                             r2 = this->r.row(segment_length + 1); 
                             r3 = this->r.row(segment_length);  
                         }
-                        else if (j == 1)    // Second-to-last
+                        else if (i == 1)    // Second-to-last atom in the segment
                         {
                             r1 = this->r.row(segment_length + 1); 
                             r2 = this->r.row(segment_length); 
-                            r3 = segment_i.row(segment_length - 1);  
+                            r3 = segment.row(0);    // Last atom in the segment 
                         }
-                        else if (j == 2)    // Third-to-last
+                        else if (i == 2)    // Third-to-last atom in the segment
                         {
                             r1 = this->r.row(segment_length); 
-                            r2 = segment_i.row(segment_length - 1);
-                            r3 = segment_i.row(segment_length - 2); 
+                            r2 = segment.row(0);    // Last atom 
+                            r3 = segment.row(1);    // Second-to-last
                         }
                         else 
                         {
-                            r1 = segment_i.row(segment_length - 1 - j + 3); 
-                            r2 = segment_i.row(segment_length - 1 - j + 2); 
-                            r3 = segment_i.row(segment_length - 1 - j + 1);  
+                            r1 = segment.row(i - 3); 
+                            r2 = segment.row(i - 2); 
+                            r3 = segment.row(i - 1); 
                         }
-                        int idx = segment_length - 1 - j;
-                        segment_i.row(idx) = generateNextAtomDihedral<T>(
-                            r1, r2, r3, lengths(i, j), angles(i, j),
+                        candidates_i.row(j) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j), 
                             dihedrals(i, j), this->rng, this->uniform_dist,
-                            (dihedrals(i, j) > 0 ? 1 : -1)
+                            (dihedrals(i, 0) > 0 ? 1 : -1)
                         );
-                        moves(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
                     }
 
-                    // Get the non-bonded energy difference due to segment replacement
-                    energy_diffs(i) = this->config.getSegmentReplacementNonbondedEnergyDifference(
-                        segment_i, 0, this->lj_params, this->neighbor_threshold
-                    ); 
+                    // Calculate the residual energy for each candidate position
+                    //
+                    // TODO Implement this
+                    Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        residuals_i(j) = this->config.getTerminalSegmentReplacementResidualEnergy(
+                            TerminalSegmentEnd::HEAD, segment_length, i, 
+                            segment, candidates_i.row(j), this->lj_params,
+                            this->neighbor_threshold 
+                        ); 
+                    }
+
+                    // Calculate the corresponding Boltzmann factors 
+                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom 
+                    T rosenbluth_i = boltzmann.sum();
+                    rosenbluth_total *= rosenbluth_i; 
+
+                    // Choose one candidate position with probability 
+                    // proportional to its Boltzmann weight
+                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
+
+                    // Grow the segment 
+                    segment.conservativeResize(i + 1, 3); 
+                    segment.row(i) = candidates_i.row(move_idx);
                 }
             }
             else        // Move the terminal segment at the tail 
             {
-                // Generate new candidate atomic positions for the tail segment
-                for (int i = 0; i < n_candidates; ++i)
+                // For each atom in the terminal segment ...
+                for (int i = 0; i < segment_length; ++i)
                 {
-                    Matrix<T, Dynamic, 3> segment_i(segment_length, 3); 
-
-                    // Move forward from atom (n - segment_length) in the polymer 
-                    for (int j = 0; j < segment_length; ++j)
+                    // Generate a collection of candidate positions for the 
+                    // i-th atom
+                    Matrix<T, Dynamic, 3> candidates_i(n_candidates, 3);
+                    Matrix<T, 3, 1> r1, r2, r3;  
+                    for (int j = 0; j < n_candidates; ++j)
                     {
-                        Matrix<T, 3, 1> r1, r2, r3; 
-                        if (j == 0)
+                        // First atom in the segment (closest to the polymer)
+                        //
+                        // Since we are moving the last (segment_length) atoms
+                        // in the polymer, the last atom that is not moved 
+                        // has index n - segment_length - 1
+                        if (i == 0)
                         {
                             r1 = this->r.row(n - segment_length - 3);
                             r2 = this->r.row(n - segment_length - 2); 
                             r3 = this->r.row(n - segment_length - 1);  
                         }
-                        else if (j == 1)
+                        else if (i == 1)    // Second atom in the segment
                         {
                             r1 = this->r.row(n - segment_length - 2); 
                             r2 = this->r.row(n - segment_length - 1); 
-                            r3 = segment_i.row(0); 
+                            r3 = segment.row(0); 
                         }
-                        else if (j == 2)
+                        else if (i == 2)    // Third atom in the segment
                         {
                             r1 = this->r.row(n - segment_length - 1); 
-                            r2 = segment_i.row(0); 
-                            r3 = segment_i.row(1);
+                            r2 = segment.row(0); 
+                            r3 = segment.row(1);
                         }
                         else 
                         {
-                            r1 = segment_i.row(j - 3);
-                            r2 = segment_i.row(j - 2); 
-                            r3 = segment_i.row(j - 1); 
+                            r1 = segment.row(i - 3); 
+                            r2 = segment.row(i - 2); 
+                            r3 = segment.row(i - 1); 
                         }
-                        segment_i.row(j) = generateNextAtomDihedral<T>(
-                            r1, r2, r3, lengths(i, j), angles(i, j),
+                        candidates_i.row(j) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j), 
                             dihedrals(i, j), this->rng, this->uniform_dist,
-                            (dihedrals(i, j) > 0 ? 1 : -1)
+                            (dihedrals(i, 0) > 0 ? 1 : -1)
                         );
-                        moves(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
                     }
 
-                    // Get the non-bonded energy difference due to segment replacement
-                    energy_diffs(i) = this->config.getSegmentReplacementNonbondedEnergyDifference(
-                        segment_i, n - segment_length, this->lj_params,
-                        this->neighbor_threshold
-                    ); 
+                    // Calculate the residual energy for each candidate position
+                    //
+                    // TODO Implement this
+                    Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        residuals_i(j) = this->config.getTerminalSegmentReplacementResidualEnergy(
+                            TerminalSegmentEnd::TAIL, segment_length, i, 
+                            segment, candidates_i.row(j), this->lj_params,
+                            this->neighbor_threshold 
+                        ); 
+                    }
+
+                    // Calculate the corresponding Boltzmann factors 
+                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom 
+                    T rosenbluth_i = boltzmann.sum();
+                    rosenbluth_total *= rosenbluth_i; 
+
+                    // Choose one candidate position with probability 
+                    // proportional to its Boltzmann weight
+                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
+
+                    // Grow the segment 
+                    segment.conservativeResize(i + 1, 3); 
+                    segment.row(i) = candidates_i.row(move_idx);
                 }
             }
 
-            return std::make_pair(moves, energy_diffs); 
+            return std::make_pair(segment, rosenbluth_total); 
         }
 
         /**
-         * Generate possible terminal segment moves from the given 
-         * configuration (which may differ from the current configuration).
+         * Iteratively generate and select a terminal segment move from the 
+         * given configuration, which should differ from the current 
+         * configuration. 
          *
+         * This function should be interpreted as yielding *backward* moves 
+         * from the given configuration, and *always* includes reversion to
+         * the current configuration as a possible move. 
+         *
+         * @param segment_length Segment length. 
          * @param direction Choice of terminal segment to move. 
          * @param n_candidates Number of candidate moves to generate. 
-         * @param segment_length Segment length. 
          * @param coords Input array of atomic coordinates.  
          * @returns Arrays of candidate atomic positions for the new segment
          *          and the corresponding energy differences. 
          */
-        std::pair<Matrix<T, Dynamic, Dynamic>,
-                  Matrix<T, Dynamic, 1> > generateTerminalSegmentMoves(const int segment_length, 
-                                                                       const TerminalSegmentEnd direction,
-                                                                       const int n_candidates,
-                                                                       const Ref<const Matrix<T, Dynamic, 3> >& coords)
+        std::pair<Matrix<T, Dynamic, 3>, T> generateBackwardTerminalSegmentMove(const int segment_length, 
+                                                                                const TerminalSegmentEnd direction,
+                                                                                const int n_candidates,
+                                                                                const Ref<const Matrix<T, Dynamic, 3> >& coords)
         {
             const int n = this->length;
-            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3 * segment_length); 
-            Matrix<T, Dynamic, 1> energy_diffs(n_candidates);
 
             // Generate new configuration with the given coordinates 
             PolymerConfiguration<T> config_(
@@ -1516,126 +1572,201 @@ class PolymerCBMCSampler
             }
 
             // Generate bond lengths, bond angles, and dihedral angles 
-            Matrix<T, Dynamic, Dynamic> lengths(n_candidates, segment_length),
-                                        angles(n_candidates, segment_length),
-                                        dihedrals(n_candidates, segment_length);
-            for (int i = 0; i < n_candidates; ++i)
+            Matrix<T, Dynamic, Dynamic> lengths(segment_length, n_candidates),
+                                        angles(segment_length, n_candidates),
+                                        dihedrals(segment_length, n_candidates);
+            for (int i = 0; i < segment_length; ++i)
             {
-                for (int j = 0; j < segment_length; ++j)
+                for (int j = 0; j < n_candidates; ++j)
                 {
                     lengths(i, j) = sampleFene<T>(
-                        this->rng, this->uniform_dist, this->bond_length_cdf 
+                        this->rng, this->uniform_dist, this->bond_length_cdf
                     );
                     angles(i, j) = sample_angle();
                     dihedrals(i, j) = sampleDihedralHarmonic<T>(
-                        this->dihedral_params.at("K"), config_.kT,
-                        this->rng, this->uniform_dist
+                        this->dihedral_params.at("K"), this->config.kT, this->rng,
+                        this->uniform_dist
                     );
                 }
             }
+
+            // Keep track of the growing segment and the total Rosenbluth weight
+            Matrix<T, Dynamic, 3> segment(0, 3); 
+            T rosenbluth_total = 1; 
              
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
             {
-                // Generate new candidate atomic positions for the head segment
-                for (int i = 0; i < n_candidates; ++i)
+                // For each atom in the terminal segment ...
+                for (int i = 0; i < segment_length; ++i)
                 {
-                    Matrix<T, Dynamic, 3> segment_i(segment_length, 3); 
+                    // Generate a collection of candidate positions for the 
+                    // i-th atom 
+                    Matrix<T, Dynamic, 3> candidates_i(n_candidates, 3);
+                    Matrix<T, 3, 1> r1, r2, r3; 
 
-                    // Move backwards from atom (segment_length) in the polymer  
-                    for (int j = 0; j < segment_length; ++j)
+                    // Start with reversion to the current configuration
+                    //
+                    // If we are moving the terminal segment at the head, 
+                    // the i-th atom is the i-th closest to the rest of the
+                    // polymer, i.e., atom at index segment_length - i - 1
+                    candidates_i.row(0) = this->r.row(segment_length - i - 1); 
+
+                    // Generate every other candidate position 
+                    for (int j = 1; j < n_candidates; ++j)
                     {
-                        Matrix<T, 3, 1> r1, r2, r3; 
-                        if (j == 0)         // Last atom in the segment (closest to the polymer)
+                        // Last atom in the segment (closest to the polymer)
+                        if (i == 0)
                         {
                             r1 = coords.row(segment_length + 2);
                             r2 = coords.row(segment_length + 1); 
                             r3 = coords.row(segment_length);  
                         }
-                        else if (j == 1)    // Second-to-last
+                        else if (i == 1)    // Second-to-last atom in the segment
                         {
                             r1 = coords.row(segment_length + 1); 
                             r2 = coords.row(segment_length); 
-                            r3 = segment_i.row(segment_length - 1);  
+                            r3 = segment.row(0);    // Last atom in the segment 
                         }
-                        else if (j == 2)    // Third-to-last
+                        else if (i == 2)    // Third-to-last atom in the segment
                         {
                             r1 = coords.row(segment_length); 
-                            r2 = segment_i.row(segment_length - 1);
-                            r3 = segment_i.row(segment_length - 2); 
+                            r2 = segment.row(0);    // Last atom 
+                            r3 = segment.row(1);    // Second-to-last
                         }
                         else 
                         {
-                            r1 = segment_i.row(segment_length - 1 - j + 3); 
-                            r2 = segment_i.row(segment_length - 1 - j + 2); 
-                            r3 = segment_i.row(segment_length - 1 - j + 1);  
+                            r1 = segment.row(i - 3); 
+                            r2 = segment.row(i - 2); 
+                            r3 = segment.row(i - 1); 
                         }
-                        int idx = segment_length - 1 - j;
-                        segment_i.row(idx) = generateNextAtomDihedral<T>(
-                            r1, r2, r3, lengths(i, j), angles(i, j),
+                        candidates_i.row(j) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j), 
                             dihedrals(i, j), this->rng, this->uniform_dist,
-                            (dihedrals(i, j) > 0 ? 1 : -1)
+                            (dihedrals(i, 0) > 0 ? 1 : -1)
                         );
-                        moves(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
                     }
 
-                    // Get the non-bonded energy difference due to segment replacement
-                    energy_diffs(i) = config_.getSegmentReplacementNonbondedEnergyDifference(
-                        segment_i, 0, this->lj_params, this->neighbor_threshold
-                    ); 
+                    // Calculate the residual energy for each candidate position
+                    //
+                    // TODO Implement this
+                    Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        residuals_i(j) = config_.getTerminalSegmentReplacementResidualEnergy(
+                            TerminalSegmentEnd::HEAD, segment_length, i, 
+                            segment, candidates_i.row(j), this->lj_params,
+                            this->neighbor_threshold 
+                        ); 
+                    }
+
+                    // Calculate the corresponding Boltzmann factors 
+                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom 
+                    T rosenbluth_i = boltzmann.sum();
+                    rosenbluth_total *= rosenbluth_i; 
+
+                    // Choose one candidate position with probability 
+                    // proportional to its Boltzmann weight
+                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
+
+                    // Grow the segment 
+                    segment.conservativeResize(i + 1, 3); 
+                    segment.row(i) = candidates_i.row(move_idx);
                 }
             }
             else        // Move the terminal segment at the tail 
             {
-                // Generate new candidate atomic positions for the tail segment
-                for (int i = 0; i < n_candidates; ++i)
+                // For each atom in the terminal segment ...
+                for (int i = 0; i < segment_length; ++i)
                 {
-                    Matrix<T, Dynamic, 3> segment_i(segment_length, 3); 
+                    // Generate a collection of candidate positions for the 
+                    // i-th atom
+                    Matrix<T, Dynamic, 3> candidates_i(n_candidates, 3);
+                    Matrix<T, 3, 1> r1, r2, r3;  
+                    
+                    // Start with reversion to the current configuration
+                    //
+                    // If we are moving the terminal segment at the tail,
+                    // the i-th atom has index n - segment_length + i
+                    candidates_i.row(0) = this->r.row(n - segment_length + i);
 
-                    // Move forward from atom (n - segment_length) in the polymer 
-                    for (int j = 0; j < segment_length; ++j)
+                    // Generate every other candidate position
+                    for (int j = 1; j < n_candidates; ++j)
                     {
-                        Matrix<T, 3, 1> r1, r2, r3; 
-                        if (j == 0)
+                        // First atom in the segment (closest to the polymer)
+                        //
+                        // Since we are moving the last (segment_length) atoms
+                        // in the polymer, the last atom that is not moved 
+                        // has index n - segment_length - 1
+                        if (i == 0)
                         {
                             r1 = coords.row(n - segment_length - 3);
                             r2 = coords.row(n - segment_length - 2); 
                             r3 = coords.row(n - segment_length - 1);  
                         }
-                        else if (j == 1)
+                        else if (i == 1)    // Second atom in the segment
                         {
                             r1 = coords.row(n - segment_length - 2); 
                             r2 = coords.row(n - segment_length - 1); 
-                            r3 = segment_i.row(0); 
+                            r3 = segment.row(0); 
                         }
-                        else if (j == 2)
+                        else if (i == 2)    // Third atom in the segment
                         {
                             r1 = coords.row(n - segment_length - 1); 
-                            r2 = segment_i.row(0); 
-                            r3 = segment_i.row(1);
+                            r2 = segment.row(0); 
+                            r3 = segment.row(1);
                         }
                         else 
                         {
-                            r1 = segment_i.row(j - 3);
-                            r2 = segment_i.row(j - 2); 
-                            r3 = segment_i.row(j - 1); 
+                            r1 = segment.row(i - 3); 
+                            r2 = segment.row(i - 2); 
+                            r3 = segment.row(i - 1); 
                         }
-                        segment_i.row(j) = generateNextAtomDihedral<T>(
-                            r1, r2, r3, lengths(i, j), angles(i, j),
+                        candidates_i.row(j) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j), 
                             dihedrals(i, j), this->rng, this->uniform_dist,
-                            (dihedrals(i, j) > 0 ? 1 : -1)
+                            (dihedrals(i, 0) > 0 ? 1 : -1)
                         );
-                        moves(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
                     }
 
-                    // Get the non-bonded energy difference due to segment replacement
-                    energy_diffs(i) = config_.getSegmentReplacementNonbondedEnergyDifference(
-                        segment_i, n - segment_length, this->lj_params,
-                        this->neighbor_threshold
-                    ); 
+                    // Calculate the residual energy for each candidate position
+                    //
+                    // TODO Implement this
+                    Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        residuals_i(j) = config_.getTerminalSegmentReplacementResidualEnergy(
+                            TerminalSegmentEnd::TAIL, segment_length, i, 
+                            segment, candidates_i.row(j), this->lj_params,
+                            this->neighbor_threshold 
+                        ); 
+                    }
+
+                    // Calculate the corresponding Boltzmann factors 
+                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom 
+                    T rosenbluth_i = boltzmann.sum();
+                    rosenbluth_total *= rosenbluth_i; 
+
+                    // Choose one candidate position with probability 
+                    // proportional to its Boltzmann weight
+                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
+
+                    // Grow the segment 
+                    segment.conservativeResize(i + 1, 3); 
+                    segment.row(i) = candidates_i.row(move_idx);
                 }
             }
 
-            return std::make_pair(moves, energy_diffs); 
+            return std::make_pair(segment, rosenbluth_total); 
         }
 
         /** -------------------------------------------------------------- // 
@@ -2113,7 +2244,63 @@ class PolymerCBMCSampler
                     p < 0.5 ? TerminalSegmentEnd::HEAD : TerminalSegmentEnd::TAIL
                 );
 
-                // TODO 
+                // Generate and select a forward move and get its total 
+                // Rosenbluth weight
+                auto forward_result = this->generateForwardTerminalSegmentMove(
+                    segment_length, terminal_end, n_candidates
+                );
+                Matrix<T, Dynamic, 3> forward_move = forward_result.first; 
+                T forward_rosenbluth = forward_result.second;
+
+                // Generate a copy of the current configuration and apply 
+                // the forward move
+                //
+                // When moving the terminal segment at the head, the atomic
+                // coordinates must be mirrored
+                PolymerConfiguration<T> forward_config(this->config);
+                if (terminal_end == TerminalSegmentEnd::HEAD)
+                    forward_config.replaceSegment(forward_move.colwise().reverse(), 0);
+                else
+                    forward_config.replaceSegment(forward_move, n - segment_length); 
+
+                // Generate and select a reverse move and get its total 
+                // Rosenbluth weight
+                Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(0, n);  
+                auto reverse_result = this->generateBackwardTerminalSegmentMove(
+                    segment_length, terminal_end, n_candidates, forward_coords
+                );
+                Matrix<T, Dynamic, 3> reverse_move = reverse_result.first; 
+                T reverse_rosenbluth = reverse_result.second;
+
+                // Calculate the Metropolis acceptance probability
+                T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
+
+                // Change the polymer configuration according to that probability
+                T r = this->uniform_dist(this->rng); 
+                if (r < prob_accept)
+                {
+                    // Move terminal segment at the head 
+                    //
+                    // Here, again, the atomic coordinates must be mirrored 
+                    if (terminal_end == TerminalSegmentEnd::HEAD)
+                        this->config.replaceSegment(forward_move.colwise().reverse(), 0); 
+                    else    // Move terminal segment at the tail 
+                        this->config.replaceSegment(forward_move, n - segment_length); 
+                }
+                this->updateCoords(); 
+
+                // Return the forward and reverse candidate moves, the index
+                // of the chosen move (0), its Metropolis acceptance probability, 
+                // whether the move was taken, and the terminal segment end 
+                Matrix<T, Dynamic, Dynamic> forward_move_(forward_move),
+                                            reverse_move_(reverse_move); 
+                std::unordered_map<std::string, T> move_info; 
+                move_info["terminal_end"] = (terminal_end == TerminalSegmentEnd::HEAD ? 0 : 1);
+                return std::make_tuple(
+                    forward_move_, reverse_move_, 0, prob_accept, 
+                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
+                    move_info
+                ); 
             }
             else    // move_type == CBMCMoveType::INTERNAL_SEGMENT)
             {
