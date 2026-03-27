@@ -555,15 +555,15 @@ class PolymerCBMCSampler
          * @param direction Reptation direction. 
          * @param n_candidates Number of candidate moves to generate.  
          * @returns Arrays of candidate atomic positions for the new atom and
-         *          the corresponding reptation energy differences.  
+         *          the corresponding residual energies.
          */
-        std::pair<Matrix<T, Dynamic, Dynamic>,
+        std::pair<Matrix<T, Dynamic, 3>,
                   Matrix<T, Dynamic, 1> > generateReptationMoves(const ReptationDirection direction, 
                                                                  const int n_candidates)
         {
             const int n = this->length; 
-            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3);
-            Matrix<T, Dynamic, 1> energy_diffs(n_candidates); 
+            Matrix<T, Dynamic, 3> moves(n_candidates, 3);
+            Matrix<T, Dynamic, 1> residuals(n_candidates); 
 
             // Define the angle sampling function  
             std::function<T()> sample_angle;
@@ -626,12 +626,8 @@ class PolymerCBMCSampler
                         (dihedrals(i, 0) > 0 ? 1 : -1)
                     );
 
-                    // Get the non-bonded energy difference due to reptation
-                    //energy_diffs(i) = this->config.getReptationNonbondedEnergyDifference(
-                    //    ReptationDirection::HEAD, moves.row(i),
-                    //    this->lj_params, this->neighbor_threshold
-                    //);
-                    energy_diffs(i) = this->config.getReptationResidualEnergy(
+                    // Get the residual energy 
+                    residuals(i) = this->config.getReptationResidualEnergy(
                         moves.row(i), this->lj_params, this->neighbor_threshold
                     );  
                 }
@@ -648,38 +644,38 @@ class PolymerCBMCSampler
                         (dihedrals(i, 0) > 0 ? 1 : -1)
                     );
 
-                    // Get the non-bonded energy difference due to reptation
-                    //energy_diffs(i) = this->config.getReptationNonbondedEnergyDifference(
-                    //    ReptationDirection::TAIL, moves.row(i),
-                    //    this->lj_params, this->neighbor_threshold
-                    //);
-                    energy_diffs(i) = this->config.getReptationResidualEnergy(
+                    // Get the residual energy 
+                    residuals(i) = this->config.getReptationResidualEnergy(
                         moves.row(i), this->lj_params, this->neighbor_threshold
                     );  
                 }
             }
 
-            return std::make_pair(moves, energy_diffs); 
+            return std::make_pair(moves, residuals);
         }
 
         /**
-         * Generate possible reptation moves from the given configuration
-         * (which may differ from the current configuration).
+         * Generate possible reptation moves from the given configuration,
+         * which should differ from the current configuration.
          *
-         * @param direction Reptation direction. 
+         * This function should be interpreted as yielding *backward* moves 
+         * from the given configuration, and *always* includes reversion to
+         * the current configuration as a possible move. 
+         *
+         * @param direction Reptation direction (from the given configuration). 
          * @param n_candidates Number of candidate moves to generate. 
          * @param coords Input array of atomic coordinates.  
          * @returns Arrays of candidate atomic positions for the new atom and
-         *          the corresponding reptation energy differences.  
+         *          the corresponding residual energies.
          */
-        std::pair<Matrix<T, Dynamic, Dynamic>,
+        std::pair<Matrix<T, Dynamic, 3>,
                   Matrix<T, Dynamic, 1> > generateReptationMoves(const ReptationDirection direction, 
                                                                  const int n_candidates,
                                                                  const Ref<const Matrix<T, Dynamic, 3> >& coords)
         {
             const int n = this->length; 
-            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3);
-            Matrix<T, Dynamic, 1> energy_diffs(n_candidates);
+            Matrix<T, Dynamic, 3> moves(n_candidates, 3);
+            Matrix<T, Dynamic, 1> residuals(n_candidates);
 
             // Generate new configuration with the given coordinates 
             PolymerConfiguration<T> config_(
@@ -737,8 +733,22 @@ class PolymerCBMCSampler
              
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
+                // Start with reversion to the current configuration
+                //
+                // We must have reptated toward the tail to get the given
+                // configuration
+                //
+                // Therefore, the new atom here is the 0-th atom in the 
+                // current configuration 
+                moves.row(0) = this->r.row(0);
+
+                // Get the residual energy 
+                residuals(0) = config_.getReptationResidualEnergy(
+                    moves.row(0), this->lj_params, this->neighbor_threshold
+                ); 
+
                 // Generate new candidate atomic positions at the head
-                for (int i = 0; i < n_candidates; ++i)
+                for (int i = 1; i < n_candidates; ++i)
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
                         coords.row(2), coords.row(1), coords.row(0),
@@ -747,20 +757,30 @@ class PolymerCBMCSampler
                         (dihedrals(i, 0) > 0 ? 1 : -1)
                     );
 
-                    // Get the non-bonded energy difference due to reptation
-                    //energy_diffs(i) = config_.getReptationNonbondedEnergyDifference(
-                    //    ReptationDirection::HEAD, moves.row(i),
-                    //    this->lj_params, this->neighbor_threshold
-                    //);
-                    energy_diffs(i) = config_.getReptationResidualEnergy(
+                    // Get the residual energy 
+                    residuals(i) = config_.getReptationResidualEnergy(
                         moves.row(i), this->lj_params, this->neighbor_threshold
                     );  
                 }
             }
             else        // Reptate towards the tail 
             {
+                // Start with reversion to the current configuration
+                //
+                // We must have reptated toward the head to get the given
+                // configuration
+                //
+                // Therefore, the new atom here is the final atom in the 
+                // current configuration 
+                moves.row(0) = this->r.row(n - 1);
+
+                // Get the residual energy 
+                residuals(0) = config_.getReptationResidualEnergy(
+                    moves.row(0), this->lj_params, this->neighbor_threshold
+                ); 
+
                 // Generate new candidate atomic positions at the tail 
-                for (int i = 0; i < n_candidates; ++i)
+                for (int i = 1; i < n_candidates; ++i)
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
                         coords.row(n - 3), coords.row(n - 2), coords.row(n - 1),
@@ -769,41 +789,37 @@ class PolymerCBMCSampler
                         (dihedrals(i, 0) > 0 ? 1 : -1)
                     );
 
-                    // Get the non-bonded energy difference due to reptation
-                    //energy_diffs(i) = config_.getReptationNonbondedEnergyDifference(
-                    //    ReptationDirection::TAIL, moves.row(i),
-                    //    this->lj_params, this->neighbor_threshold
-                    //);
-                    energy_diffs(i) = config_.getReptationResidualEnergy(
+                    // Get the residual energy 
+                    residuals(i) = config_.getReptationResidualEnergy(
                         moves.row(i), this->lj_params, this->neighbor_threshold
                     );  
                 }
             }
 
-            return std::make_pair(moves, energy_diffs); 
+            return std::make_pair(moves, residuals); 
         }
 
         /** -------------------------------------------------------------- // 
          *                MOVE GENERATION: MULTIMER REPTATION              // 
          *  -------------------------------------------------------------- */
         /**
-         * Generate possible multimer reptation moves from the current
-         * configuration.
+         * Iteratively generate and select a multimer reptation move from the
+         * current configuration.
+         *
+         * This function should be interpreted as yielding *forward* moves 
+         * from the current configuration. 
          *
          * @param direction Reptation direction.
          * @param n_reptate Multimer length.  
-         * @param n_candidates Number of candidate moves to generate.  
-         * @returns Arrays of candidate atomic positions for the new atom and
-         *          the corresponding reptation energy differences.  
+         * @param n_candidates Number of candidate moves to generate per atom.  
+         * @returns The chosen multimer reptation move and its corresponding
+         *          (total) Rosenbluth weight. 
          */
-        std::pair<Matrix<T, Dynamic, Dynamic>,
-                  Matrix<T, Dynamic, 1> > generateMultimerReptationMoves(const ReptationDirection direction,
-                                                                         const int n_reptate, 
-                                                                         const int n_candidates)
+        std::pair<Matrix<T, Dynamic, 3>, T> generateForwardMultimerReptationMove(const ReptationDirection direction,
+                                                                                 const int n_reptate, 
+                                                                                 const int n_candidates)
         {
             const int n = this->length; 
-            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3 * n_reptate);
-            Matrix<T, Dynamic, 1> energy_diffs(n_candidates); 
 
             // Define the angle sampling function  
             std::function<T()> sample_angle;
@@ -839,12 +855,12 @@ class PolymerCBMCSampler
             }
 
             // Generate bond lengths, bond angles, and dihedral angles 
-            Matrix<T, Dynamic, Dynamic> lengths(n_candidates, n_reptate),
-                                        angles(n_candidates, n_reptate), 
-                                        dihedrals(n_candidates, n_reptate);
-            for (int i = 0; i < n_candidates; ++i)
+            Matrix<T, Dynamic, Dynamic> lengths(n_reptate, n_candidates),
+                                        angles(n_reptate, n_candidates),
+                                        dihedrals(n_reptate, n_candidates);
+            for (int i = 0; i < n_reptate; ++i)
             {
-                for (int j = 0; j < n_reptate; ++j)
+                for (int j = 0; j < n_candidates; ++j)
                 {
                     lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf 
@@ -856,134 +872,178 @@ class PolymerCBMCSampler
                     );
                 }
             }
-             
+
+            // Keep track of the growing segment and the total Rosenbluth weight
+            Matrix<T, Dynamic, 3> segment(0, 3); 
+            T rosenbluth_total = 1; 
+
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
-                // Generate new candidate atomic positions at the head
-                for (int i = 0; i < n_candidates; ++i)
+                // For each atom ... 
+                for (int i = 0; i < n_reptate; ++i)
                 {
-                    Matrix<T, Dynamic, 3> segment_i(n_reptate, 3);
-                   
-                    // Generate the j-th atom along the segment, downwards from
-                    // j = n_reptate - 1 to j = 0, starting from atom 0 in the
-                    // polymer
-                    for (int j = 0; j < n_reptate; ++j)
+                    // Generate a collection of candidate positions for the
+                    // i-th atom
+                    Matrix<T, Dynamic, 3> candidates_i(n_candidates, 3);
+                    Matrix<T, 3, 1> r1, r2, r3; 
+                    for (int j = 0; j < n_candidates; ++j)
                     {
-                        Matrix<T, 3, 1> r1, r2, r3; 
-                        if (j == 0)         // Last atom in the segment (closest to the polymer)
+                        if (i == 0)
                         {
-                            r1 = this->r.row(2); 
-                            r2 = this->r.row(1); 
+                            r1 = this->r.row(2);
+                            r2 = this->r.row(1);
                             r3 = this->r.row(0); 
-                        } 
-                        else if (j == 1)    // Second-to-last
+                        }
+                        else if (i == 1)
                         {
                             r1 = this->r.row(1); 
                             r2 = this->r.row(0); 
-                            r3 = segment_i.row(n_reptate - 1); 
+                            r3 = segment.row(0); 
                         }
-                        else if (j == 2)    // Third-to-last
+                        else if (i == 2)
                         {
                             r1 = this->r.row(0); 
-                            r2 = segment_i.row(n_reptate - 1); 
-                            r3 = segment_i.row(n_reptate - 2); 
+                            r2 = segment.row(0);
+                            r3 = segment.row(1); 
                         }
                         else 
                         {
-                            r1 = segment_i.row(n_reptate - 1 - j + 3); 
-                            r2 = segment_i.row(n_reptate - 1 - j + 2); 
-                            r3 = segment_i.row(n_reptate - 1 - j + 1);  
+                            r1 = segment.row(i - 3); 
+                            r2 = segment.row(i - 2); 
+                            r3 = segment.row(i - 1); 
                         }
-                        int idx = n_reptate - 1 - j; 
-                        segment_i.row(idx) = generateNextAtomDihedral<T>(
+                        candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
                             dihedrals(i, j), this->rng, this->uniform_dist,
                             (dihedrals(i, 0) > 0 ? 1 : -1)
                         );
-                        moves(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
                     }
 
-                    // Get the non-bonded energy difference due to reptation
-                    energy_diffs(i) = this->config.getMultimerReptationNonbondedEnergyDifference(
-                        ReptationDirection::HEAD, segment_i, 
-                        this->lj_params, this->neighbor_threshold
-                    ); 
+                    // Calculate the residual energy for each candidate position
+                    Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        residuals_i(j) = this->config.getMultimerReptationResidualEnergy(
+                            ReptationDirection::HEAD, n_reptate, i, segment,
+                            candidates_i.row(j), lj_params, neighbor_threshold
+                        ); 
+                    }
+
+                    // Calculate the corresponding Boltzmann factors 
+                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom 
+                    T rosenbluth_i = boltzmann.sum();
+                    rosenbluth_total *= rosenbluth_i; 
+
+                    // Choose one candidate position with probability 
+                    // proportional to its Boltzmann weight
+                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
+
+                    // Grow the segment 
+                    segment.conservativeResize(i + 1, 3); 
+                    segment.row(i) = candidates_i.row(move_idx);
                 }
             }
             else        // Reptate towards the tail 
             {
-                // Generate new candidate atomic positions at the tail 
-                for (int i = 0; i < n_candidates; ++i)
+                // For each atom ... 
+                for (int i = 0; i < n_reptate; ++i)
                 {
-                    Matrix<T, Dynamic, 3> segment_i(n_reptate, 3);
-                    
-                    // Move forward from atom (n - 1) in the polymer 
-                    for (int j = 0; j < n_reptate; ++j)
+                    // Generate a collection of candidate positions for the
+                    // i-th atom
+                    Matrix<T, Dynamic, 3> candidates_i(n_candidates, 3);
+                    Matrix<T, 3, 1> r1, r2, r3; 
+                    for (int j = 0; j < n_candidates; ++j)
                     {
-                        Matrix<T, 3, 1> r1, r2, r3; 
-                        if (j == 0)
+                        if (i == 0)
                         {
-                            r1 = this->r.row(n - 3); 
-                            r2 = this->r.row(n - 2); 
+                            r1 = this->r.row(n - 3);
+                            r2 = this->r.row(n - 2);
                             r3 = this->r.row(n - 1); 
                         }
-                        else if (j == 1)
+                        else if (i == 1)
                         {
                             r1 = this->r.row(n - 2); 
-                            r2 = this->r.row(n - 1);
-                            r3 = segment_i.row(0); 
+                            r2 = this->r.row(n - 1); 
+                            r3 = segment.row(0); 
                         }
-                        else if (j == 2)
+                        else if (i == 2)
                         {
                             r1 = this->r.row(n - 1); 
-                            r2 = segment_i.row(0); 
-                            r3 = segment_i.row(1); 
+                            r2 = segment.row(0);
+                            r3 = segment.row(1); 
                         }
                         else 
                         {
-                            r1 = segment_i.row(j - 3);
-                            r2 = segment_i.row(j - 2); 
-                            r3 = segment_i.row(j - 1);  
-                        } 
-                        segment_i.row(j) = generateNextAtomDihedral<T>(
-                            r1, r2, r3, lengths(i, j), angles(i, j),
+                            r1 = segment.row(i - 3); 
+                            r2 = segment.row(i - 2); 
+                            r3 = segment.row(i - 1); 
+                        }
+                        candidates_i.row(j) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j), 
                             dihedrals(i, j), this->rng, this->uniform_dist,
                             (dihedrals(i, 0) > 0 ? 1 : -1)
                         );
-                        moves(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
                     }
 
-                    // Get the non-bonded energy difference due to reptation
-                    energy_diffs(i) = this->config.getMultimerReptationNonbondedEnergyDifference(
-                        ReptationDirection::TAIL, segment_i, 
-                        this->lj_params, this->neighbor_threshold
-                    ); 
+                    // Calculate the residual energy for each candidate position
+                    Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        residuals_i(j) = this->config.getMultimerReptationResidualEnergy(
+                            ReptationDirection::TAIL, n_reptate, i, segment,
+                            candidates_i.row(j), lj_params, neighbor_threshold
+                        ); 
+                    }
+
+                    // Calculate the corresponding Boltzmann factors 
+                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom 
+                    T rosenbluth_i = boltzmann.sum();
+                    rosenbluth_total *= rosenbluth_i; 
+
+                    // Choose one candidate position with probability 
+                    // proportional to its Boltzmann weight
+                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
+
+                    // Grow the segment 
+                    segment.conservativeResize(i + 1, 3); 
+                    segment.row(i) = candidates_i.row(move_idx);
                 }
             }
 
-            return std::make_pair(moves, energy_diffs); 
+            return std::make_pair(segment, rosenbluth_total);  
         }
 
         /**
-         * Generate possible multimer reptation moves from the given
-         * configuration (which may differ from the current configuration).
+         * Iteratively generate and select a multimer reptation move from the
+         * given configuration, which should differ from the current configuration.
          *
-         * @param direction Reptation direction.
+         * This function should be interpreted as yielding *backward* moves 
+         * from the given configuration, and *always* includes reversion to
+         * the current configuration as a possible move. 
+         *
+         * @param direction Reptation direction (from the given configuration).
          * @param n_reptate Multimer length.  
-         * @param n_candidates Number of candidate moves to generate. 
+         * @param n_candidates Number of candidate moves to generate per atom. 
          * @param coords Input array of atomic coordinates.  
-         * @returns Arrays of candidate atomic positions for the new atom and
-         *          the corresponding reptation energy differences.  
+         * @returns The chosen multimer reptation move and its corresponding
+         *          (total) Rosenbluth weight. 
          */
-        std::pair<Matrix<T, Dynamic, Dynamic>,
-                  Matrix<T, Dynamic, 1> > generateMultimerReptationMoves(const ReptationDirection direction,
-                                                                         const int n_reptate, 
-                                                                         const int n_candidates,
-                                                                         const Ref<const Matrix<T, Dynamic, 3> >& coords)
+        std::pair<Matrix<T, Dynamic, 3>, T> generateBackwardMultimerReptationMove(const ReptationDirection direction,
+                                                                                  const int n_reptate, 
+                                                                                  const int n_candidates,
+                                                                                  const Ref<const Matrix<T, Dynamic, 3> >& coords)
         {
             const int n = this->length; 
-            Matrix<T, Dynamic, Dynamic> moves(n_candidates, 3 * n_reptate);
-            Matrix<T, Dynamic, 1> energy_diffs(n_candidates);
 
             // Generate new configuration with the given coordinates 
             PolymerConfiguration<T> config_(
@@ -1024,12 +1084,12 @@ class PolymerCBMCSampler
             }
 
             // Generate bond lengths, bond angles, and dihedral angles 
-            Matrix<T, Dynamic, Dynamic> lengths(n_candidates, n_reptate),
-                                        angles(n_candidates, n_reptate), 
-                                        dihedrals(n_candidates, n_reptate);
-            for (int i = 0; i < n_candidates; ++i)
+            Matrix<T, Dynamic, Dynamic> lengths(n_reptate, n_candidates),
+                                        angles(n_reptate, n_candidates),
+                                        dihedrals(n_reptate, n_candidates);
+            for (int i = 0; i < n_reptate; ++i)
             {
-                for (int j = 0; j < n_reptate; ++j)
+                for (int j = 0; j < n_candidates; ++j)
                 {
                     lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf 
@@ -1041,112 +1101,181 @@ class PolymerCBMCSampler
                     );
                 }
             }
-             
+
+            // Keep track of the growing segment and the total Rosenbluth weight
+            Matrix<T, Dynamic, 3> segment(0, 3); 
+            T rosenbluth_total = 1; 
+            
+            // Note that the reptation direction is from the given configuration,
+            // not from the current configuration 
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
-                // Generate new candidate atomic positions at the head
-                for (int i = 0; i < n_candidates; ++i)
+                // For each atom ... 
+                for (int i = 0; i < n_reptate; ++i)
                 {
-                    Matrix<T, Dynamic, 3> segment_i(n_reptate, 3);
-                   
-                    // Generate the j-th atom along the segment, downwards from
-                    // j = n_reptate - 1 to j = 0, starting from atom 0 in the
-                    // polymer
-                    for (int j = 0; j < n_reptate; ++j)
+                    // Generate a collection of candidate positions for the 
+                    // i-th atom 
+                    Matrix<T, Dynamic, 3> candidates_i(n_candidates, 3);
+                    Matrix<T, 3, 1> r1, r2, r3;
+
+                    // Start with reversion to the current configuration
+                    //
+                    // We must have reptated toward the tail to get the given
+                    // configuration
+                    //
+                    // Therefore, the i-th atom here is the (K - i - 1)-th
+                    // of the current configuration  
+                    candidates_i.row(0) = this->r.row(n_reptate - i - 1);
+
+                    // Generate every other candidate position 
+                    for (int j = 1; j < n_candidates; ++j)
                     {
-                        Matrix<T, 3, 1> r1, r2, r3; 
-                        if (j == 0)         // Last atom in the segment (closest to the polymer)
+                        if (i == 0)
                         {
-                            r1 = coords.row(2); 
-                            r2 = coords.row(1); 
-                            r3 = coords.row(0); 
-                        } 
-                        else if (j == 1)    // Second-to-last
-                        {
-                            r1 = coords.row(1); 
-                            r2 = coords.row(0); 
-                            r3 = segment_i.row(n_reptate - 1); 
+                            r1 = this->r.row(2);
+                            r2 = this->r.row(1);
+                            r3 = this->r.row(0); 
                         }
-                        else if (j == 2)    // Third-to-last
+                        else if (i == 1)
                         {
-                            r1 = coords.row(0); 
-                            r2 = segment_i.row(n_reptate - 1); 
-                            r3 = segment_i.row(n_reptate - 2); 
+                            r1 = this->r.row(1); 
+                            r2 = this->r.row(0); 
+                            r3 = segment.row(0); 
+                        }
+                        else if (i == 2)
+                        {
+                            r1 = this->r.row(0); 
+                            r2 = segment.row(0);
+                            r3 = segment.row(1); 
                         }
                         else 
                         {
-                            r1 = segment_i.row(n_reptate - 1 - j + 3); 
-                            r2 = segment_i.row(n_reptate - 1 - j + 2); 
-                            r3 = segment_i.row(n_reptate - 1 - j + 1);  
+                            r1 = segment.row(i - 3); 
+                            r2 = segment.row(i - 2); 
+                            r3 = segment.row(i - 1); 
                         }
-                        int idx = n_reptate - 1 - j; 
-                        segment_i.row(idx) = generateNextAtomDihedral<T>(
+                        candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
                             dihedrals(i, j), this->rng, this->uniform_dist,
                             (dihedrals(i, 0) > 0 ? 1 : -1)
                         );
-                        moves(i, Eigen::seqN(3 * idx, 3)) = segment_i.row(idx); 
                     }
 
-                    // Get the non-bonded energy difference due to reptation
-                    energy_diffs(i) = config_.getMultimerReptationNonbondedEnergyDifference(
-                        ReptationDirection::HEAD, segment_i, 
-                        this->lj_params, this->neighbor_threshold
-                    ); 
+                    // Calculate the residual energy for each candidate position
+                    Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        residuals_i(j) = config_.getMultimerReptationResidualEnergy(
+                            ReptationDirection::HEAD, n_reptate, i, segment,
+                            candidates_i.row(j), this->lj_params,
+                            this->neighbor_threshold
+                        ); 
+                    }
+
+                    // Calculate the corresponding Boltzmann factors 
+                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom 
+                    T rosenbluth_i = boltzmann.sum();
+                    rosenbluth_total *= rosenbluth_i; 
+
+                    // Choose one candidate position with probability 
+                    // proportional to its Boltzmann weight
+                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
+
+                    // Grow the segment 
+                    segment.conservativeResize(i + 1, 3); 
+                    segment.row(i) = candidates_i.row(move_idx);
                 }
             }
             else        // Reptate towards the tail 
             {
-                // Generate new candidate atomic positions at the tail 
-                for (int i = 0; i < n_candidates; ++i)
+                // For each atom ... 
+                for (int i = 0; i < n_reptate; ++i)
                 {
-                    Matrix<T, Dynamic, 3> segment_i(n_reptate, 3);
-                    
-                    // Move forward from atom (n - 1) in the polymer 
-                    for (int j = 0; j < n_reptate; ++j)
+                    // Generate a collection of candidate positions for the 
+                    // i-th atom 
+                    Matrix<T, Dynamic, 3> candidates_i(n_candidates, 3);
+                    Matrix<T, 3, 1> r1, r2, r3;
+
+                    // Start with reversion to the current configuration
+                    //
+                    // We must have reptated toward the head to get the given
+                    // configuration
+                    //
+                    // Therefore, the i-th atom here is the (n - K + i)-th
+                    // of the current configuration  
+                    candidates_i.row(0) = this->r.row(n - n_reptate + i); 
+
+                    // Generate every other candidate position 
+                    for (int j = 1; j < n_candidates; ++j)
                     {
-                        Matrix<T, 3, 1> r1, r2, r3; 
-                        if (j == 0)
+                        if (i == 0)
                         {
-                            r1 = coords.row(n - 3); 
-                            r2 = coords.row(n - 2); 
-                            r3 = coords.row(n - 1); 
+                            r1 = this->r.row(2);
+                            r2 = this->r.row(1);
+                            r3 = this->r.row(0); 
                         }
-                        else if (j == 1)
+                        else if (i == 1)
                         {
-                            r1 = coords.row(n - 2); 
-                            r2 = coords.row(n - 1);
-                            r3 = segment_i.row(0); 
+                            r1 = this->r.row(1); 
+                            r2 = this->r.row(0); 
+                            r3 = segment.row(0); 
                         }
-                        else if (j == 2)
+                        else if (i == 2)
                         {
-                            r1 = coords.row(n - 1); 
-                            r2 = segment_i.row(0); 
-                            r3 = segment_i.row(1); 
+                            r1 = this->r.row(0); 
+                            r2 = segment.row(0);
+                            r3 = segment.row(1); 
                         }
                         else 
                         {
-                            r1 = segment_i.row(j - 3);
-                            r2 = segment_i.row(j - 2); 
-                            r3 = segment_i.row(j - 1);  
-                        } 
-                        segment_i.row(j) = generateNextAtomDihedral<T>(
-                            r1, r2, r3, lengths(i, j), angles(i, j),
+                            r1 = segment.row(i - 3); 
+                            r2 = segment.row(i - 2); 
+                            r3 = segment.row(i - 1); 
+                        }
+                        candidates_i.row(j) = generateNextAtomDihedral<T>(
+                            r1, r2, r3, lengths(i, j), angles(i, j), 
                             dihedrals(i, j), this->rng, this->uniform_dist,
                             (dihedrals(i, 0) > 0 ? 1 : -1)
                         );
-                        moves(i, Eigen::seqN(3 * j, 3)) = segment_i.row(j); 
                     }
 
-                    // Get the non-bonded energy difference due to reptation
-                    energy_diffs(i) = config_.getMultimerReptationNonbondedEnergyDifference(
-                        ReptationDirection::TAIL, segment_i, 
-                        this->lj_params, this->neighbor_threshold
-                    ); 
+                    // Calculate the residual energy for each candidate position
+                    Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        residuals_i(j) = config_.getMultimerReptationResidualEnergy(
+                            ReptationDirection::TAIL, n_reptate, i, segment,
+                            candidates_i.row(j), this->lj_params,
+                            this->neighbor_threshold
+                        ); 
+                    }
+
+                    // Calculate the corresponding Boltzmann factors 
+                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom 
+                    T rosenbluth_i = boltzmann.sum();
+                    rosenbluth_total *= rosenbluth_i; 
+
+                    // Choose one candidate position with probability 
+                    // proportional to its Boltzmann weight
+                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
+
+                    // Grow the segment 
+                    segment.conservativeResize(i + 1, 3); 
+                    segment.row(i) = candidates_i.row(move_idx);
                 }
             }
 
-            return std::make_pair(moves, energy_diffs); 
+            return std::make_pair(segment, rosenbluth_total); 
         }
 
         /** -------------------------------------------------------------- // 
@@ -1819,6 +1948,185 @@ class PolymerCBMCSampler
         {
             const int n = this->length;
 
+            // Perform each move type ... 
+            if (move_type == CBMCMoveType::REPTATION)
+            {
+                // Specify a reptation direction
+                const T p = this->uniform_dist(this->rng); 
+                ReptationDirection rept_dir = (
+                    p < 0.5 ? ReptationDirection::HEAD : ReptationDirection::TAIL
+                );
+
+                // Generate forward moves
+                auto forward_result = this->generateReptationMoves(rept_dir, n_candidates);
+                Matrix<T, Dynamic, 3> forward_moves = forward_result.first;
+                Matrix<T, Dynamic, 1> forward_residuals = forward_result.second;
+                int n_forward = forward_moves.rows();
+
+                // Calculate the forward Rosenbluth weight
+                Matrix<T, Dynamic, 1> forward_weights
+                    = (-forward_residuals / this->config.kT).array().exp().matrix(); 
+                T forward_rosenbluth = forward_weights.sum();
+
+                // Choose one move out of the candidates 
+                std::vector<T> probs; 
+                for (int i = 0; i < n_forward; ++i)
+                    probs.push_back(forward_weights(i) / forward_rosenbluth);
+                boost::random::discrete_distribution<> dist(probs);  
+                int move_idx = dist(this->rng);
+                Matrix<T, 3, 1> r_new = forward_moves.row(move_idx);
+
+                // Generate a copy of the current configuration and apply 
+                // the forward move 
+                PolymerConfiguration<T> forward_config(this->config);
+                if (rept_dir == ReptationDirection::HEAD)
+                    forward_config.reptateTowardsHead(r_new); 
+                else
+                    forward_config.reptateTowardsTail(r_new); 
+
+                // Identify the reverse direction 
+                ReptationDirection reverse_dir; 
+                if (rept_dir == ReptationDirection::HEAD)
+                    reverse_dir = ReptationDirection::TAIL; 
+                else 
+                    reverse_dir = ReptationDirection::HEAD;
+
+                // Generate reverse moves
+                Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(0, n);  
+                auto reverse_result = this->generateReptationMoves(
+                    reverse_dir, n_candidates, forward_coords
+                );
+                Matrix<T, Dynamic, 3> reverse_moves = reverse_result.first;
+                Matrix<T, Dynamic, 1> reverse_residuals = reverse_result.second;
+
+                // Calculate the reverse Rosenbluth weight
+                Matrix<T, Dynamic, 1> reverse_weights
+                    = (-reverse_residuals / this->config.kT).array().exp().matrix(); 
+                T reverse_rosenbluth = reverse_weights.sum();
+
+                // Calculate the Metropolis acceptance probability
+                T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
+
+                // Change the polymer configuration according to that probability
+                T r = this->uniform_dist(this->rng); 
+                if (r < prob_accept)
+                {
+                    // Reptate towards the head 
+                    if (rept_dir == ReptationDirection::HEAD)
+                        this->config.reptateTowardsHead(r_new); 
+                    else    // Reptate towards the tail 
+                        this->config.reptateTowardsTail(r_new); 
+                }
+                this->updateCoords(); 
+
+                // Return the forward and reverse candidate moves, the index
+                // of the chosen move, its Metropolis acceptance probability, 
+                // whether the move was taken, and the reptation direction
+                Matrix<T, Dynamic, Dynamic> forward_moves_(forward_moves),
+                                            reverse_moves_(reverse_moves); 
+                std::unordered_map<std::string, T> move_info; 
+                move_info["direction"] = (rept_dir == ReptationDirection::HEAD ? 0 : 1);
+                return std::make_tuple(
+                    forward_moves_, reverse_moves_, move_idx, prob_accept, 
+                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
+                    move_info
+                ); 
+            }
+            else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
+            {
+                // Specify a reptation direction
+                const T p = this->uniform_dist(this->rng); 
+                ReptationDirection rept_dir = (
+                    p < 0.5 ? ReptationDirection::HEAD : ReptationDirection::TAIL
+                ); 
+
+                // Generate and select a forward move and get its total 
+                // Rosenbluth weight
+                auto forward_result = this->generateForwardMultimerReptationMove(
+                    rept_dir, segment_length, n_candidates
+                );
+                Matrix<T, Dynamic, 3> forward_move = forward_result.first; 
+                T forward_rosenbluth = forward_result.second;
+
+                // Generate a copy of the current configuration and apply 
+                // the forward move
+                //
+                // When reptating towards the head, the atomic coordinates 
+                // must be mirrored 
+                PolymerConfiguration<T> forward_config(this->config);
+                if (rept_dir == ReptationDirection::HEAD)
+                    forward_config.reptateTowardsHeadMultimer(forward_move.colwise().reverse());
+                else
+                    forward_config.reptateTowardsTailMultimer(forward_move); 
+
+                // Identify the reverse direction 
+                ReptationDirection reverse_dir; 
+                if (rept_dir == ReptationDirection::HEAD)
+                    reverse_dir = ReptationDirection::TAIL; 
+                else 
+                    reverse_dir = ReptationDirection::HEAD;
+
+                // Generate and select a reverse move and get its total 
+                // Rosenbluth weight
+                Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(0, n);  
+                auto reverse_result = this->generateBackwardMultimerReptationMove(
+                    reverse_dir, segment_length, n_candidates, forward_coords
+                );
+                Matrix<T, Dynamic, 3> reverse_move = reverse_result.first; 
+                T reverse_rosenbluth = reverse_result.second;
+
+                // Calculate the Metropolis acceptance probability
+                T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
+
+                // Change the polymer configuration according to that probability
+                T r = this->uniform_dist(this->rng); 
+                if (r < prob_accept)
+                {
+                    // Reptate towards the head
+                    //
+                    // Here, again, the atomic coordinates must be mirrored 
+                    if (rept_dir == ReptationDirection::HEAD)
+                        this->config.reptateTowardsHeadMultimer(forward_move.colwise().reverse()); 
+                    else    // Reptate towards the tail 
+                        this->config.reptateTowardsTailMultimer(forward_move); 
+                }
+                this->updateCoords(); 
+
+                // Return the forward and reverse candidate moves, the index
+                // of the chosen move (0), its Metropolis acceptance probability, 
+                // whether the move was taken, and the reptation direction
+                Matrix<T, Dynamic, Dynamic> forward_move_(forward_move),
+                                            reverse_move_(reverse_move); 
+                std::unordered_map<std::string, T> move_info; 
+                move_info["direction"] = (rept_dir == ReptationDirection::HEAD ? 0 : 1);
+                return std::make_tuple(
+                    forward_move_, reverse_move_, 0, prob_accept, 
+                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
+                    move_info
+                ); 
+            }
+            else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
+            {
+                // Specify a terminal segment to move
+                const T p = this->uniform_dist(this->rng); 
+                TerminalSegmentEnd terminal_end = (
+                    p < 0.5 ? TerminalSegmentEnd::HEAD : TerminalSegmentEnd::TAIL
+                );
+
+                // TODO 
+            }
+            else    // move_type == CBMCMoveType::INTERNAL_SEGMENT)
+            {
+                // Specify an internal segment to move
+                int segment_idx = 1; 
+                boost::random::uniform_int_distribution<>
+                    randint_dist(1, this->length - segment_length - 1); 
+                segment_idx = randint_dist(this->rng);
+
+                // TODO
+            }
+
+            /*
             // Fix segment length 
             if (move_type == CBMCMoveType::REPTATION)
                 segment_length = 1; 
@@ -1848,19 +2156,7 @@ class PolymerCBMCSampler
                 segment_idx = randint_dist(this->rng);
             }
 
-            // Generate forward moves ...
-            Matrix<T, Dynamic, Dynamic> forward_moves, reverse_moves;  
-            Matrix<T, Dynamic, 1> forward_diffs, reverse_diffs; 
-            int n_forward = 0;  
-            if (move_type == CBMCMoveType::REPTATION)
-            {
-                auto forward_result = this->generateReptationMoves(
-                    rept_dir, n_candidates
-                );
-                forward_moves = forward_result.first;
-                forward_diffs = forward_result.second;
-                n_forward = forward_moves.rows();  
-            }
+            // TODO FORWARD MOVE GENERATION
             else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
             {
                 auto forward_result = this->generateMultimerReptationMoves(
@@ -1992,52 +2288,12 @@ class PolymerCBMCSampler
                 forward_moves = forward_result.first;
                 forward_diffs = forward_result.second;  
             }
-
-            // Calculate the forward Rosenbluth factor
-            Matrix<T, Dynamic, 1> forward_weights
-                = ((-forward_diffs).array() / this->config.kT).exp().matrix(); 
-            T forward_rosenbluth = forward_weights.sum();
-
-            // Choose one move out of the candidates 
-            std::vector<T> probs; 
-            for (int i = 0; i < n_forward; ++i)
-                probs.push_back(forward_weights(i) / forward_rosenbluth);
-            boost::random::discrete_distribution<> dist(probs);  
-            int move_idx = dist(this->rng);
-            Matrix<T, Dynamic, 3> move(segment_length, 3); 
-            for (int i = 0; i < segment_length; ++i)
-            {
-                move(i, 0) = forward_moves(move_idx, 3 * i); 
-                move(i, 1) = forward_moves(move_idx, 3 * i + 1); 
-                move(i, 2) = forward_moves(move_idx, 3 * i + 2); 
-            }
-
+            // TODO END
+            
             // Generate a copy of the current polymer configuration and swap
             // in the chosen candidate move 
             PolymerConfiguration<T> config_chosen(this->config);
-            if (move_type == CBMCMoveType::REPTATION)
-            {
-                if (rept_dir == ReptationDirection::HEAD)
-                {
-                    Matrix<T, 3, 1> r_new; 
-                    r_new << move(0, 0), move(0, 1), move(0, 2); 
-                    config_chosen.reptateTowardsHead(r_new); 
-                } 
-                else
-                {
-                    Matrix<T, 3, 1> r_new; 
-                    r_new << move(0, 0), move(0, 1), move(0, 2); 
-                    config_chosen.reptateTowardsTail(r_new); 
-                }
-            }
-            else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
-            {
-                if (rept_dir == ReptationDirection::HEAD)
-                    config_chosen.reptateTowardsHeadMultimer(move); 
-                else 
-                    config_chosen.reptateTowardsTailMultimer(move);
-            }
-            else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
+            if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
             {
                 if (terminal_end == TerminalSegmentEnd::HEAD)
                     config_chosen.replaceSegment(move, 0); 
@@ -2051,39 +2307,7 @@ class PolymerCBMCSampler
             Matrix<T, Dynamic, 3> coords_chosen = config_chosen.getSegment(0, n);
 
             // Generate reverse moves from the chosen configuration
-            if (move_type == CBMCMoveType::REPTATION)
-            {
-                // Identify the reverse direction 
-                ReptationDirection reverse_dir; 
-                if (rept_dir == ReptationDirection::HEAD)
-                    reverse_dir = ReptationDirection::TAIL; 
-                else 
-                    reverse_dir = ReptationDirection::HEAD;
-
-                // Generate reverse moves and energy differences  
-                auto reverse_result = this->generateReptationMoves(
-                    reverse_dir, n_candidates, coords_chosen 
-                );
-                reverse_moves = reverse_result.first;
-                reverse_diffs = reverse_result.second;
-            }
-            else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
-            {
-                // Identify the reverse direction
-                ReptationDirection reverse_dir; 
-                if (rept_dir == ReptationDirection::HEAD)
-                    reverse_dir = ReptationDirection::TAIL; 
-                else 
-                    reverse_dir = ReptationDirection::HEAD;
-
-                // Generate reverse moves and energy differences
-                auto reverse_result = this->generateMultimerReptationMoves(
-                    reverse_dir, segment_length, n_candidates, coords_chosen 
-                );
-                reverse_moves = reverse_result.first;
-                reverse_diffs = reverse_result.second;
-            }
-            else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
+            if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
             {
                 // Generate reverse moves and energy differences
                 auto reverse_result = this->generateTerminalSegmentMoves(
@@ -2231,115 +2455,6 @@ class PolymerCBMCSampler
                 }
             }
 
-            // Add in the original configuration as one of the reverse moves
-            //
-            // Simply replace the 0-th reverse move 
-            if (move_type == CBMCMoveType::REPTATION)
-            {
-                if (rept_dir == ReptationDirection::HEAD)
-                { 
-                    reverse_moves.row(0) = this->r.row(n - 1); 
-                    reverse_diffs(0) = -forward_diffs(move_idx); 
-                }
-                else 
-                {
-                    reverse_moves.row(0) = this->r.row(0); 
-                    reverse_diffs(0) = -forward_diffs(move_idx);  
-                }
-            }
-            else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
-            {
-                if (rept_dir == ReptationDirection::HEAD)
-                {
-                    // Extract the original configuration along the tail segment
-                    Matrix<T, Dynamic, 3> segment = this->r(
-                        Eigen::seqN(n - segment_length, segment_length), Eigen::all
-                    );
-                    for (int i = 0; i < segment_length; ++i)
-                    {
-                        reverse_moves(0, 3 * i) = segment(i, 0); 
-                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
-                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
-                    }
-                    reverse_diffs(0) = -forward_diffs(move_idx); 
-                }
-                else 
-                {
-                    // Extract the original configuration along the head segment 
-                    Matrix<T, Dynamic, 3> segment = this->r(
-                        Eigen::seqN(0, segment_length), Eigen::all
-                    );
-                    for (int i = 0; i < segment_length; ++i)
-                    {
-                        reverse_moves(0, 3 * i) = segment(i, 0); 
-                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
-                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
-                    }
-                    reverse_diffs(0) = -forward_diffs(move_idx); 
-                }
-            }
-            else if (move_type == CBMCMoveType::TERMINAL_SEGMENT)
-            {
-                if (terminal_end == TerminalSegmentEnd::HEAD)
-                {
-                    // Extract the original configuration along the head segment 
-                    Matrix<T, Dynamic, 3> segment = this->r(
-                        Eigen::seqN(0, segment_length), Eigen::all
-                    ); 
-                    for (int i = 0; i < segment_length; ++i)
-                    {
-                        reverse_moves(0, 3 * i) = segment(i, 0); 
-                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
-                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
-                    }
-                    //reverse_diffs(0)
-                    //    = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
-                    //        segment, 0, this->lj_params, this->neighbor_threshold 
-                    //    );
-                    reverse_diffs(0) = -forward_diffs(move_idx); 
-                }
-                else 
-                {
-                    // Extract the original configuration along the tail segment
-                    Matrix<T, Dynamic, 3> segment = this->r(
-                        Eigen::seqN(n - segment_length, segment_length), Eigen::all
-                    );
-                    for (int i = 0; i < segment_length; ++i)
-                    {
-                        reverse_moves(0, 3 * i) = segment(i, 0); 
-                        reverse_moves(0, 3 * i + 1) = segment(i, 1); 
-                        reverse_moves(0, 3 * i + 2) = segment(i, 2); 
-                    }
-                    //reverse_diffs(0)
-                    //    = config_chosen.getSegmentReplacementNonbondedEnergyDifference(
-                    //        segment, n - segment_length, this->lj_params,
-                    //        this->neighbor_threshold
-                    //    );
-                    reverse_diffs(0) = -forward_diffs(move_idx);  
-                }
-            }
-            else    // move_type == CBMCMoveType::INTERNAL_SEGMENT
-            {
-                // Extract the original configuration along the internal segment
-                Matrix<T, Dynamic, 3> segment = this->r(
-                    Eigen::seqN(segment_idx, segment_length), Eigen::all
-                ); 
-                for (int i = 0; i < segment_length; ++i)
-                {
-                    reverse_moves(0, 3 * i) = segment(i, 0); 
-                    reverse_moves(0, 3 * i + 1) = segment(i, 1); 
-                    reverse_moves(0, 3 * i + 2) = segment(i, 2); 
-                }
-                //reverse_diffs(0)
-                //    = config_chosen.getSegmentReplacementEnergyDifference(
-                //        segment, segment_idx, this->lj_params,
-                //        this->neighbor_threshold, this->fene_params, 
-                //        this->angle_mode, this->angle_params,
-                //        this->dihedral_params
-                //    );
-                reverse_diffs(0) = -forward_diffs(move_idx); 
-            }
-
             // Calculate the reverse Rosenbluth factor
             Matrix<T, Dynamic, 1> reverse_weights
                 = ((-reverse_diffs).array() / config_chosen.kT).exp().matrix(); 
@@ -2415,7 +2530,8 @@ class PolymerCBMCSampler
                 forward_moves, reverse_moves, move_idx, prob_accept,
                 (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
                 move_info
-            ); 
+            );
+            */ 
         }
 
         /**
