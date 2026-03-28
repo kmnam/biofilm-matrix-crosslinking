@@ -1038,11 +1038,6 @@ class PolymerConfiguration
                 int k = static_cast<int>(neighbors(i, 1)); 
                 if (!nonconsecutive || (nonconsecutive && abs(k - j) > 1))
                 {
-                    //T term = lj<T>(
-                    //    neighbors(i, 2), lj_params["eps"], lj_params["sigma"],
-                    //    true
-                    //);
-                    //std::cout << "NONBONDED: " << neighbors(i, 0) << " " << neighbors(i, 1) << " " << neighbors(i, 2) << " " << term << std::endl; 
                     energy += lj<T>(
                         neighbors(i, 2), lj_params["eps"], lj_params["sigma"],
                         true
