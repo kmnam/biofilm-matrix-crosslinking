@@ -191,20 +191,6 @@ int main(int argc, char** argv)
             mod_write, max_stall, outfile, true
         );
     } 
-    const int n_ensemble = ensemble_coords.rows();  
-
-    // Calculate the persistence length and write to file
-    PolymerEnsemble<double> ensemble; 
-    for (int i = 0; i < n_ensemble; ++i)
-    {
-        Matrix<double, Dynamic, 3> coords_i(length, 3); 
-        for (int j = 0; j < length; ++j)
-            coords_i.row(j) = ensemble_coords(i, Eigen::seqN(3 * j, 3)); 
-        PolymerConfiguration<double> config(coords_i, Units::NANO, 300);
-        ensemble.push_back(config);  
-    } 
-    double persist_length = getPersistenceLength<double>(ensemble);
-    outfile << "## PERSISTENCE_LENGTH\t" << persist_length << std::endl;  
 
     return 0; 
 }
