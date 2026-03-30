@@ -1651,9 +1651,11 @@ class PolymerCBMCSampler
                     Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
                     for (int j = 0; j < n_candidates; ++j)
                     {
+                        // Use the subsegment of atoms 0, ..., i - 1
+                        Matrix<T, Dynamic, 3> subsegment = segment(Eigen::seqN(0, i), Eigen::all); 
                         residuals_i(j) = config_.getTerminalSegmentReplacementResidualEnergy(
                             TerminalSegmentEnd::HEAD, segment_length, i, 
-                            segment, candidates_i.row(j), this->lj_params,
+                            subsegment, candidates_i.row(j), this->lj_params,
                             this->neighbor_threshold 
                         ); 
                     }
@@ -1726,9 +1728,11 @@ class PolymerCBMCSampler
                     Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
                     for (int j = 0; j < n_candidates; ++j)
                     {
+                        // Use the subsegment of atoms 0, ..., i - 1
+                        Matrix<T, Dynamic, 3> subsegment = segment(Eigen::seqN(0, i), Eigen::all); 
                         residuals_i(j) = config_.getTerminalSegmentReplacementResidualEnergy(
                             TerminalSegmentEnd::TAIL, segment_length, i, 
-                            segment, candidates_i.row(j), this->lj_params,
+                            subsegment, candidates_i.row(j), this->lj_params,
                             this->neighbor_threshold 
                         ); 
                     }
