@@ -1108,12 +1108,12 @@ class PolymerCBMCSampler
                 // If reptating towards the head, we should work through the
                 // segment backwards (from the end closer to the fixed part
                 // of the chain)
-                segment = this->r(Eigen::seq(0, n_reptate), Eigen::all);
+                segment = this->r(Eigen::seqN(0, n_reptate), Eigen::all);
                 segment = segment.rowwise().reverse().eval(); 
             } 
             else
             { 
-                segment = this->r(Eigen::seq(n - n_reptate - 1, n_reptate), Eigen::all); 
+                segment = this->r(Eigen::seqN(n - n_reptate - 1, n_reptate), Eigen::all); 
             }
             
             // Again, the reptation direction is from the given configuration,
@@ -1591,12 +1591,12 @@ class PolymerCBMCSampler
                 // If moving the segment at the head, we should work through
                 // the segment backwards (from the end closer to the fixed
                 // part of the chain)
-                segment = this->r(Eigen::seq(0, segment_length), Eigen::all);
+                segment = this->r(Eigen::seqN(0, segment_length), Eigen::all);
                 segment = segment.rowwise().reverse().eval(); 
             } 
             else
             { 
-                segment = this->r(Eigen::seq(n - segment_length - 1, segment_length), Eigen::all); 
+                segment = this->r(Eigen::seqN(n - segment_length - 1, segment_length), Eigen::all); 
             }
              
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
