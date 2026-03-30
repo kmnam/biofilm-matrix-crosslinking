@@ -1175,8 +1175,10 @@ class PolymerCBMCSampler
                     Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
                     for (int j = 0; j < n_candidates; ++j)
                     {
+                        // Use the subsegment of atoms 0, ..., i - 1
+                        Matrix<T, Dynamic, 3> subsegment = segment(Eigen::seqN(0, i), Eigen::all); 
                         residuals_i(j) = config_.getMultimerReptationResidualEnergy(
-                            ReptationDirection::HEAD, n_reptate, i, segment,
+                            ReptationDirection::HEAD, n_reptate, i, subsegment,
                             candidates_i.row(j), this->lj_params,
                             this->neighbor_threshold
                         ); 
@@ -1248,8 +1250,10 @@ class PolymerCBMCSampler
                     Matrix<T, Dynamic, 1> residuals_i(n_candidates); 
                     for (int j = 0; j < n_candidates; ++j)
                     {
+                        // Use the subsegment of atoms 0, ..., i - 1
+                        Matrix<T, Dynamic, 3> subsegment = segment(Eigen::seqN(0, i), Eigen::all); 
                         residuals_i(j) = config_.getMultimerReptationResidualEnergy(
-                            ReptationDirection::TAIL, n_reptate, i, segment,
+                            ReptationDirection::TAIL, n_reptate, i, subsegment,
                             candidates_i.row(j), this->lj_params,
                             this->neighbor_threshold
                         ); 
