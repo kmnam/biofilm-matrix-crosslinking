@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/25/2026
+ *     4/3/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -1770,13 +1770,28 @@ std::tuple<PolymerMeltConfiguration<T>,
     ); 
 }
 
+class TooManyBacktracksError : public std::runtime_error
+{
+    public:
+        explicit TooManyBacktracksError(const std::string& msg) : std::runtime_error(msg) {}
+}; 
+class TooManySeedPositionsError : public std::runtime_error
+{
+    public:
+        explicit TooManySeedPositionsError(const std::string& msg) : std::runtime_error(msg) {}
+};
+class PolymerGenerationError : public std::runtime_error
+{
+    public:
+        explicit PolymerGenerationError(const std::string& msg) : std::runtime_error(msg) {}
+}; 
+
 /**
- * Generate a configuration of a melt of M K-mers, in which the inter-atom
- * distances, bond lengths, bond angles, and dihedral angles follow the given
- * potentials.
+ * Generate the configuration of the first K-mer in a melt of K-mers, in
+ * which the inter-atom distances, bond lengths, bond angles, and dihedral
+ * angles follow the given potentials.
  *
  * @param K Polymer length.
- * @param M Number of polymers. 
  * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
  * @param neighbor_threshold Distance threshold for identifying
  *                           neighboring (non-bonded) atoms. 
@@ -1787,8 +1802,8 @@ std::tuple<PolymerMeltConfiguration<T>,
  *                     the dual Gaussian mixture potential parameters
  *                     (A1, A2, w1, w2, theta1, theta2). 
  * @param dihedral_params Dihedral angle potential parameters. 
- * @param collision_threshold Distance threshold for identifying atoms that 
- *                            are too close to each other. 
+ * @param intra_collision_threshold Distance threshold for identifying atoms that 
+ *                                  are too close to each other. 
  * @param max_tries_per_atom Maximum number of attempts to place each atom
  *                           before backtracking. 
  * @param max_n_backtracks Maximum number of backtracks. 
@@ -1810,25 +1825,21 @@ std::tuple<PolymerMeltConfiguration<T>,
  * @returns Resulting polymer configuration.  
  */
 template <typename T>
-PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M, 
-                                             std::unordered_map<std::string, T>& lj_params,
-                                             std::unordered_map<std::string, T>& fene_params,
-                                             const AngleMode angle_mode,  
-                                             std::unordered_map<std::string, T>& angle_params, 
-                                             std::unordered_map<std::string, T>& dihedral_params,
-                                             const T collision_threshold, 
-                                             const int max_tries_per_atom,
-                                             const int max_tries_per_kmer,
-                                             const int max_tries_per_seed,  
-                                             const int max_n_backtracks,  
-                                             boost::random::mt19937& rng,
-                                             boost::random::uniform_01<>& uniform_dist,
-                                             const T xmax, const T ymax,
-                                             const T zmax,
-                                             const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf,  
-                                             const Units units = Units::NANO,
-                                             const T temp = 300, 
-                                             const bool verbose = false)
+PolymerConfiguration<T> generateFirstKMer(const int K, 
+                                          std::unordered_map<std::string, T>& lj_params,
+                                          std::unordered_map<std::string, T>& fene_params,
+                                          const AngleMode angle_mode,  
+                                          std::unordered_map<std::string, T>& angle_params, 
+                                          std::unordered_map<std::string, T>& dihedral_params,
+                                          const T intra_collision_threshold, 
+                                          const int max_tries_per_atom,
+                                          const int max_n_backtracks,
+                                          boost::random::mt19937& rng,
+                                          boost::random::uniform_01<>& uniform_dist,
+                                          const T xmax, const T ymax, const T zmax,
+                                          const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf,  
+                                          const Units units = Units::NANO,
+                                          const T temp = 300) 
 {
     const T kT = (
         units == Units::MICRO ? static_cast<T>(1.380649e-8) * temp : 
@@ -1866,33 +1877,31 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
         throw std::runtime_error("Invalid angle potential mode specified"); 
     }
 
-    // Generate a new position for the first K-mer 
+    // Seed the K-mer
     Matrix<T, 3, 1> r0; 
     r0 << -xmax + 2 * xmax * uniform_dist(rng), 
           -ymax + 2 * ymax * uniform_dist(rng), 
           -zmax + 2 * zmax * uniform_dist(rng);
 
-    // Generate the first K-mer ... 
-    //
     // Generate the second atom and a new PolymerConfiguration<T> instance
-    Matrix<T, Dynamic, 3> init_coords(K, 3); 
+    Matrix<T, Dynamic, 3> coords(K, 3); 
     T length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
-    init_coords.row(0) = r0;
-    init_coords.row(1) = r0 + length * randomDir<T, 3>(rng, uniform_dist);  
-    PolymerConfiguration<T> init_config(
-        init_coords(Eigen::seqN(0, 2), Eigen::all), units, temp
+    coords.row(0) = r0;
+    coords.row(1) = r0 + length * randomDir<T, 3>(rng, uniform_dist);  
+    PolymerConfiguration<T> config(
+        coords(Eigen::seqN(0, 2), Eigen::all), units, temp
     );
 
     // Define a collision function for the K-mer 
     std::function<bool(const Ref<const Matrix<T, 3, 1> >&)> collision_intra
-        = [&init_config, &collision_threshold, &xlen, &ylen, &zlen](const Ref<const Matrix<T, 3, 1> >& r) -> bool
+        = [&config, &intra_collision_threshold, &xlen, &ylen, &zlen](const Ref<const Matrix<T, 3, 1> >& r) -> bool
     {
         // Get the periodic distance with every atom within the growing
         // K-mer (except for the atom to which it will be bonded)
-        Matrix<T, Dynamic, 3> coords = init_config.getSegment(0, init_config.getLength() - 1);
-        for (int i = 0; i < coords.rows(); ++i) 
+        Matrix<T, Dynamic, 3> coords_ = config.getSegment(0, config.getLength() - 1);
+        for (int i = 0; i < coords_.rows(); ++i) 
         {
-            if (periodicDistVec<T>(r, coords.row(i), xlen, ylen, zlen).norm() < collision_threshold)
+            if (periodicDistVec<T>(r, coords_.row(i), xlen, ylen, zlen).norm() < intra_collision_threshold)
                 return true;
         }
         return false;
@@ -1908,22 +1917,21 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
         length = sampleFene<T>(rng, uniform_dist, bond_length_cdf); 
         T angle = sample_angle(rng); 
         new_atom = generateNextAtom<T>(
-            init_coords.row(0), init_coords.row(1), length, angle, rng,
-            uniform_dist
+            coords.row(0), coords.row(1), length, angle, rng, uniform_dist
         );
         found_collision = collision_intra(new_atom);  
     }
-    init_coords.row(2) = new_atom; 
-    init_config.appendAtomToTail(new_atom); 
+    coords.row(2) = new_atom; 
+    config.appendAtomToTail(new_atom); 
 
     // Add the remaining atoms ...
     int curr_idx = 3;
     int n_backtracks = 0;  
     while (curr_idx < K)
     {
-        Matrix<T, 3, 1> r1 = init_coords.row(curr_idx - 3); 
-        Matrix<T, 3, 1> r2 = init_coords.row(curr_idx - 2); 
-        Matrix<T, 3, 1> r3 = init_coords.row(curr_idx - 1); 
+        Matrix<T, 3, 1> r1 = coords.row(curr_idx - 3); 
+        Matrix<T, 3, 1> r2 = coords.row(curr_idx - 2); 
+        Matrix<T, 3, 1> r3 = coords.row(curr_idx - 1); 
 
         // Keep generating a new atom until no collision is detected or 
         // the maximum number of iterations is reached  
@@ -1947,57 +1955,154 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
         // the next atom 
         if (!found_collision)
         {
-            init_coords.row(curr_idx) = new_atom; 
-            init_config.appendAtomToTail(new_atom);
+            coords.row(curr_idx) = new_atom; 
+            config.appendAtomToTail(new_atom);
             curr_idx++;
         } 
         // Otherwise, backtrack to the previous atom unless doing so
         // encroaches into the first 3 atoms 
         else if (curr_idx > 3) 
         {
-            init_config.popAtomFromTail(); 
+            config.popAtomFromTail(); 
             curr_idx--; 
             n_backtracks++;
         }
         else
         {
-            throw std::runtime_error(
+            throw TooManyBacktracksError(
                 "Sampling procedure backtracked into first 3 atoms; try "
                 "sampling more positions per atom"
-            ); 
+            );
         }
 
-        // If we have exceeded the maximum number of backtracks, raise 
-        // an exception 
+        // If we have exceeded the maximum number of backtracks, try 
+        // sampling again from scratch, since we are on the first polymer
         if (n_backtracks > max_n_backtracks)
         {
-            throw std::runtime_error(
+            throw TooManyBacktracksError(
                 "Sampling procedure exceeded maximum number of backtracks; try "
                 "sampling more positions per atom"
             );
         } 
     }
-    
-    // Collect the coordinates
-    Matrix<T, Dynamic, 3> coords_all(init_coords); 
-    if (verbose)
-        std::cout << "... generated chain 0\n"; 
 
-    // Iteratively generate each subsequent K-mer ... 
-    int n_collected = 1; 
-    int n_tries_per_kmer = 0;
-    while (n_collected < M && n_tries_per_kmer < max_tries_per_kmer) 
+    return config; 
+} 
+
+/**
+ * Generate the configuration of the i-th K-mer in a melt of K-mers, in
+ * which the inter-atom distances, bond lengths, bond angles, and dihedral
+ * angles follow the given potentials.
+ *
+ * @param K Polymer length.
+ * @param melt_coords Polymer configurations accumulated thus far. 
+ * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+ * @param neighbor_threshold Distance threshold for identifying
+ *                           neighboring (non-bonded) atoms. 
+ * @param fene_params FENE parameters. 
+ * @param angle_mode Angle potential type.  
+ * @param angle_params Angle potential parameters. Must include the 
+ *                     cosine potential parameters (K and theta0) or
+ *                     the dual Gaussian mixture potential parameters
+ *                     (A1, A2, w1, w2, theta1, theta2). 
+ * @param dihedral_params Dihedral angle potential parameters. 
+ * @param intra_collision_threshold Distance threshold for identifying atoms
+ *                                  that are too close to each other.
+ * @param inter_collision_threshold 
+ * @param max_tries_per_atom Maximum number of attempts to place each atom
+ *                           before backtracking. 
+ * @param max_tries_per_kmer
+ * @param max_tries_per_seed
+ * @param max_n_backtracks Maximum number of backtracks.
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param xmax x-coordinate of first monomer of each chain is sampled from
+ *             [-xmax, xmax], which is the x-range of the fundamental cell
+ *             under periodic boundary conditions. 
+ * @param ymax y-coordinate of first monomer of each chain is sampled from
+ *             [-ymax, ymax], which is the y-range of the fundamental cell 
+ *             under periodic boundary conditions. 
+ * @param zmax z-coordinate of first monomer of each chain is sampled from
+ *             [-zmax, zmax], which is the z-range of the fundamental cell
+ *             under periodic boundary conditions. 
+ * @param bond_length_cdf Pre-defined CDF for bond length distribution.  
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin).
+ * @returns Resulting polymer configuration.  
+ */
+template <typename T>
+PolymerConfiguration<T> generateNextKMer(const int K,
+                                         const Ref<const Matrix<T, Dynamic, 3> >& melt_coords,  
+                                         std::unordered_map<std::string, T>& lj_params,
+                                         std::unordered_map<std::string, T>& fene_params,
+                                         const AngleMode angle_mode,  
+                                         std::unordered_map<std::string, T>& angle_params, 
+                                         std::unordered_map<std::string, T>& dihedral_params,
+                                         const T intra_collision_threshold,
+                                         const T inter_collision_threshold,  
+                                         const int max_tries_per_atom,
+                                         const int max_tries_per_kmer, 
+                                         const int max_tries_per_seed, 
+                                         const int max_n_backtracks,
+                                         boost::random::mt19937& rng,
+                                         boost::random::uniform_01<>& uniform_dist,
+                                         const T xmax, const T ymax, const T zmax,
+                                         const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf,  
+                                         const Units units = Units::NANO,
+                                         const T temp = 300)
+{
+    const T kT = (
+        units == Units::MICRO ? static_cast<T>(1.380649e-8) * temp : 
+        static_cast<T>(1.380649e-2) * temp
+    );
+    const T xlen = 2 * xmax; 
+    const T ylen = 2 * ymax; 
+    const T zlen = 2 * zmax;   
+
+    // Define the angle sampling function  
+    std::function<T(boost::random::mt19937&)> sample_angle;
+    if (angle_mode == AngleMode::COSINE)
     {
-        // Define a collision function with every K-mer generated thus far 
-        auto collision_inter = [&coords_all, &collision_threshold, &xlen, &ylen, &zlen](const Ref<const Matrix<T, 3, 1> >& r) -> bool
+        sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleAngleCosine<T>(
+                angle_params["K"], angle_params["theta0"], kT, rng_, 
+                uniform_dist
+            );
+        };
+    } 
+    else if (angle_mode == AngleMode::GAUSSIAN)
+    {
+        sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleAngleDualGaussianMixture<T>(
+                angle_params["A1"], angle_params["A2"], angle_params["w1"],
+                angle_params["w2"], angle_params["theta1"], angle_params["theta2"],
+                kT, rng_, uniform_dist
+            );
+        };
+    }
+    else 
+    {
+        throw std::runtime_error("Invalid angle potential mode specified"); 
+    }
+
+    // While we have not exhausted the number of attempts ...
+    int n_tries = 0;  
+    while (n_tries < max_tries_per_kmer)
+    {
+        bool collect_config = true; 
+
+        // Define a collision function with every K-mer generated thus far
+        auto collision_inter = [&melt_coords, &inter_collision_threshold, &xlen, &ylen, &zlen](const Ref<const Matrix<T, 3, 1> >& r) -> bool
         {
             // Get the periodic distance with every atom in every K-mer
-            for (int i = 0; i < coords_all.rows(); ++i)
+            for (int i = 0; i < melt_coords.rows(); ++i)
             {
                 Matrix<T, 3, 1> dist = periodicDistVec<T>(
-                    r, coords_all.row(i), xlen, ylen, zlen 
+                    r, melt_coords.row(i), xlen, ylen, zlen 
                 );
-                if (dist.norm() < collision_threshold)
+                if (dist.norm() < inter_collision_threshold)
                     return true;
             }
             return false;  
@@ -2017,12 +2122,12 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
             else 
                 n_tries_per_seed++; 
         }
-        // If the polymer could not be seed, raise an exception 
+        // If the polymer could not be seeded, then start sampling from
+        // scratch
         if (n_tries_per_seed >= max_tries_per_seed)
         {
-            throw std::runtime_error(
-                "Sampling procedure exceeded maximum number of polymer seeding "
-                "attempts"
+            throw TooManySeedPositionsError(
+                "Sampling procedure failed to seed polymer without collisions"
             ); 
         }
 
@@ -2030,23 +2135,23 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
         // with the growing K-mer as well as the other K-mers
         //
         // Generate a PolymerConfiguration<T> instance with the first 2 atoms 
-        Matrix<T, Dynamic, 3> new_coords(K, 3);
-        length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
-        new_coords.row(0) = r0_new;
-        new_coords.row(1) = r0_new + length * randomDir<T, 3>(rng, uniform_dist);  
-        PolymerConfiguration<T> new_config(
-            new_coords(Eigen::seqN(0, 2), Eigen::all), units, temp
+        Matrix<T, Dynamic, 3> coords(K, 3);
+        T length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
+        coords.row(0) = r0_new;
+        coords.row(1) = r0_new + length * randomDir<T, 3>(rng, uniform_dist);  
+        PolymerConfiguration<T> config(
+            coords(Eigen::seqN(0, 2), Eigen::all), units, temp
         ); 
 
         // Define another collision function for the growing K-mer 
-        collision_intra = [&new_config, &collision_threshold, &xlen, &ylen, &zlen](const Ref<const Matrix<T, 3, 1> >& r) -> bool
+        auto collision_intra = [&config, &intra_collision_threshold, &xlen, &ylen, &zlen](const Ref<const Matrix<T, 3, 1> >& r) -> bool
         {
             // Get the periodic distance with every atom within the growing
             // K-mer (except for the atom to which it will be bonded)
-            Matrix<T, Dynamic, 3> coords = new_config.getSegment(0, new_config.getLength() - 1); 
-            for (int i = 0; i < coords.rows(); ++i)
+            Matrix<T, Dynamic, 3> coords_ = config.getSegment(0, config.getLength() - 1); 
+            for (int i = 0; i < coords_.rows(); ++i)
             {
-                if (periodicDistVec<T>(r, coords.row(i), xlen, ylen, zlen).norm() < collision_threshold)
+                if (periodicDistVec<T>(r, coords_.row(i), xlen, ylen, zlen).norm() < intra_collision_threshold)
                     return true;
             }
             return false;
@@ -2055,34 +2160,34 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
         // Add a 3rd atom ...
         //
         // Keep generating a new atom until no collision is detected 
-        found_collision = true;  
+        bool found_collision = true;
+        Matrix<T, 3, 1> new_atom;  
         while (found_collision)
         {
             length = sampleFene<T>(rng, uniform_dist, bond_length_cdf); 
             T angle = sample_angle(rng); 
             new_atom = generateNextAtom<T>(
-                new_coords.row(0), new_coords.row(1), length, angle, rng,
-                uniform_dist
+                coords.row(0), coords.row(1), length, angle, rng, uniform_dist
             );
             found_collision = collision_intra(new_atom);  
         }
-        new_coords.row(2) = new_atom; 
-        new_config.appendAtomToTail(new_atom); 
+        coords.row(2) = new_atom; 
+        config.appendAtomToTail(new_atom); 
 
         // Add the remaining atoms ...
-        curr_idx = 3;
-        n_backtracks = 0;  
+        int curr_idx = 3;
+        int n_backtracks = 0;  
         while (curr_idx < K)
         {
-            Matrix<T, 3, 1> r1 = new_coords.row(curr_idx - 3); 
-            Matrix<T, 3, 1> r2 = new_coords.row(curr_idx - 2); 
-            Matrix<T, 3, 1> r3 = new_coords.row(curr_idx - 1); 
+            Matrix<T, 3, 1> r1 = coords.row(curr_idx - 3); 
+            Matrix<T, 3, 1> r2 = coords.row(curr_idx - 2); 
+            Matrix<T, 3, 1> r3 = coords.row(curr_idx - 1); 
 
             // Keep generating a new atom until no collision is detected or 
             // the maximum number of iterations is reached  
-            int n_tries = 0;
+            int n_tries_per_atom = 0;
             found_collision = true; 
-            while (found_collision && n_tries < max_tries_per_atom)
+            while (found_collision && n_tries_per_atom < max_tries_per_atom)
             { 
                 length = sampleFene<T>(rng, uniform_dist, bond_length_cdf); 
                 T angle = sample_angle(rng);
@@ -2093,69 +2198,220 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
                     r1, r2, r3, length, angle, dihedral, rng, uniform_dist 
                 );
                 found_collision = collision_intra(new_atom); 
-                n_tries++; 
+                n_tries_per_atom++; 
             }
 
             // If the maximum number of iterations has been reached, move onto
             // the next atom 
             if (!found_collision)
             {
-                new_coords.row(curr_idx) = new_atom; 
-                new_config.appendAtomToTail(new_atom);
+                coords.row(curr_idx) = new_atom; 
+                config.appendAtomToTail(new_atom);
                 curr_idx++;
             } 
             // Otherwise, backtrack to the previous atom unless doing so
             // encroaches into the first 3 atoms 
             else if (curr_idx > 3) 
             {
-                new_config.popAtomFromTail(); 
+                config.popAtomFromTail(); 
                 curr_idx--; 
                 n_backtracks++;  
             }
             else
             {
-                throw std::runtime_error(
-                    "Sampling procedure backtracked into first 3 atoms; try "
-                    "sampling more positions per atom"
-                ); 
+                // Try re-seeding the polymer
+                collect_config = false; 
+                break;  
             }
 
-            // If we have exceeded the maximum number of backtracks, raise 
-            // an exception 
+            // If we have exceeded the maximum number of backtracks, try
+            // re-seeding the polymer 
             if (n_backtracks > max_n_backtracks)
             {
-                throw std::runtime_error(
-                    "Sampling procedure exceeded maximum number of backtracks; try "
-                    "sampling more positions per atom"
-                );
+                collect_config = false;
+                break; 
             } 
         }
         
-        // ... then test that the new K-mer does not collide with every K-mer 
-        // generated thus far 
-        bool collect_config = true;
-        for (int j = 0; j < K; ++j)
+        // Test that the new K-mer does not collide with every K-mer 
+        // generated thus far
+        if (collect_config)
         {
-            if (collision_inter(new_coords.row(j)))
+            for (int j = 0; j < K; ++j)
             {
-                collect_config = false; 
-                break;
-            } 
+                if (collision_inter(coords.row(j)))
+                {
+                    collect_config = false; 
+                    break;
+                } 
+            }
         }
 
         // If so, collect that K-mer 
         if (collect_config)
+            return config;  
+        else    // Otherwise, try sampling that K-mer again  
+            n_tries++; 
+    }
+
+    throw PolymerGenerationError(
+        "Sampling procedure failed to generate polymer within specified number "
+        "of attempts"
+    ); 
+} 
+
+/**
+ * Generate a configuration of a melt of M K-mers, in which the inter-atom
+ * distances, bond lengths, bond angles, and dihedral angles follow the given
+ * potentials.
+ *
+ * @param K Polymer length.
+ * @param M Number of polymers. 
+ * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+ * @param neighbor_threshold Distance threshold for identifying
+ *                           neighboring (non-bonded) atoms. 
+ * @param fene_params FENE parameters. 
+ * @param angle_mode Angle potential type.  
+ * @param angle_params Angle potential parameters. Must include the 
+ *                     cosine potential parameters (K and theta0) or
+ *                     the dual Gaussian mixture potential parameters
+ *                     (A1, A2, w1, w2, theta1, theta2). 
+ * @param dihedral_params Dihedral angle potential parameters. 
+ * @param intra_collision_threshold Distance threshold for identifying atoms
+ *                                  that are too close to each other.
+ * @param inter_collision_threshold 
+ * @param max_tries_per_atom Maximum number of attempts to place each atom
+ *                           before backtracking.
+ * @param max_tries_per_kmer
+ * @param max_tries_per_seed
+ * @param max_n_backtracks Maximum number of backtracks.
+ * @param max_n_restarts 
+ * @param rng Random number generator. 
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @param xmax x-coordinate of first monomer of each chain is sampled from
+ *             [-xmax, xmax], which is the x-range of the fundamental cell
+ *             under periodic boundary conditions. 
+ * @param ymax y-coordinate of first monomer of each chain is sampled from
+ *             [-ymax, ymax], which is the y-range of the fundamental cell 
+ *             under periodic boundary conditions. 
+ * @param zmax z-coordinate of first monomer of each chain is sampled from
+ *             [-zmax, zmax], which is the z-range of the fundamental cell
+ *             under periodic boundary conditions. 
+ * @param bond_length_cdf Pre-defined CDF for bond length distribution.  
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin).
+ * @param verbose If true, print intermittent output to stdout.  
+ * @returns Resulting polymer configuration.  
+ */
+template <typename T>
+PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M, 
+                                             std::unordered_map<std::string, T>& lj_params,
+                                             std::unordered_map<std::string, T>& fene_params,
+                                             const AngleMode angle_mode,  
+                                             std::unordered_map<std::string, T>& angle_params, 
+                                             std::unordered_map<std::string, T>& dihedral_params,
+                                             const T intra_collision_threshold,
+                                             const T inter_collision_threshold,  
+                                             const int max_tries_per_atom,
+                                             const int max_tries_per_kmer,
+                                             const int max_tries_per_seed,  
+                                             const int max_n_backtracks,
+                                             const int max_n_restarts, 
+                                             boost::random::mt19937& rng,
+                                             boost::random::uniform_01<>& uniform_dist,
+                                             const T xmax, const T ymax,
+                                             const T zmax,
+                                             const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf,  
+                                             const Units units = Units::NANO,
+                                             const T temp = 300, 
+                                             const bool verbose = false)
+{
+    // Collect polymer coordinates 
+    Matrix<T, Dynamic, 3> coords_all;
+
+    // While we have not exhausted the number of restarts ...
+    int n_restarts = 0;
+    int n_collected = 0;  
+    while (n_restarts < max_n_restarts)
+    {
+        // Start with the very first K-mer ... 
+        bool restart = false;
+        PolymerConfiguration<T> init_config; 
+        try
         {
+            init_config = generateFirstKMer<T>(
+                K, lj_params, fene_params, angle_mode, angle_params, dihedral_params,
+                intra_collision_threshold, max_tries_per_atom, max_n_backtracks,
+                rng, uniform_dist, xmax, ymax, zmax, bond_length_cdf, units, temp  
+            );
+        }
+        catch (const TooManyBacktracksError& e)
+        {
+            // If an exception is raised, try sampling again from scratch,
+            // since we are on the first polymer
+            restart = true; 
+            n_restarts++; 
+            continue; 
+        }
+        
+        // Otherwise, collect the coordinates for the first K-mer
+        Matrix<T, Dynamic, 3> init_coords = init_config.getSegment(0, K); 
+        coords_all = init_coords;
+        n_collected++;  
+        if (verbose)
+            std::cout << "... generated chain 0\n"; 
+
+        // Iteratively generate each subsequent K-mer ... 
+        while (n_collected < M)
+        {
+            PolymerConfiguration<T> config;
+            try
+            {
+                config = generateNextKMer<T>(
+                    K, coords_all, lj_params, fene_params, angle_mode, angle_params,
+                    dihedral_params, intra_collision_threshold,
+                    inter_collision_threshold, max_tries_per_atom, 
+                    max_tries_per_kmer, max_tries_per_seed, max_n_backtracks, 
+                    rng, uniform_dist, xmax, ymax, zmax, bond_length_cdf, units, 
+                    temp 
+                );  
+            }
+            catch (const TooManySeedPositionsError& e)
+            {
+                restart = true;
+                break;
+            }
+            catch (const PolymerGenerationError& e)
+            {
+                restart = true; 
+                break; 
+            }
+            
+            // Collect the K-mer
+            Matrix<T, Dynamic, 3> coords = config.getSegment(0, K); 
             coords_all.conservativeResize((n_collected + 1) * K, 3);
-            coords_all(Eigen::seqN(n_collected * K, K), Eigen::all) = new_coords;
+            coords_all(Eigen::seqN(n_collected * K, K), Eigen::all) = coords;
             n_collected++; 
-            n_tries_per_kmer = 0; 
             if (verbose) 
                 std::cout << "... generated chain " << n_collected - 1 << std::endl;  
         }
-        else 
+
+        // Restart sampling from scratch if we have exceeded the maximum number
+        // of tries for a particular K-mer, or if restarting from scratch is
+        // otherwise desired
+        if (restart)
         {
-            n_tries_per_kmer++; 
+            if (verbose)
+                std::cout << "... restarting sampling from scratch\n";
+            coords_all = Matrix<T, Dynamic, 3>::Zero(0, 3);  
+            n_collected = 0; 
+            n_restarts++;
+        }
+        else
+        { 
+            if (verbose)
+                std::cout << "done with sampling!\n";
+            break; 
         }
     }
 
