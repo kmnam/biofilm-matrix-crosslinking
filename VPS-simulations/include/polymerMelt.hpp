@@ -2011,8 +2011,9 @@ PolymerConfiguration<T> generateFirstKMer(const int K,
  * @param inter_collision_threshold 
  * @param max_tries_per_atom Maximum number of attempts to place each atom
  *                           before backtracking. 
- * @param max_tries_per_kmer
- * @param max_tries_per_seed
+ * @param max_tries_per_kmer Maximum number of attempts to generate a full
+ *                           K-mer. 
+ * @param max_tries_per_seed Maximum number of attempts to seed a K-mer. 
  * @param max_n_backtracks Maximum number of backtracks.
  * @param rng Random number generator. 
  * @param uniform_dist Pre-defined instance of standard uniform distribution.
@@ -2282,10 +2283,11 @@ PolymerConfiguration<T> generateNextKMer(const int K,
  * @param inter_collision_threshold 
  * @param max_tries_per_atom Maximum number of attempts to place each atom
  *                           before backtracking.
- * @param max_tries_per_kmer
- * @param max_tries_per_seed
+ * @param max_tries_per_kmer Maximum number of attempts to generate a full
+ *                           K-mer. 
+ * @param max_tries_per_seed Maximum number of attempts to seed a K-mer. 
  * @param max_n_backtracks Maximum number of backtracks.
- * @param max_n_restarts 
+ * @param max_n_restarts Maximum number of restarts. 
  * @param rng Random number generator. 
  * @param uniform_dist Pre-defined instance of standard uniform distribution.
  * @param xmax x-coordinate of first monomer of each chain is sampled from
