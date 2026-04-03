@@ -1,0 +1,125 @@
+# ====================================================================== #
+# Equilibrate a random coil in implicit solvent. 
+#
+# Authors:
+#     Kee-Myoung Nam
+#
+# Last updated:
+#     4/3/2026
+# ====================================================================== #
+# INPUT VARIABLES
+# ===============
+variable f file ${VARS}
+variable init_filename string $f
+next f
+variable lammpstrj_filename string $f
+next f
+variable outfilename string $f
+next f
+variable dt equal $f
+next f
+variable damp equal $f
+next f
+variable nsteps equal $f
+next f
+variable nsteps_per_dump equal $f
+next f
+variable seed_velocity equal $f
+next f
+variable seed_langevin equal $f
+
+# ====================================================================== #
+# INITIALIZATION
+# ==============
+# Use nano units (nm, ag, ns, K; 1 kT = 4.141947 ag*nm^2/ns^2) in 3 dimensions
+units nano
+dimension 3
+
+# Use FENE bonds for polymeric bonds
+atom_style molecular 
+bond_style fene
+
+# No bond angle or dihedral angle potentials
+#  
+# Use Lennard-Jones potentials between unbonded molecules
+#
+# Note that the 2.5 * \sigma cutoff ratio is re-written below when the initial
+# configuration file is parsed
+pair_style lj/cut 4.6632124352
+
+# Use periodic boundary conditions in all 3 dimensions 
+boundary p p p
+
+# Maintain neighbor lists with given additional "skin" distance
+#
+# Skin distance is set to 0.3 * \sigma
+neighbor 0.5595854922 bin
+
+# Build neighbor lists at every timestep 
+neigh_modify delay 0 every 1 check yes
+
+# Accommodate larger communication cutoff (max FENE bond length = 2.8 nm,
+# no bond angles or dihedrals)
+comm_modify cutoff 2.8
+
+# ====================================================================== #
+# PARSE INPUT MOLECULES
+# =====================
+read_data ${init_filename}
+pair_modify shift yes
+
+# - Exclude non-bonded interactions between FENE-bonded atoms
+# - Weight non-bonded interactions between 1-3 atoms with angles
+special_bonds fene angle no
+
+# Reset non-bonded interactions, with the cutoff set to 2^(1/6) * \sigma 
+pair_style soft 2.09371159271
+pair_coeff * * 0.0
+
+# ====================================================================== #
+# DEFINE INITIAL VELOCITIES
+# =========================
+# Set initial velocities of all molecules from a Gaussian distribution with
+# angular momenta set to zero 
+variable temp equal 300.0
+velocity all create ${temp} ${seed_velocity} rot yes dist gaussian
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
+# =================================================
+thermo ${nsteps_per_dump}
+thermo_style custom step temp press vol pxx pyy pzz etotal ke pe epair ebond eangle
+
+# ====================================================================== #
+# SET UP SIMULATION
+# =================
+timestep ${dt}
+reset_timestep 0
+
+# Write polymer and crosslinker coordinates from simulation to file:
+# - Write atom ID, molecule ID, atom type, atom coordinates, and atom velocities
+# - Sort lines by atom ID
+dump sim1 all custom ${nsteps_per_dump} ${lammpstrj_filename} id mol type xu yu zu vx vy vz
+dump_modify sim1 sort id
+
+# ====================================================================== #
+# SET UP ENSEMBLES
+# ================
+# Apply NVE ensemble plus Langevin thermostat
+fix fx1 all nve
+fix fx2 all langevin ${temp} ${temp} ${damp} ${seed_langevin}
+
+# Introduce a ramp for the energy scale of the non-bonded interactions 
+variable soft_prefactor equal ramp(0,30)
+fix fx3 all adapt 1 pair soft a * * v_soft_prefactor
+
+# ====================================================================== #
+# RUN SIMULATION
+# ==============
+run ${nsteps}
+
+# ====================================================================== #
+# WRITE FINAL SYSTEM STATE TO FILE 
+# ================================
+write_data ${outfilename} 
+
