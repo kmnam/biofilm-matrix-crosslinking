@@ -57,18 +57,22 @@ dihedral_style harmonic
 #
 # Note that the 2.5 * \sigma cutoff ratio is re-written below when the initial
 # configuration file is parsed
-pair_style lj/cut 4.4544935907
+pair_style lj/cut 4.6632124352
 
 # Use periodic boundary conditions in all 3 dimensions 
 boundary p p p
 
 # Maintain neighbor lists with given additional "skin" distance
 #
-# Skin distance is set to 0.3 * \sigma, where \sigma = 2 nm / (2^(1/6))
-neighbor 0.5345392309 bin
+# Skin distance is set to 0.3 * \sigma
+neighbor 0.5595854922 bin
 
 # Build neighbor lists at every timestep 
-neigh_modify every 1 delay 1
+neigh_modify delay 0 every 1 check yes
+
+# Accommodate larger communication cutoff (max FENE bond length = 2.8 nm, 
+# LAMMPS computes a larger cutoff of ~4.6 nm due to bond angles and dihedrals)
+comm_modify cutoff 4.6
 
 # ====================================================================== #
 # PARSE INPUT MOLECULES
