@@ -34,6 +34,8 @@ using std::exp;
 using boost::multiprecision::exp; 
 using std::min; 
 using boost::multiprecision::min;
+using std::max; 
+using boost::multiprecision::max; 
 using std::log10; 
 using boost::multiprecision::log10; 
 using std::isinf; 
@@ -1732,7 +1734,7 @@ std::tuple<PolymerMeltConfiguration<T>,
         ss << line;
         std::getline(ss, token, ' ');    // Atom ID (skip) 
         std::getline(ss, token, ' ');    // Molecule ID
-        int mol_id = std::stoi(token); 
+        int mol_id = std::stoi(token);
         std::getline(ss, token, ' ');    // Atom type (skip)
         std::getline(ss, token, ' ');    // x-coordinate
         T x = static_cast<T>(std::stod(token));
@@ -1768,6 +1770,143 @@ std::tuple<PolymerMeltConfiguration<T>,
         configs, lj_params, fene_params, angle_mode, angle_params,
         dihedral_params
     ); 
+}
+
+/**
+ * Parse the given .lammpstrj file and return the trajectory of polymer 
+ * melt configurations.  
+ *
+ * @param filename Input filename.
+ * @param dt Timestep. 
+ * @param units Units used in the LAMMPS file. 
+ * @param temp Temperature. 
+ * @param tmin Minimum timepoint (in timesteps). 
+ * @param tmax Maximum timepoint (in timesteps). 
+ * @returns Polymer melt configurations in the given file.
+ */
+template <typename T>
+std::pair<std::vector<PolymerMeltConfiguration<T> >,
+          std::vector<T> > parseMeltLammpstrj(const std::string& filename,
+                                              const T dt, const Units units, 
+                                              const T temp, const int tmin = 0,
+                                              const int tmax = std::numeric_limits<int>::infinity())
+{
+    // Stitch together the ensemble, one configuration at a time ... 
+    std::vector<PolymerMeltConfiguration<T> > ensemble; 
+    std::vector<T> times; 
+
+    // Parse the given file, up to the first timestep ... 
+    std::ifstream infile(filename); 
+    std::string line;
+    int n_chains = 0; 
+
+    // Parse the first line, which marks the first timestep 
+    std::getline(infile, line);
+    std::getline(infile, line);    // Timepoint
+    std::getline(infile, line);
+    std::getline(infile, line);    // Number of atoms
+    const int n_atoms = std::stoi(line); 
+    std::getline(infile, line); 
+    std::getline(infile, line);    // x-, y-, and z-bounds  
+    std::getline(infile, line);  
+    std::getline(infile, line);
+    std::getline(infile, line); 
+    while (std::getline(infile, line))    // Then parse each atom in the system
+    {
+        // If we have reached a new timestep, break
+        if (line.find("ITEM: TIMESTEP") == 0)
+            break; 
+
+        // Otherwise, parse the line
+        std::stringstream ss; 
+        std::string token;
+        ss << line;
+        std::getline(ss, token, ' ');    // Atom ID 
+        std::getline(ss, token, ' ');    // Molecule ID
+        int mol_id = std::stoi(token);
+        n_chains = max(n_chains, mol_id);
+    }
+    const int length = n_atoms / n_chains; 
+    infile.close();  
+
+    // Re-parse the given file, this time to the end ...
+    Matrix<T, Dynamic, Dynamic> coords(n_chains, 3 * length);  
+    infile.open(filename); 
+    while (std::getline(infile, line))
+    {
+        // If we have arrived at a new timestep ... 
+        if (line.find("ITEM: TIMESTEP") == 0)
+        {
+            // Read the next line to get the timepoint
+            std::getline(infile, line);
+            double t_curr = std::stod(line) * dt; 
+            times.push_back(t_curr); 
+
+            // Read the next two lines to get the total number of atoms (which
+            // should be the same throughout the file)
+            std::getline(infile, line); 
+            std::getline(infile, line); 
+
+            // Skip over the next four lines, which give the box bounds 
+            std::getline(infile, line); 
+            std::getline(infile, line);  
+            std::getline(infile, line);  
+            std::getline(infile, line);
+
+            // Then parse the atom coordinates
+            std::getline(infile, line);    // Header line 
+            for (int i = 0; i < n_chains * length; ++i)
+            {
+                // Parse the line 
+                std::getline(infile, line); 
+                std::stringstream ss; 
+                std::string token;
+                ss << line; 
+
+                // Atom index
+                std::getline(ss, token, ' ');
+                int atom_idx = std::stoi(token) - 1; 
+
+                // Molecule index 
+                std::getline(ss, token, ' ');
+                int mol_idx = std::stoi(token) - 1;
+
+                // Skip over the next token (atom type) 
+                std::getline(ss, token, ' ');
+
+                // x-, y-, and z-coordinates 
+                std::getline(ss, token, ' ');
+                double rx = std::stod(token);
+                std::getline(ss, token, ' '); 
+                double ry = std::stod(token);
+                std::getline(ss, token, ' ');
+                double rz = std::stod(token); 
+
+                // Collect the coordinates 
+                int atom_idx_within_mol = atom_idx % length;
+                coords(mol_idx, 3 * atom_idx_within_mol) = rx; 
+                coords(mol_idx, 3 * atom_idx_within_mol + 1) = ry;
+                coords(mol_idx, 3 * atom_idx_within_mol + 2) = rz; 
+
+                // Skip over the remaining tokens 
+            }
+
+            // Collect the polymer configuration
+            std::vector<Matrix<T, Dynamic, 3> > coords_vec; 
+            for (int i = 0; i < n_chains; ++i)
+            {
+                Matrix<T, Dynamic, 3> coords_i(length, 3); 
+                for (int j = 0; j < length; ++j)
+                    coords_i.row(j) = coords(i, Eigen::seqN(3 * j, 3)); 
+                coords_vec.push_back(coords_i); 
+            } 
+            ensemble.emplace_back(
+                PolymerMeltConfiguration<T>(n_chains, coords_vec, units, temp)
+            ); 
+        }
+    } 
+
+    return std::pair(ensemble, times); 
 }
 
 class TooManyBacktracksError : public std::runtime_error
