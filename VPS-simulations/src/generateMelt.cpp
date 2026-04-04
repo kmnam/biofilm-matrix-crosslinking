@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/25/2026
+ *     4/3/2026
  */
 
 #include <iostream>
@@ -58,11 +58,13 @@ int main(int argc, char** argv)
     dihedral_params["K"] = json_data["dihedral_K"].as_double() * kT;
     dihedral_params["d"] = 1; 
     dihedral_params["n"] = 1;
-    const double collision_threshold = json_data["init_collision_threshold"].as_double(); 
+    const double intra_collision_threshold = json_data["init_intra_collision_threshold"].as_double();
+    const double inter_collision_threshold = json_data["init_inter_collision_threshold"].as_double();  
     const int max_tries_per_atom = json_data["init_max_tries_per_atom"].as_int64();
     const int max_tries_per_kmer = json_data["init_max_tries_per_kmer"].as_int64();
     const int max_tries_per_seed = json_data["init_max_tries_per_seed"].as_int64();  
     const int max_n_backtracks = json_data["init_max_n_backtracks"].as_int64();
+    const int max_n_restarts = json_data["init_max_n_restarts"].as_int64(); 
     const int n_bins = json_data["n_bins_fene_cdf"].as_int64(); 
     const double xmax = json_data["domain_xmax"].as_double(); 
     const double ymax = json_data["domain_ymax"].as_double(); 
@@ -86,9 +88,10 @@ int main(int argc, char** argv)
               << length << " ...\n";  
     PolymerMeltConfiguration<double> melt_config = generateKMerMelt<double>(
         length, n_chains, lj_params, fene_params, angle_mode, angle_params,
-        dihedral_params, collision_threshold, max_tries_per_atom, 
-        max_tries_per_kmer, max_tries_per_seed, max_n_backtracks, rng,
-        uniform_dist, xmax, ymax, zmax, bond_length_cdf, Units::NANO, 300, true
+        dihedral_params, intra_collision_threshold, inter_collision_threshold,
+        max_tries_per_atom, max_tries_per_kmer, max_tries_per_seed,
+        max_n_backtracks, max_n_restarts, rng, uniform_dist, xmax, ymax, zmax,
+        bond_length_cdf, Units::NANO, 300, true
     );
 
     // Write the melt configuration to file
