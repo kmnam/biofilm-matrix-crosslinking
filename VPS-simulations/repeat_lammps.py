@@ -58,19 +58,19 @@ if __name__ == '__main__':
     if params['angle_mode'] == 1:    # Gaussian angle potential
         subprocess.run([
             'mpirun', '-np', sys.argv[5],
-            'lmp', '-i', 'bimodal_angles_gaussian.lammps', '-v', 'VARS',
+            'lmp', '-i', 'bimodal_angles_gaussian_nomin.lammps', '-v', 'VARS',
             input_filename
         ])
     elif params['angle_mode'] == 0 and params['cosine_K'] > 0:    # Cosine angle potential
         subprocess.run([
             'mpirun', '-np', sys.argv[5],
-            'lmp', '-i', 'bimodal_angles_static.lammps', '-v', 'VARS',
+            'lmp', '-i', 'bimodal_angles_static_nomin.lammps', '-v', 'VARS',
             input_filename
         ])
     else:
         subprocess.run([
             'mpirun', '-np', sys.argv[5],
-            'lmp', '-i', 'random_coil.lammps', '-v', 'VARS',
+            'lmp', '-i', 'random_coil_nomin.lammps', '-v', 'VARS',
             input_filename
         ])
 
