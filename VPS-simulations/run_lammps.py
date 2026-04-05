@@ -6,14 +6,13 @@ Authors:
     Kee-Myoung Nam
 
 Last updated:
-    3/25/2026
+    4/5/2026
 """
 
 import sys
 import json
 import subprocess
 import numpy as np
-import matplotlib.pyplot as plt
 
 #########################################################################
 if __name__ == '__main__':
@@ -25,7 +24,6 @@ if __name__ == '__main__':
     # Parse input arguments
     outprefix = sys.argv[2]
     init_filename = outprefix + '_init.data'
-    pdf_filename = outprefix + '_init.pdf'
     rng_seed = int(sys.argv[3])
 
     # Generate an initial polymer configuration
