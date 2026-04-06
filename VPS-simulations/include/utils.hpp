@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/25/2026
+ *     4/5/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -166,10 +166,11 @@ Matrix<T, 3, 1> periodicDistVec(const Ref<const Matrix<T, 3, 1> >& p,
     T dx = p(0) - q(0); 
     T dy = p(1) - q(1); 
     T dz = p(2) - q(2); 
-    Matrix<T, 3, 1> dist; 
-    dist << dx - xlen * round(dx / xlen), 
-            dy - ylen * round(dy / ylen), 
-            dz - zlen * round(dz / zlen);
+    Matrix<T, 3, 1> dist;
+    T x = (isinf(xlen) ? dx : dx - xlen * round(dx / xlen)); 
+    T y = (isinf(ylen) ? dy : dy - ylen * round(dy / ylen)); 
+    T z = (isinf(zlen) ? dz : dz - zlen * round(dz / zlen)); 
+    dist << x, y, z;
 
     return dist;  
 }
@@ -192,10 +193,11 @@ Matrix<T, 3, 1> mapToFundamentalCell(const Ref<const Matrix<T, 3, 1> >& p,
                                      const T xlen, const T ylen, const T zlen,
                                      const T xmin, const T ymin, const T zmin)
 {
-    Matrix<T, 3, 1> p_mapped; 
-    p_mapped << p(0) - xlen * floor((p(0) - xmin) / xlen),
-                p(1) - ylen * floor((p(1) - ymin) / ylen), 
-                p(2) - zlen * floor((p(2) - zmin) / zlen);
+    Matrix<T, 3, 1> p_mapped;
+    T x_mapped = (isinf(xlen) ? p(0) : p(0) - xlen * floor((p(0) - xmin) / xlen)); 
+    T y_mapped = (isinf(ylen) ? p(1) : p(1) - ylen * floor((p(1) - ymin) / ylen)); 
+    T z_mapped = (isinf(zlen) ? p(2) : p(2) - zlen * floor((p(2) - zmin) / zlen));  
+    p_mapped << x_mapped, y_mapped, z_mapped;
 
     return p_mapped;  
 }
