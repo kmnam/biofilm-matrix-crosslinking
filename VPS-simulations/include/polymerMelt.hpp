@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/3/2026
+ *     4/6/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -53,7 +53,16 @@ class PolymerMeltConfiguration
         int n; 
         std::vector<int> lengths;  
         T temp;
-        PolymerEnsemble<T> configs; 
+        PolymerEnsemble<T> configs;
+        T xmin; 
+        T xmax; 
+        T ymin; 
+        T ymax; 
+        T zmin; 
+        T zmax;
+        T xlen; 
+        T ylen; 
+        T zlen;  
 
     public:
         T kT;     // Boltzmann's constant times temperature
@@ -72,6 +81,17 @@ class PolymerMeltConfiguration
             this->configs.push_back(config); 
             this->temp = 300;
             this->kT = static_cast<T>(1.380649e-2) * temp;    // Assume nano units
+            
+            // Assume an infinitely large domain 
+            this->xmin = -std::numeric_limits<T>::infinity();
+            this->xmax = std::numeric_limits<T>::infinity(); 
+            this->ymin = -std::numeric_limits<T>::infinity(); 
+            this->ymax = std::numeric_limits<T>::infinity(); 
+            this->zmin = -std::numeric_limits<T>::infinity(); 
+            this->zmax = std::numeric_limits<T>::infinity();
+            this->xlen = std::numeric_limits<T>::infinity();
+            this->ylen = std::numeric_limits<T>::infinity();
+            this->zlen = std::numeric_limits<T>::infinity();
         }
 
         /**
@@ -80,11 +100,16 @@ class PolymerMeltConfiguration
          * @param n Number of polymers. 
          * @param r Atomic coordinates for each polymer.  
          * @param units Units for keeping track of Boltzmann's constant. 
-         * @param temp Temperature (in Kelvin). 
+         * @param temp Temperature (in Kelvin).
+         * @param xmin, xmax Domain limits along x-axis.
+         * @param ymin, ymax Domain limits along y-axis. 
+         * @param zmin, zmax Domain limits along z-axis.
          */
         PolymerMeltConfiguration(const int n,
                                  const std::vector<Matrix<T, Dynamic, 3> >& r, 
-                                 const Units units, const T temp)
+                                 const Units units, const T temp, 
+                                 const T xmin, const T xmax, const T ymin, 
+                                 const T ymax, const T zmin, const T zmax)
         {
             this->n = n; 
 
@@ -107,7 +132,18 @@ class PolymerMeltConfiguration
             if (units == Units::NANO)
                 this->kT = static_cast<T>(1.380649e-2) * temp;
             else if (units == Units::MICRO)
-                this->kT = static_cast<T>(1.380649e-8) * temp; 
+                this->kT = static_cast<T>(1.380649e-8) * temp;
+
+            // Set domain limits 
+            this->xmin = xmin; 
+            this->xmax = xmax; 
+            this->ymin = ymin; 
+            this->ymax = ymax; 
+            this->zmin = zmin; 
+            this->zmax = zmax; 
+            this->xlen = this->xmax - this->xmin; 
+            this->ylen = this->ymax - this->ymin; 
+            this->zlen = this->zmax - this->zmin;  
         }
 
         /**
@@ -267,7 +303,9 @@ class PolymerMeltConfiguration
 
         /**
          * Get the minimum distance between the given atom and the i-th 
-         * polymer. 
+         * polymer.
+         *
+         * This is the minimum distance under periodic boundary conditions.  
          *
          * @param i Polymer index.
          * @param p Input atomic coordinates. 
@@ -279,7 +317,21 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            return this->configs[i].getMinDist(p); 
+            // Compute the minimum distance under periodic boundary conditions
+            T mindist = std::numeric_limits<T>::infinity();
+            const int ni = this->lengths[i]; 
+            Matrix<T, Dynamic, 3> coords = this->configs[i].getSegment(0, ni); 
+            for (int j = 0; j < this->lengths[i]; ++j)
+            {
+                Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                    p, coords.row(j), this->xlen, this->ylen, this->zlen
+                );
+                T dist = dvec.norm();  
+                if (mindist < dist)
+                    mindist = dist; 
+            }
+
+            return mindist;
         }
 
         /**
@@ -568,6 +620,10 @@ class PolymerMeltConfiguration
          * interactions between all atoms to the energy of the i-th polymer
          * configuration.
          *
+         * The non-bonded interaction length scale is assumed to be smaller 
+         * than the periodic domain, such that, for any atom in the polymer,
+         * at most one copy of each atom in the melt interacts with it.
+         *
          * @param i Polymer index. 
          * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @param neighbor_threshold Distance threshold for identifying
@@ -584,14 +640,29 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            // Start with the non-bonded energy of the i-th polymer by itself 
-            T energy = this->configs[i].getNonbondedEnergy(
-                lj_params, neighbor_threshold, nonconsecutive
-            );
+            // Start with the non-bonded energy of the i-th polymer by itself ... 
+            T energy = 0;
+            const int ni = this->lengths[i];
+            Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);  
+            for (int j = 0; j < ni; ++j)
+            {
+                for (int k = j + 1; k < ni; ++k)
+                {
+                    if (!nonconsecutive || (nonconsecutive && abs(k - j) > 1))
+                    {
+                        Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                            ri.row(j), ri.row(k), this->xlen, this->ylen, this->zlen
+                        );
+                        T dist = dvec.norm();
+                        if (dist < neighbor_threshold) 
+                            energy += lj<T>(
+                                dist, lj_params["eps"], lj_params["sigma"], true
+                            );
+                    }
+                }
+            } 
 
             // Look for further non-bonded interactions with the other polymers
-            const int ni = this->lengths[i]; 
-            Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);  
             for (int j = 0; j < this->n; ++j)
             {
                 if (i != j)
@@ -602,10 +673,15 @@ class PolymerMeltConfiguration
                     {
                         for (int p = 0; p < ni; ++p)
                         {
-                            T dij = (rj.row(k) - ri.row(p)).norm();
-                            if (dij < neighbor_threshold) 
+                            Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                                rj.row(k), ri.row(p), this->xlen, this->ylen, 
+                                this->zlen
+                            ); 
+                            T dist = dvec.norm(); 
+                            if (dist < neighbor_threshold) 
                                 energy += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
+                                    dist, lj_params["eps"], lj_params["sigma"],
+                                    true
                                 );
                         }
                     }
@@ -617,7 +693,11 @@ class PolymerMeltConfiguration
 
         /**
          * Get the energetic contributions of the non-bonded (repulsive)
-         * interactions between all atoms in the melt. 
+         * interactions between all atoms in the melt.
+         *
+         * The non-bonded interaction length scale is assumed to be smaller 
+         * than the periodic domain, such that, for any atom in the polymer,
+         * at most one copy of each atom in the melt interacts with it.
          *
          * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @param neighbor_threshold Distance threshold for identifying
@@ -630,20 +710,34 @@ class PolymerMeltConfiguration
                                   const T neighbor_threshold,
                                   const bool nonconsecutive = false) const
         {
-            // Start with the non-bonded energy within each polymer ... 
-            T energy = 0; 
+            T energy = 0;
             for (int i = 0; i < this->n; ++i)
             {
-                energy += this->configs[i].getNonbondedEnergy(
-                    lj_params, neighbor_threshold, nonconsecutive
-                );
-            }
-
-            // Then get the non-bonded energy between each pair of polymers ...
-            for (int i = 0; i < this->n; ++i)
-            { 
-                const int ni = this->lengths[i]; 
+                // Start with the non-bonded energy along the i-th polymer ...
+                const int ni = this->lengths[i];
                 Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);  
+                for (int j = 0; j < ni; ++j)
+                {
+                    for (int k = j + 1; k < ni; ++k)
+                    {
+                        if (!nonconsecutive || (nonconsecutive && abs(k - j) > 1))
+                        {
+                            Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                                ri.row(j), ri.row(k), this->xlen, this->ylen,
+                                this->zlen
+                            );
+                            T dist = dvec.norm();
+                            if (dist < neighbor_threshold) 
+                                energy += lj<T>(
+                                    dist, lj_params["eps"], lj_params["sigma"],
+                                    true
+                                );
+                        }
+                    }
+                } 
+                
+                // Then get the non-bonded energy between the i-th polymer 
+                // and every other polymer ... 
                 for (int j = 0; j < this->n; ++j)
                 {
                     if (i != j)
@@ -654,10 +748,15 @@ class PolymerMeltConfiguration
                         {
                             for (int p = 0; p < ni; ++p)
                             {
-                                T dij = (rj.row(k) - ri.row(p)).norm();
-                                if (dij < neighbor_threshold) 
+                                Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                                    rj.row(k), ri.row(p), this->xlen, this->ylen, 
+                                    this->zlen
+                                ); 
+                                T dist = dvec.norm(); 
+                                if (dist < neighbor_threshold) 
                                     energy += lj<T>(
-                                        dij, lj_params["eps"], lj_params["sigma"], true
+                                        dist, lj_params["eps"], lj_params["sigma"],
+                                        true
                                     );
                             }
                         }
@@ -799,6 +898,10 @@ class PolymerMeltConfiguration
         /**
          * Get the total energy of the i-th polymer configuration. 
          *
+         * The non-bonded interaction length scale is assumed to be smaller 
+         * than the periodic domain, such that, for any atom in the polymer,
+         * at most one copy of each atom in the melt interacts with it.
+         *
          * @param i Polymer index.
          * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @param neighbor_threshold Distance threshold for identifying
@@ -823,510 +926,392 @@ class PolymerMeltConfiguration
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            return this->configs[i].getTotalEnergy(
-                lj_params, neighbor_threshold, fene_params, angle_mode, 
-                angle_params, dihedral_params
-            ); 
+            // Get each energy contribution
+            T energy = this->getNonbondedEnergy(i, lj_params, neighbor_threshold, true);
+            energy += this->getBondEnergy(i, fene_params, true, lj_params); 
+            energy += this->getBondAngleEnergy(i, angle_mode, angle_params); 
+            energy += this->getDihedralAngleEnergy(i, dihedral_params); 
+
+            return energy;  
         }
 
         /**
-         * Get the *non-bonded* energy difference between the current melt
-         * configuration and the configuration that would arise from reptating
-         * the i-th polymer in the given direction by adding the given atom. 
+         * Get the residual (non-bonded) energy of the proposed reptation move
+         * for the i-th polymer. 
          *
-         * This function omits the non-bonded energetic contribution between
-         * the old/new terminal atoms and their bonded neighbors.  
+         * This function calculates the total non-bonded energy between the
+         * new atom and the other atoms that would remain in the i-th polymer
+         * configuration after reptating in either direction, plus every atom
+         * in every other polymer in the melt.  
+         *
+         * Note that the reptation direction does not matter for this
+         * calculation.
          *
          * @param i Polymer index. 
-         * @param direction Reptation direction. 
          * @param r_new Position of new atom. 
          * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
          * @param neighbor_threshold Distance threshold for identifying
          *                           neighboring (non-bonded) atoms. 
-         * @returns Nonbonded energy difference due to reptation. 
+         * @returns Residual energy of the proposed reptation move. 
          */
-        T getReptationNonbondedEnergyDifference(const int i,
-                                                const ReptationDirection direction, 
-                                                const Ref<const Matrix<T, 3, 1> >& r_new,
-                                                std::unordered_map<std::string, T>& lj_params,  
-                                                const T neighbor_threshold) const
+        T getReptationResidualEnergy(const int i,
+                                     const Ref<const Matrix<T, 3, 1> >& r_new,
+                                     std::unordered_map<std::string, T>& lj_params,  
+                                     const T neighbor_threshold) const
         {
             // Check that i is a valid index
             if (i < 0 || i >= this->n)
                 throw std::runtime_error("Undefined polymer index");
 
-            // Get the energy difference within the i-th polymer 
-            T energy_diff_within = this->configs[i].getReptationNonbondedEnergyDifference(
-                direction, r_new, lj_params, neighbor_threshold
-            ); 
-
-            // Run through all the remaining polymers ... 
-            T energy_curr = 0; 
-            T energy_new = 0;
-            const int ni = this->lengths[i];
-            Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);   
-            for (int j = 0; j < this->n; ++j)
-            {
-                if (i != j)
-                {
-                    const int nj = this->lengths[j];
-                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj);  
-                    if (direction == ReptationDirection::HEAD)
-                    {
-                        // Get the non-bonded energy contribution from atom
-                        // (ni - 1) in the current i-th polymer configuration
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            T dij = (rj.row(k) - ri.row(ni - 1)).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_curr += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
-                                ); 
-                        }
-
-                        // Get the energy contribution that would arise from
-                        // introducing the new atom at the head and removing atom 
-                        // (ni - 1)
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            T dij = (rj.row(k) - r_new.transpose()).norm();
-                            if (dij < neighbor_threshold)
-                                energy_new += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
-                                ); 
-                        }
-                    }
-                    else 
-                    {
-                        // Get the energy contribution from atom 0 in the current 
-                        // i-th polymer configuration 
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            T dij = (rj.row(k) - ri.row(0)).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_curr += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
-                                ); 
-                        }
-
-                        // Get the energy contribution that would arise from
-                        // introducing the new atom at the tail and removing atom 0
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            T dij = (rj.row(k) - r_new.transpose()).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_new += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
-                                ); 
-                        }
-                    }
-                }
-            }
-
-            // Return the energy difference 
-            return energy_diff_within + energy_new - energy_curr; 
-        }
-
-        /**
-         * Get the total energy difference between the current melt 
-         * configuration and the configuration that would arise from reptating
-         * the i-th polymer in the given direction by adding the given atom. 
-         *
-         * @param i Polymer index. 
-         * @param direction Reptation direction. 
-         * @param r_new Position of new atom. 
-         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
-         * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
-         * @param fene_params FENE parameters. 
-         * @param angle_mode Angle potential type.  
-         * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0) or
-         *                     the dual Gaussian mixture potential parameters
-         *                     (A1, A2, w1, w2, theta1, theta2). 
-         * @param dihedral_params Dihedral angle potential parameters. 
-         * @returns Energy difference due to reptation.
-         */
-        T getReptationEnergyDifference(const int i, const ReptationDirection direction, 
-                                       const Ref<const Matrix<T, 3, 1> >& r_new,
-                                       std::unordered_map<std::string, T>& lj_params,  
-                                       const T neighbor_threshold, 
-                                       std::unordered_map<std::string, T>& fene_params,
-                                       const AngleMode angle_mode,  
-                                       std::unordered_map<std::string, T>& angle_params,
-                                       std::unordered_map<std::string, T>& dihedral_params) const
-        {
-            // Check that i is a valid index
-            if (i < 0 || i >= this->n)
-                throw std::runtime_error("Undefined polymer index");
-
-            // Get the energy difference within the i-th polymer 
-            T energy_diff_within = this->configs[i].getReptationEnergyDifference(
-                direction, r_new, lj_params, neighbor_threshold, fene_params, 
-                angle_mode, angle_params, dihedral_params
-            ); 
-
-            // Run through all the remaining polymers ... 
-            T energy_curr = 0; 
-            T energy_new = 0; 
-            const int ni = this->lengths[i];
-            Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);
-            for (int j = 0; j < this->n; ++j)
-            {
-                if (i != j)
-                {
-                    const int nj = this->lengths[j]; 
-                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj); 
-                    if (direction == ReptationDirection::HEAD)
-                    {
-                        // Get the non-bonded energy contribution from atom
-                        // (ni - 1) in the current i-th polymer configuration 
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            T dij = (rj.row(k) - ri.row(ni - 1)).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_curr += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
-                                ); 
-                        }
-
-                        // Get the energy contribution that would arise from
-                        // introducing the new atom at the head and removing atom 
-                        // (ni - 1)
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            T dij = (rj.row(k) - r_new.transpose()).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_new += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
-                                ); 
-                        }
-                    }
-                    else 
-                    {
-                        // Get the energy contribution from atom 0 in the current 
-                        // configuration 
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            T dij = (rj.row(k) - ri.row(0)).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_curr += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
-                                ); 
-                        }
-
-                        // Get the energy contribution that would arise from
-                        // introducing the new atom at the tail and removing atom 0
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            T dij = (rj.row(k) - r_new.transpose()).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_new += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"], true
-                                ); 
-                        }
-                    }
-                }
-            }
-
-            // Return the energy difference 
-            return energy_diff_within + energy_new - energy_curr;
-        }
-
-        /**
-         * Get the *non-bonded* energy difference between the current melt 
-         * configuration and the configuration that would arise from reptating
-         * the i-th polymer in the given direction by the given segment.
-         *
-         * This function omits the non-bonded energetic contribution between
-         * the old/new terminal atoms and their bonded neighbors.  
-         *
-         * @param i Polymer index. 
-         * @param direction Reptation direction. 
-         * @param segment Atomic coordinates of new segment.
-         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
-         * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
-         * @returns Nonbonded energy difference due to multimer reptation. 
-         */
-        T getMultimerReptationNonbondedEnergyDifference(const int i, 
-                                                        const ReptationDirection direction, 
-                                                        const Ref<const Matrix<T, Dynamic, 3> >& segment, 
-                                                        std::unordered_map<std::string, T>& lj_params,  
-                                                        const T neighbor_threshold) const
-        {
-            // Check that i is a valid index
-            if (i < 0 || i >= this->n)
-                throw std::runtime_error("Undefined polymer index");
-
-            // Get the energy difference within the i-th polymer 
-            T energy_diff_within = this->configs[i].getMultimerReptationNonbondedEnergyDifference(
-                direction, segment, lj_params, neighbor_threshold
-            ); 
-
-            // Run through all the remaining polymers ... 
-            T energy_curr = 0; 
-            T energy_new = 0;
-            const int ni = this->lengths[i];
-            const int m = segment.rows();  
+            // Get the residual energy within the i-th polymer ...
+            //
+            // Get the energy between the new atom and every other atom 
+            // that would not be bonded to it after reptation
+            //
+            // The direction does not matter for this calculation 
+            T energy = 0;
+            const int ni = this->lengths[i]; 
             Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni); 
-            for (int j = 0; j < this->n; ++j)
+            for (int j = 1; j < ni - 1; ++j)    // Omit atoms 0 and (ni - 1)
             {
-                if (i != j)
-                {
-                    const int nj = this->lengths[j];
-                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj); 
-                    if (direction == ReptationDirection::HEAD)
-                    {
-                        // Get the non-bonded energy contribution from the final m 
-                        // atoms (n - m, ..., n - 1) in the current i-th polymer
-                        // configuration
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            for (int p = ni - m; p < ni; ++p)
-                            {
-                                T dij = (rj.row(k) - ri.row(p)).norm(); 
-                                if (dij < neighbor_threshold)
-                                    energy_curr += lj<T>(
-                                        dij, lj_params["eps"], lj_params["sigma"],
-                                        true
-                                    );
-                            } 
-                        }
-
-                        // Get the energy contribution that would arise from
-                        // introducing the new segment at the head and removing
-                        // the final m atoms
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            for (int p = 0; p < m; ++p)
-                            {
-                                T dij = (rj.row(k) - segment.row(p)).norm(); 
-                                if (dij < neighbor_threshold)
-                                    energy_new += lj<T>(
-                                        dij, lj_params["eps"], lj_params["sigma"],
-                                        true
-                                    );
-                            } 
-                        }
-                    }
-                    else 
-                    {
-                        // Get the energy contribution from the first m atoms
-                        // in the current i-th polymer configuration 
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            for (int p = 0; p < m; ++p)
-                            {
-                                T dij = (rj.row(k) - ri.row(p)).norm(); 
-                                if (dij < neighbor_threshold)
-                                    energy_curr += lj<T>(
-                                        dij, lj_params["eps"], lj_params["sigma"],
-                                        true
-                                    );
-                            } 
-                        }
-
-                        // Get the energy contribution that would arise from
-                        // introducing the new segment at the tail and removing
-                        // the first m atoms 
-                        for (int k = 0; k < nj; ++k)
-                        {
-                            for (int p = 0; p < m; ++p)
-                            {
-                                T dij = (rj.row(k) - segment.row(p)).norm(); 
-                                if (dij < neighbor_threshold)
-                                    energy_new += lj<T>(
-                                        dij, lj_params["eps"], lj_params["sigma"],
-                                        true
-                                    );
-                            } 
-                        }
-                    }
-                }
+                // Use the periodic distance for this calculation  
+                Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                    ri.row(j), r_new, this->xlen, this->ylen, this->zlen
+                ); 
+                T dist = dvec.norm();
+                if (dist < neighbor_threshold)
+                    energy += lj<T>(
+                        dist, lj_params["eps"], lj_params["sigma"], true
+                    ); 
             }
 
-            // Return the energy difference 
-            return energy_diff_within + energy_new - energy_curr; 
-        }
-
-        /**
-         * Get the *non-bonded* energy difference between the current melt 
-         * configuration and the configuration that would arise from replacing
-         * the current segment at the given index in the i-th polymer with the
-         * given segment.
-         *
-         * This function omits the non-bonded energetic contribution between
-         * all bonded pairs of atoms. 
-         *
-         * @param i Polymer index. 
-         * @param segment Input segment. 
-         * @param atom_idx Index demarcating the polymer atoms to consider. 
-         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
-         * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
-         * @param fene_params FENE parameters. 
-         * @param angle_mode Angle potential type.  
-         * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0) or
-         *                     the dual Gaussian mixture potential parameters
-         *                     (A1, A2, w1, w2, theta1, theta2). 
-         * @param dihedral_params Dihedral angle potential parameters. 
-         * @returns Energy difference due to segment replacement. 
-         */
-        T getSegmentReplacementNonbondedEnergyDifference(const int i, 
-                                                         const Ref<const Matrix<T, Dynamic, 3> >& segment,
-                                                         const int atom_idx,
-                                                         std::unordered_map<std::string, T>& lj_params,  
-                                                         const T neighbor_threshold) const 
-        {
-            // Check that i is a valid index
-            if (i < 0 || i >= this->n)
-                throw std::runtime_error("Undefined polymer index");
-
-            // Get the energy difference within the i-th polymer 
-            T energy_diff_within = this->configs[i].getSegmentReplacementNonbondedEnergyDifference(
-                segment, atom_idx, lj_params, neighbor_threshold
-            ); 
-
-            // Run through all the remaining polymers ... 
-            T energy_curr = 0; 
-            T energy_new = 0;
-            const int ni = this->lengths[i];
-            const int m = segment.rows();  
-            Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni); 
+            // Run through all the other polymers ...
             for (int j = 0; j < this->n; ++j)
             {
                 if (i != j)
                 {
+                    // Get the non-bonded energy between the new atom and 
+                    // every atom in the j-th polymer
                     const int nj = this->lengths[j];
-                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj); 
+                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj);
                     
-                    // Get the non-bonded energy contribution from the m-atom
-                    // segment in the current i-th polymer configuration
+                    // Use the periodic distance for this calculation  
                     for (int k = 0; k < nj; ++k)
                     {
-                        for (int p = atom_idx; p < atom_idx + m; ++p)
-                        {
-                            T dij = (rj.row(k) - ri.row(p)).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_curr += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"],
-                                    true
-                                );
-                        } 
-                    }
-
-                    // Get the energy contribution that would arise from
-                    // introducing the new m-atom segment
-                    for (int k = 0; k < nj; ++k)
-                    {
-                        for (int p = 0; p < m; ++p)
-                        {
-                            T dij = (rj.row(k) - segment.row(p)).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_new += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"],
-                                    true
-                                );
-                        } 
+                        Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                            rj.row(k), r_new, this->xlen, this->ylen, this->zlen
+                        ); 
+                        T dist = dvec.norm(); 
+                        if (dist < neighbor_threshold)
+                            energy += lj<T>(
+                                dist, lj_params["eps"], lj_params["sigma"], true
+                            ); 
                     }
                 }
             }
 
-            // Return the energy difference 
-            return energy_diff_within + energy_new - energy_curr; 
+            // Return the total energy 
+            return energy; 
+        }
+
+        /**
+         * Get the residual (non-bonded) energy of the proposed position for 
+         * the i-th atom (for some i = 0, ..., K - 1) in a multimer (K-atom)
+         * reptation move for the m-th polymer.
+         *
+         * The positions of the previous atoms, j = 0, ..., i - 1, are also
+         * given.
+         *
+         * This function calculates the total non-bonded energy between the
+         * new atom and the other atoms that would remain in the m-th polymer
+         * configuration, plus every atom in every other polymer in the melt.  
+         *
+         * @param m Polymer index. 
+         * @param direction Reptation direction.
+         * @param K Number of atoms to reptate by. 
+         * @param i Index of the new atom in the reptation move. 
+         * @param segment Atomic coordinates of the preceding segment of atoms,
+         *                j = 0, ..., i - 1. Must have i rows.
+         * @param r_new Position of new (i-th) atom. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @returns Residual energy of the proposed reptation move. 
+         */
+        T getMultimerReptationResidualEnergy(const int m,  
+                                             const ReptationDirection direction,
+                                             const int K, const int i, 
+                                             const Ref<const Matrix<T, Dynamic, 3> >& segment,
+                                             const Ref<const Matrix<T, 3, 1> >& r_new, 
+                                             std::unordered_map<std::string, T>& lj_params,  
+                                             const T neighbor_threshold) const
+        {
+            // Check that m is a valid index
+            if (m < 0 || m >= this->n)
+                throw std::runtime_error("Undefined polymer index");
+
+            // Get the residual energy within the m-th polymer ...
+            //
+            // Get the energy between the new atom and every other atom 
+            // that would not be bonded to it after reptation
+            T energy = 0;
+            const int nm = this->lengths[m]; 
+            Matrix<T, Dynamic, 3> rm = this->configs[m].getSegment(0, nm); 
+            if (direction == ReptationDirection::HEAD)
+            {
+                // Omit atoms nm - K, ..., nm - 1 within the current configuration
+                //
+                // If i == 0, then also omit atom 0, which would be bonded
+                // to the new atom after reptation
+                int min_idx = (i == 0 ? 1 : 0); 
+                for (int j = min_idx; j < nm - K; ++j)
+                {
+                    // Use the periodic distance for this calculation 
+                    Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                        rm.row(j), r_new, this->xlen, this->ylen, this->zlen
+                    );  
+                    T dist = dvec.norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Omit the final atom in the preceding segment
+                //
+                // Here, we assume that atom j == 0 is bonded to the 0-th
+                // atom in the current configuration, atom j == 1 is bonded 
+                // to atom j == 0, etc. 
+                for (int j = 0; j < i - 1; ++j)
+                {
+                    // Use the periodic distance for this calculation 
+                    Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                        segment.row(j), r_new, this->xlen, this->ylen, this->zlen
+                    ); 
+                    T dist = dvec.norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+            }
+            else    // direction == ReptationDirection::TAIL
+            {
+                // Omit atoms 0, ..., K - 1 within the current configuration
+                //
+                // If i == 0, then also omit atom nm - 1, which would be bonded
+                // to the new atom after reptation
+                int max_idx = (i == 0 ? nm - 2 : nm - 1);    // Inclusive 
+                for (int j = K; j <= max_idx; ++j)
+                {
+                    // Use the periodic distance for this calculation 
+                    Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                        rm.row(j), r_new, this->xlen, this->ylen, this->zlen
+                    );  
+                    T dist = dvec.norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Omit the final atom in the preceding segment
+                //
+                // Here, we assume that atom j == 0 is bonded to the (nm-1)-th 
+                // atom in the current configuration, atom j == 1 is bonded
+                // to atom j == 0, etc. 
+                for (int j = 0; j < i - 1; ++j)
+                {
+                    // Use the periodic distance for this calculation 
+                    Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                        segment.row(j), r_new, this->xlen, this->ylen, this->zlen
+                    );
+                    T dist = dvec.norm();  
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+            }
+            
+            // Run through all the other polymers ... 
+            for (int j = 0; j < this->n; ++j)
+            {
+                if (m != j)
+                {
+                    // Get the non-bonded energy between the new atom and 
+                    // every atom in the j-th polymer
+                    const int nj = this->lengths[j];
+                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj);
+
+                    // Use the periodic distance for this calculation  
+                    for (int k = 0; k < nj; ++k)
+                    {
+                        Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                            rj.row(k), r_new, this->xlen, this->ylen, this->zlen
+                        ); 
+                        T dist = dvec.norm(); 
+                        if (dist < neighbor_threshold)
+                            energy += lj<T>(
+                                dist, lj_params["eps"], lj_params["sigma"], true
+                            ); 
+                    }
+                }
+            }
+
+            // Return the total energy 
+            return energy; 
+        }
+
+        /**
+         * Get the residual (non-bonded) energy of the proposed position for 
+         * the i-th atom (for some i = 0, ..., K - 1) in a K-atom terminal
+         * segment move for the m-th polymer. 
+         *
+         * The positions of the previous atoms, j = 0, ..., i - 1, are also
+         * given. 
+         *
+         * This function calculates the total non-bonded energy between the
+         * new atom and the other atoms that would remain in the m-th polymer
+         * configuration, plus every atom in every other polymer in the melt.  
+         *
+         * @param m Polymer index.
+         * @param terminal_end Terminal segment to be moved. 
+         * @param K Terminal segment length. 
+         * @param i Index of the new atom in the terminal segment move. 
+         * @param segment Atomic coordinates of the preceding segment of atoms,
+         *                j = 0, ..., i - 1. Must have i rows. 
+         * @param r_new Position of new (i-th) atom. 
+         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
+         * @param neighbor_threshold Distance threshold for identifying
+         *                           neighboring (non-bonded) atoms. 
+         * @returns Residual energy of the proposed terminal segment move. 
+         */
+        T getTerminalSegmentReplacementResidualEnergy(const int m,
+                                                      const TerminalSegmentEnd terminal_end,
+                                                      const int K, const int i,  
+                                                      const Ref<const Matrix<T, Dynamic, 3> >& segment,
+                                                      const Ref<const Matrix<T, 3, 1> >& r_new, 
+                                                      std::unordered_map<std::string, T>& lj_params,  
+                                                      const T neighbor_threshold) const 
+        {
+            // Check that i is a valid index
+            if (m < 0 || m >= this->n)
+                throw std::runtime_error("Undefined polymer index");
+
+            // Get the residual energy within the m-th polymer ... 
+            //
+            // Get the energy between the new atom and every other atom 
+            // that would not be bonded to it after the move
+            T energy = 0;
+            const int nm = this->lengths[m]; 
+            Matrix<T, Dynamic, 3> rm = this->configs[m].getSegment(0, nm); 
+            if (terminal_end == TerminalSegmentEnd::HEAD)
+            {
+                // Omit atoms 0, ..., K - 1 within the current configuration
+                //
+                // If i == 0 (which corresponds to the closest atom to the 
+                // polymer, i.e., atom K - 1), then also omit atom K, which 
+                // would be bonded to the new atom after the move 
+                int min_idx = (i == 0 ? K + 1 : K); 
+                for (int j = min_idx; j < nm; ++j)
+                {
+                    // Use the periodic distance for this calculation
+                    Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                        rm.row(j), r_new, this->xlen, this->ylen, this->zlen
+                    ); 
+                    T dist = dvec.norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Omit the final atom in the preceding segment
+                //
+                // Here, we assume that atom j == 0 is bonded to the K-th
+                // atom in the current configuration, atom j == 1 is bonded 
+                // to atom j == 0, etc. 
+                for (int j = 0; j < i - 1; ++j)
+                {
+                    // Use the periodic distance for this calculation
+                    Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                        segment.row(j), r_new, this->xlen, this->ylen, this->zlen
+                    ); 
+                    T dist = dvec.norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+            }
+            else    // terminal_end == TerminalSegmentEnd::TAIL
+            {
+                // Omit atoms n - K, ..., n - 1 within the current configuration
+                //
+                // If i == 0, then also omit atom n - K - 1, which would be
+                // bonded to the new atom after reptation
+                int max_idx = (i == 0 ? nm - K - 2 : nm - K - 1);    // Inclusive 
+                for (int j = 0; j <= max_idx; ++j)
+                {
+                    // Use the periodic distance for this calculation 
+                    Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                        rm.row(j), r_new, this->xlen, this->ylen, this->zlen
+                    );  
+                    T dist = dvec.norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+
+                // Omit the final atom in the preceding segment
+                //
+                // Here, we assume that atom j == 0 is bonded to the (n-K-1)-th 
+                // atom in the current configuration, atom j == 1 is bonded
+                // to atom j == 0, etc. 
+                for (int j = 0; j < i - 1; ++j)
+                {
+                    // Use the periodic distance for this calculation
+                    Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                        segment.row(j), r_new, this->xlen, this->ylen, this->zlen
+                    ); 
+                    T dist = dvec.norm(); 
+                    if (dist < neighbor_threshold)
+                        energy += lj<T>(
+                            dist, lj_params["eps"], lj_params["sigma"], true
+                        ); 
+                }
+            }
+
+            // Run through all the remaining polymers ... 
+            for (int j = 0; j < this->n; ++j)
+            {
+                if (m != j)
+                {
+                    // Get the non-bonded energy between the new atom and 
+                    // every atom in the j-th polymer
+                    const int nj = this->lengths[j];
+                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj); 
+                   
+                    // Use the periodic distance for this calculation  
+                    for (int k = 0; k < nj; ++k)
+                    {
+                        Matrix<T, 3, 1> dvec = periodicDistVec<T>(
+                            rj.row(k), r_new, this->xlen, this->ylen, this->zlen
+                        ); 
+                        T dist = dvec.norm(); 
+                        if (dist < neighbor_threshold)
+                            energy += lj<T>(
+                                dist, lj_params["eps"], lj_params["sigma"], true
+                            );
+                    }
+                }
+            }
+
+            // Return the total energy 
+            return energy; 
         } 
-
-        /**
-         * Get the energy difference between the current melt configuration 
-         * and the configuration that would arise from replacing the current
-         * segment at the given index in the i-th polymer configuration with
-         * the given segment. 
-         *
-         * @param i Polymer index.
-         * @param segment Input segment. 
-         * @param atom_idx Index demarcating the polymer atoms to consider. 
-         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
-         * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
-         * @param fene_params FENE parameters. 
-         * @param angle_mode Angle potential type.  
-         * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0) or
-         *                     the dual Gaussian mixture potential parameters
-         *                     (A1, A2, w1, w2, theta1, theta2). 
-         * @param dihedral_params Dihedral angle potential parameters. 
-         * @returns Energy difference due to segment replacement. 
-         */
-        T getSegmentReplacementEnergyDifference(const int i, 
-                                                const Ref<const Matrix<T, Dynamic, 3> >& segment,
-                                                const int atom_idx,
-                                                std::unordered_map<std::string, T>& lj_params,  
-                                                const T neighbor_threshold, 
-                                                std::unordered_map<std::string, T>& fene_params,
-                                                const AngleMode angle_mode,  
-                                                std::unordered_map<std::string, T>& angle_params,
-                                                std::unordered_map<std::string, T>& dihedral_params) const
-        {
-            // Check that i is a valid index
-            if (i < 0 || i >= this->n)
-                throw std::runtime_error("Undefined polymer index");
-
-            // Get the energy difference within the i-th polymer 
-            T energy_diff_within = this->configs[i].getSegmentReplacementEnergyDifference(
-                segment, atom_idx, lj_params, neighbor_threshold, fene_params, 
-                angle_mode, angle_params, dihedral_params
-            ); 
-
-            // Run through all the remaining polymers ... 
-            T energy_curr = 0; 
-            T energy_new = 0;
-            const int ni = this->lengths[i];
-            const int m = segment.rows();  
-            Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni); 
-            for (int j = 0; j < this->n; ++j)
-            {
-                if (i != j)
-                {
-                    const int nj = this->lengths[j];
-                    Matrix<T, Dynamic, 3> rj = this->configs[j].getSegment(0, nj); 
-                    
-                    // Get the non-bonded energy contribution from the m-atom
-                    // segment in the current i-th polymer configuration
-                    for (int k = 0; k < nj; ++k)
-                    {
-                        for (int p = atom_idx; p < atom_idx + m; ++p)
-                        {
-                            T dij = (rj.row(k) - ri.row(p)).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_curr += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"],
-                                    true
-                                );
-                        } 
-                    }
-
-                    // Get the energy contribution that would arise from
-                    // introducing the new m-atom segment
-                    for (int k = 0; k < nj; ++k)
-                    {
-                        for (int p = 0; p < m; ++p)
-                        {
-                            T dij = (rj.row(k) - segment.row(p)).norm(); 
-                            if (dij < neighbor_threshold)
-                                energy_new += lj<T>(
-                                    dij, lj_params["eps"], lj_params["sigma"],
-                                    true
-                                );
-                        } 
-                    }
-                }
-            }
-
-            // Return the energy difference 
-            return energy_diff_within + energy_new - energy_curr; 
-        }
 
         /**
          * Write the melt configuration to file in LAMMPS data format.
@@ -1349,9 +1334,6 @@ class PolymerMeltConfiguration
          *                     (A1, A2, w1, w2, theta1, theta2). 
          * @param dihedral_params Dihedral angle potential parameters.
          * @param header Header string. 
-         * @param xmin, xmax Domain limits along x-axis.
-         * @param ymin, ymax Domain limits along y-axis. 
-         * @param zmin, zmax Domain limits along z-axis.
          * @param mass Atom mass.  
          */
         void writeLammps(const std::string& filename,
@@ -1360,9 +1342,7 @@ class PolymerMeltConfiguration
                          const AngleMode angle_mode,  
                          std::unordered_map<std::string, T>& angle_params, 
                          std::unordered_map<std::string, T>& dihedral_params, 
-                         const std::string& header, const T xmin, const T xmax,
-                         const T ymin, const T ymax, const T zmin, const T zmax,
-                         const T mass)
+                         const std::string& header, const T mass)
         {
             std::ofstream outfile(filename);
             outfile << std::setprecision(10);  
@@ -1404,9 +1384,9 @@ class PolymerMeltConfiguration
                     << "0 improper types\n\n";
 
             // Write box dimensions 
-            outfile << xmin << " " << xmax << " xlo xhi\n"
-                    << ymin << " " << ymax << " ylo yhi\n"
-                    << zmin << " " << zmax << " zlo zhi\n\n"; 
+            outfile << this->xmin << " " << this->xmax << " xlo xhi\n"
+                    << this->ymin << " " << this->ymax << " ylo yhi\n"
+                    << this->zmin << " " << this->zmax << " zlo zhi\n\n"; 
 
             // Write atom masses 
             outfile << "Masses\n\n"
@@ -1466,9 +1446,6 @@ class PolymerMeltConfiguration
             // Write atom coordinates (all mapped to the fundamental cell
             // under periodic boundary conditions) 
             outfile << "Atoms\n\n";
-            const int xlen = xmax - xmin; 
-            const int ylen = ymax - ymin;
-            const int zlen = zmax - zmin;
             int offset = 0; 
             for (int i = 0; i < this->n; ++i)
             {
@@ -1484,11 +1461,18 @@ class PolymerMeltConfiguration
                     int atom_id = offset + j + 1; 
                     int mol_id = i + 1; 
                     Matrix<T, 3, 1> rij_mapped = mapToFundamentalCell<T>(
-                        ri.row(j), xlen, ylen, zlen, xmin, ymin, zmin
+                        ri.row(j), this->xlen, this->ylen, this->zlen,
+                        this->xmin, this->ymin, this->zmin
                     );
-                    int image_x = static_cast<int>(floor((ri(j, 0) - xmin) / xlen)); 
-                    int image_y = static_cast<int>(floor((ri(j, 1) - ymin) / ylen)); 
-                    int image_z = static_cast<int>(floor((ri(j, 2) - zmin) / zlen)); 
+                    int image_x = static_cast<int>(
+                        floor((ri(j, 0) - this->xmin) / this->xlen)
+                    ); 
+                    int image_y = static_cast<int>(
+                        floor((ri(j, 1) - this->ymin) / this->ylen)
+                    ); 
+                    int image_z = static_cast<int>(
+                        floor((ri(j, 2) - this->zmin) / this->zlen)
+                    ); 
                     outfile << atom_id << " " << mol_id << " 1 "
                             << rij_mapped(0) << " "
                             << rij_mapped(1) << " "
@@ -1603,19 +1587,44 @@ std::tuple<PolymerMeltConfiguration<T>,
 
     // Begin parsing the file ...
     //
-    // Keep parsing the file until we encounter the Lennard-Jones parameters 
+    // Keep parsing the file until we encounter the box bounds 
     std::stringstream ss; 
     std::string line, token;
     while (std::getline(infile, line))
     {
-        if (line == "PairIJ Coeffs")
-            break; 
-    } 
+        if (line.compare(line.size() - 7, 7, "xlo xhi") == 0)
+            break;
+    }
+    ss << line; 
+    std::getline(ss, token, ' ');
+    const T xmin = static_cast<T>(std::stod(token));
+    std::getline(ss, token, ' '); 
+    const T xmax = static_cast<T>(std::stod(token)); 
+    std::getline(infile, line);     // y-bounds 
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line; 
+    std::getline(ss, token, ' ');
+    const T ymin = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' '); 
+    const T ymax = static_cast<T>(std::stod(token));
+    std::getline(infile, line);     // z-bounds
+    ss.clear(); 
+    ss.str(std::string());
+    ss << line; 
+    std::getline(ss, token, ' ');
+    const T zmin = static_cast<T>(std::stod(token));
+    std::getline(ss, token, ' '); 
+    const T zmax = static_cast<T>(std::stod(token));
 
     // Parse the Lennard-Jones parameters
-    std::unordered_map<std::string, T> lj_params; 
-    std::getline(infile, line);    // Skip blank line
+    std::unordered_map<std::string, T> lj_params;
+    std::getline(infile, line);    // Skip header and blank lines
     std::getline(infile, line);
+    std::getline(infile, line);
+    std::getline(infile, line);    // Potential parameters
+    ss.clear();
+    ss.str(std::string());
     ss << line;  
     std::getline(ss, token, ' ');    // Skip first two entries in the line 
     std::getline(ss, token, ' ');
@@ -1629,7 +1638,7 @@ std::tuple<PolymerMeltConfiguration<T>,
     std::getline(infile, line);    // Skip header and blank lines
     std::getline(infile, line);
     std::getline(infile, line);
-    std::getline(infile, line);
+    std::getline(infile, line);    // Potential parameters
     ss.clear(); 
     ss.str(std::string()); 
     ss << line; 
@@ -1645,7 +1654,7 @@ std::tuple<PolymerMeltConfiguration<T>,
     std::getline(infile, line);    // Skip header and blank lines
     std::getline(infile, line);
     std::getline(infile, line);
-    std::getline(infile, line);
+    std::getline(infile, line);    // Potential parameters
     ss.clear(); 
     ss.str(std::string()); 
     ss << line;
@@ -1702,7 +1711,7 @@ std::tuple<PolymerMeltConfiguration<T>,
     std::getline(infile, line);    // Skip header and blank lines
     std::getline(infile, line);
     std::getline(infile, line);
-    std::getline(infile, line);
+    std::getline(infile, line);    // Potential parameters
     ss.clear(); 
     ss.str(std::string()); 
     ss << line;
@@ -1806,12 +1815,37 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
     std::getline(infile, line);
     std::getline(infile, line);    // Number of atoms
     const int n_atoms = std::stoi(line); 
-    std::getline(infile, line); 
-    std::getline(infile, line);    // x-, y-, and z-bounds  
-    std::getline(infile, line);  
+
+    // Parse the x-, y-, and z-bounds 
     std::getline(infile, line);
-    std::getline(infile, line); 
-    while (std::getline(infile, line))    // Then parse each atom in the system
+    std::getline(infile, line);    // x-bounds
+    std::stringstream ss;
+    ss << line; 
+    std::string token; 
+    std::getline(ss, token, ' '); 
+    const T xmin = static_cast<T>(std::stod(token));  
+    std::getline(ss, token, ' '); 
+    const T xmax = static_cast<T>(std::stod(token));  
+    std::getline(infile, line);    // y-bounds
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line; 
+    std::getline(ss, token, ' '); 
+    const T ymin = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' '); 
+    const T ymax = static_cast<T>(std::stod(token)); 
+    std::getline(infile, line);    // z-bounds 
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line; 
+    std::getline(ss, token, ' '); 
+    const T zmin = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' '); 
+    const T zmax = static_cast<T>(std::stod(token)); 
+    std::getline(infile, line);
+
+    // Parse each atom in the system  
+    while (std::getline(infile, line))
     {
         // If we have reached a new timestep, break
         if (line.find("ITEM: TIMESTEP") == 0)
@@ -1901,7 +1935,10 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
                 coords_vec.push_back(coords_i); 
             } 
             ensemble.emplace_back(
-                PolymerMeltConfiguration<T>(n_chains, coords_vec, units, temp)
+                PolymerMeltConfiguration<T>(
+                    n_chains, coords_vec, units, temp, xmin, xmax, ymin, ymax,
+                    zmin, zmax
+                )
             ); 
         }
     } 
@@ -2570,7 +2607,9 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
     std::vector<Matrix<T, Dynamic, 3> > coords_all_vec;
     for (int i = 0; i < M; ++i) 
         coords_all_vec.push_back(coords_all(Eigen::seqN(i * K, K), Eigen::all)); 
-    PolymerMeltConfiguration<T> melt_config(M, coords_all_vec, units, temp); 
+    PolymerMeltConfiguration<T> melt_config(
+        M, coords_all_vec, units, temp, -xmax, xmax, -ymax, ymax, -zmax, zmax
+    ); 
 
     return melt_config;  
 }
