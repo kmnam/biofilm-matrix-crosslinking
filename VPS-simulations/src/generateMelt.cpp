@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/3/2026
+ *     4/6/2026
  */
 
 #include <iostream>
@@ -100,7 +100,7 @@ int main(int argc, char** argv)
     std::string header = ss.str(); 
     melt_config.writeLammps(
         argv[2], lj_params, fene_params, angle_mode, angle_params,
-        dihedral_params, header, -xmax, xmax, -ymax, ymax, -zmax, zmax, mass
+        dihedral_params, header, mass
     ); 
 
     return 0; 
