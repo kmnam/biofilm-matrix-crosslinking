@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/24/2026
+ *     4/6/2026
  */
 
 #include <iostream>
@@ -25,8 +25,7 @@ int main(int argc, char** argv)
     std::unordered_map<std::string, double> lj_params, 
                                             fene_params, 
                                             angle_params, 
-                                            dihedral_params,
-                                            internal_move_params;
+                                            dihedral_params;
     const double kT = 1.380649e-2 * 300;    // Use "nano" units 
     const int length = json_data["length"].as_int64(); 
     lj_params["eps"] = json_data["lj_eps"].as_double() * kT; 
@@ -72,80 +71,14 @@ int main(int argc, char** argv)
     const int max_stall = json_data["max_stall_iter"].as_int64();
 
     // Fix move probabilities 
-    Matrix<double, 4, 1> move_probs; 
+    Matrix<double, 3, 1> move_probs; 
     move_probs << json_data["reptation_prob"].as_double(),
                   json_data["multimer_reptation_prob"].as_double(), 
-                  json_data["terminal_segment_move_prob"].as_double(), 
-                  json_data["internal_segment_move_prob"].as_double();  
+                  json_data["terminal_segment_move_prob"].as_double(); 
 
-    // Parse multimer reptation length and terminal and internal segment lengths
+    // Parse multimer reptation length and terminal segment length
     const int multimer_reptation_length = json_data["multimer_reptation_length"].as_int64(); 
     const int terminal_segment_length = json_data["terminal_segment_length"].as_int64(); 
-    const int internal_segment_length = json_data["internal_segment_length"].as_int64();
-
-    // Parse internal move parameters (with default values as follows)
-    InternalMoveGenerationMode mode;  
-    try
-    {
-        internal_move_params["tangent_stepsize"] = json_data["tangent_stepsize"].as_double();
-    }
-    catch (boost::wrapexcept<boost::system::system_error>& e)
-    {
-        internal_move_params["tangent_stepsize"] = 0.1 * lj_params["sigma"]; 
-    }
-    try
-    {
-        internal_move_params["mode"] = json_data["internal_move_generation_mode"].as_int64();
-    }
-    catch (boost::wrapexcept<boost::system::system_error>& e)
-    {
-        internal_move_params["mode"] = 0; 
-    }
-    mode = static_cast<InternalMoveGenerationMode>(internal_move_params["mode"]); 
-    try
-    {
-        internal_move_params["n_attempts"] = json_data["internal_move_n_attempts"].as_double(); 
-    }
-    catch (boost::wrapexcept<boost::system::system_error>& e)
-    {
-        if (mode == InternalMoveGenerationMode::FIXED_ATTEMPTS)
-            internal_move_params["n_attempts"] = n_candidates; 
-        else 
-            internal_move_params["n_attempts"] = 2 * n_candidates; 
-    }
-    try
-    { 
-        internal_move_params["dx"] = json_data["dx"].as_double(); 
-    }
-    catch (boost::wrapexcept<boost::system::system_error>& e)
-    {
-        internal_move_params["dx"] = 1e-8; 
-    }
-    try
-    {
-        internal_move_params["newton_tol"] = json_data["newton_tol"].as_double(); 
-    }
-    catch (boost::wrapexcept<boost::system::system_error>& e)
-    {
-        internal_move_params["newton_tol"] = 1e-5;
-    }
-    try
-    {
-        internal_move_params["min_newton_stepsize"]
-            = json_data["min_newton_stepsize"].as_double(); 
-    }
-    catch (boost::wrapexcept<boost::system::system_error>& e)
-    {
-        internal_move_params["min_newton_stepsize"] = 1e-4; 
-    }
-    try
-    {
-        internal_move_params["armijo_const"] = json_data["armijo_const"].as_double(); 
-    }
-    catch (boost::wrapexcept<boost::system::system_error>& e)
-    {
-        internal_move_params["armijo_const"] = 1e-4;
-    }
 
     // Initialize random number generator 
     const int seed = std::stoi(argv[3]);
@@ -185,9 +118,8 @@ int main(int argc, char** argv)
     else    // Otherwise, start a new run
     {
         ensemble_coords = sampler.run(
-            n_candidates, internal_move_params, move_probs,
-            multimer_reptation_length, terminal_segment_length,
-            internal_segment_length, max_iter, n_burnin, mod_collect,
+            n_candidates, move_probs, multimer_reptation_length,
+            terminal_segment_length, max_iter, n_burnin, mod_collect,
             mod_write, max_stall, outfile, true
         );
     } 
