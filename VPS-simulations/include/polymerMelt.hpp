@@ -151,7 +151,17 @@ class PolymerMeltConfiguration
          */
         ~PolymerMeltConfiguration()
         {
-        } 
+        }
+
+        /**
+         * Return the number of polymers in the melt.
+         *
+         * @returns Number of polymers in the melt.  
+         */
+        int numPolymers() const 
+        {
+            return this->n; 
+        }
 
         /**
          * Return the bond lengths for the i-th polymer.  
@@ -367,6 +377,23 @@ class PolymerMeltConfiguration
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].replaceSegment(segment, atom_idx); 
+        }
+
+        /**
+         * Replace the polymers in the melt. 
+         *
+         * @param polymers Arrays of atom coordinates. 
+         */
+        void setPolymers(std::vector<Matrix<T, Dynamic, 3> >& polymers)
+        {
+            this->n = polymers.size();
+            this->lengths.clear(); 
+            this->configs.clear(); 
+            for (int i = 0; i < this->n; ++i)
+            {
+                this->lengths.push_back(polymers[i].rows());
+                this->configs.push_back(polymers[i]);
+            } 
         }
 
         /**
@@ -1944,6 +1971,165 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
     } 
 
     return std::pair(ensemble, times); 
+}
+
+/**
+ * Parse the final configuration in the given file of polymer configurations. 
+ *
+ * @param filename Input filename.  
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin).
+ * @returns Final polymer configuration in the given file, together with 
+ *          the sampling parameters used to generate the ensemble.  
+ */
+template <typename T>
+std::pair<PolymerMeltConfiguration<T>,
+          std::unordered_map<std::string, T> > parseMeltFinalConfig(const std::string& filename,
+                                                                    const Units units = Units::NANO, 
+                                                                    const T temp = 300.0)
+{
+    std::unordered_map<std::string, T> params;
+    T xmin, xmax, ymin, ymax, zmin, zmax;  
+
+    // Parse the given file ... 
+    //
+    // First, parse the sampling parameters
+    std::ifstream infile(filename);  
+    std::string line;
+    while (std::getline(infile, line))
+    {
+        // If the line starts with "##", then parse
+        if (line.find("##") == 0)
+        {
+            std::string token = line.substr(3, line.find(" = ") - 3);   // Remove leading "## "
+            line.erase(0, line.find(" = ") + 3);
+            if (token == "domain_xmin")
+                xmin = static_cast<T>(std::stod(line));
+            else if (token == "domain_xmax")
+                xmax = static_cast<T>(std::stod(line));
+            else if (token == "domain_ymin")
+                ymin = static_cast<T>(std::stod(line));
+            else if (token == "domain_ymax")
+                ymax = static_cast<T>(std::stod(line));
+            else if (token == "domain_zmin")
+                zmin = static_cast<T>(std::stod(line));
+            else if (token == "domain_zmax")
+                zmax = static_cast<T>(std::stod(line)); 
+            else if (token == "n_candidates")
+                params["n_candidates"] = static_cast<T>(std::stoi(line));
+            else if (token == "move_prob_reptation")
+                params["move_prob_reptation"] = static_cast<T>(std::stod(line));  
+            else if (token == "move_prob_multimer_reptation")
+                params["move_prob_multimer_reptation"] = static_cast<T>(std::stod(line)); 
+            else if (token == "move_prob_terminal_segment")
+                params["move_prob_terminal_segment"] = static_cast<T>(std::stod(line)); 
+            else if (token == "multimer_reptation_length")
+                params["multimer_reptation_length"] = static_cast<T>(std::stoi(line));  
+            else if (token == "terminal_segment_length")
+                params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
+            else if (token == "n_bins_fene_cdf")
+                params["n_bins_fene_cdf"] = static_cast<T>(std::stoi(line));  
+            else if (token == "mod_collect")
+                params["mod_collect"] = static_cast<T>(std::stoi(line));  
+            else if (token == "mod_write")
+                params["mod_write"] = static_cast<T>(std::stoi(line)); 
+            else if (token == "max_stall")
+                params["max_stall"] = static_cast<T>(std::stoi(line));
+        }
+        // If not, then we have encountered the first configuration,
+        // so we must break 
+        else 
+        {
+            break; 
+        }
+    }
+
+    // Now parse the first configuration, to get the polymer lengths
+    std::vector<int> lengths;
+    int curr_length = 0;
+    int curr_idx = 0; 
+    while (std::getline(infile, line))
+    {
+        if (line.find("# CONFIG") == 0)   // If we reach the next configuration, break
+        {
+            break;
+        }
+        else
+        {
+            // Check the index of the polymer 
+            std::stringstream ss; 
+            ss << line; 
+            std::string token; 
+            std::getline(ss, token, '\t');    // Polymer index 
+            int polymer_idx = std::stoi(token); 
+            std::getline(ss, token, '\t');    // Atom index 
+            int atom_idx = std::stoi(token); 
+            if (polymer_idx > curr_idx)       // Polymer index should be one greater at most
+            {
+                lengths.push_back(curr_length); 
+                curr_length = 0; 
+                curr_idx = polymer_idx; 
+            }
+            else 
+            {
+                curr_length++; 
+            } 
+        } 
+    }
+    lengths.push_back(curr_length);    // Add the last polymer length
+
+    // Now parse the rest of the file to get the final configuration 
+    std::vector<std::vector<Matrix<T, Dynamic, 3> > > melt_coords;
+    for (int i = 0; i < lengths.size(); ++i)
+    {
+        std::vector<Matrix<T, Dynamic, 3> > melt_coords_i;
+        for (int j = 0; j < lengths[i]; ++i) 
+            melt_coords_i.push_back(Matrix<T, Dynamic, 3>::Zero(lengths[i], 3));
+        melt_coords.push_back(melt_coords_i); 
+    } 
+    int config_idx = 0; 
+    while (std::getline(infile, line))
+    {
+        // If we reach a new configuration, keep parsing
+        if (line.find("# CONFIG") == 0)
+        {
+            config_idx++; 
+        }
+        // If we reach an ensemble-level output line at the end of
+        // the file, stop parsing
+        else if (line.find("##" ) == 0)
+        {
+            break; 
+        }
+        // If we reach a configuration-level output line, keep parsing
+        else if (line.find("# ") == 0)
+        {
+            // Do nothing
+        }
+        // Otherwise, the line specifies coordinates that should be
+        // collected 
+        else 
+        {
+            std::stringstream ss; 
+            ss << line;
+            std::string token;
+            std::getline(ss, token, '\t');    // Polymer index
+            int polymer_idx = std::stoi(token); 
+            std::getline(ss, token, '\t');    // Atom index
+            int atom_idx = std::stoi(token); 
+            std::getline(ss, token, '\t');    // x-coordinate 
+            melt_coords[config_idx][polymer_idx](atom_idx, 0) = static_cast<T>(std::stod(token));
+            std::getline(ss, token, '\t');    // y-coordinate
+            melt_coords[config_idx][polymer_idx](atom_idx, 1) = static_cast<T>(std::stod(token));
+            std::getline(ss, token, '\t');    // z-coordinate
+            melt_coords[config_idx][polymer_idx](atom_idx, 2) = static_cast<T>(std::stod(token));
+        }
+    }
+
+    PolymerMeltConfiguration<T> config(
+        melt_coords[config_idx], units, temp, xmin, xmax, ymin, ymax, zmin, zmax
+    ); 
+    return std::make_pair(config, params); 
 }
 
 class TooManyBacktracksError : public std::runtime_error
