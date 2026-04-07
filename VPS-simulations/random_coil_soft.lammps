@@ -5,7 +5,7 @@
 #     Kee-Myoung Nam
 #
 # Last updated:
-#     4/3/2026
+#     4/6/2026
 # ====================================================================== #
 # INPUT VARIABLES
 # ===============
@@ -20,7 +20,9 @@ variable dt equal $f
 next f
 variable damp equal $f
 next f
-variable nsteps equal $f
+variable nsteps1 equal $f
+next f
+variable nsteps2 equal $f
 next f
 variable nsteps_per_dump equal $f
 next f
@@ -72,6 +74,10 @@ pair_modify shift yes
 # - Weight non-bonded interactions between 1-3 atoms with angles
 special_bonds fene angle no
 
+# Write the Lennard-Jones potential parameters
+variable r equal floor(random(0, 1000000, seed_velocity)) 
+write_coeff lj_coeffs_${r}.data 
+
 # Reset non-bonded interactions, with the cutoff set to 2^(1/6) * \sigma 
 pair_style soft 2.09371159271
 pair_coeff * * 0.0
@@ -116,7 +122,26 @@ fix fx3 all adapt 1 pair soft a * * v_soft_prefactor
 # ====================================================================== #
 # RUN SIMULATION
 # ==============
-run ${nsteps}
+run ${nsteps1}
+
+# ====================================================================== #
+# PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
+# ===================================================
+thermo 10
+thermo_style custom step temp etotal ke pe epair ebond eangle edihed press
+
+# ====================================================================== #
+# ENERGY MINIMIZATION
+# ===================
+minimize 1e-4 1e-6 5000 10000
+
+# ====================================================================== #
+# RUN SECOND SIMULATION
+# =====================
+unfix fx3
+include lj_coeffs_${r}.data
+reset_timestep 0
+run ${nsteps2}
 
 # ====================================================================== #
 # WRITE FINAL SYSTEM STATE TO FILE 
