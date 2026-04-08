@@ -151,6 +151,7 @@ int main(int argc, char** argv)
         outfile << init_filename << std::endl
                 << outprefix << "_soft.lammpstrj" << std::endl
                 << outprefix << "_resolved.data" << std::endl
+                << outprefix << "_lj_coeffs.data" << std::endl
                 << dt << std::endl
                 << damp << std::endl
                 << static_cast<int>(t_final_soft / dt) << std::endl

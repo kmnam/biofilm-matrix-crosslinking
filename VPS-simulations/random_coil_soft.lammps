@@ -16,6 +16,8 @@ variable lammpstrj_filename string $f
 next f
 variable outfilename string $f
 next f
+variable lj_coeffs_filename string $f
+next f
 variable dt equal $f
 next f
 variable damp equal $f
@@ -75,8 +77,7 @@ pair_modify shift yes
 special_bonds fene angle no
 
 # Write the Lennard-Jones potential parameters
-variable r equal floor(random(0, 1000000, seed_velocity)) 
-write_coeff lj_coeffs_${r}.data 
+write_coeff ${lj_coeffs_filename}
 
 # Reset non-bonded interactions, with the cutoff set to 2^(1/6) * \sigma 
 pair_style soft 2.09371159271
@@ -139,7 +140,7 @@ minimize 1e-4 1e-6 5000 10000
 # RUN SECOND SIMULATION
 # =====================
 unfix fx3
-include lj_coeffs_${r}.data
+include ${lj_coeffs_filename}
 reset_timestep 0
 run ${nsteps2}
 
