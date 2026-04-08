@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/3/2026
+ *     4/8/2026
  */
 
 #include <fstream>
@@ -74,7 +74,7 @@ int main(int argc, char** argv)
     std::string header = ""; 
     final_config.writeLammps(
         outfilename, lj_params, fene_params, angle_mode, angle_params,
-        dihedral_params, header, xmin, xmax, ymin, ymax, zmin, zmax, mass
+        dihedral_params, header, mass
     );  
     
     return 0; 
