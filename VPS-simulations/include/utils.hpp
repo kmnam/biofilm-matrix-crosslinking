@@ -44,7 +44,9 @@ using boost::multiprecision::atan2;
 using std::fmod; 
 using boost::multiprecision::fmod;
 using std::round; 
-using boost::multiprecision::round; 
+using boost::multiprecision::round;
+using std::isinf; 
+using boost::multiprecision::isinf;
 
 using namespace Eigen;
 
