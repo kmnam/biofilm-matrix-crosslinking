@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/6/2026
+ *     4/10/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -1989,7 +1989,7 @@ std::pair<PolymerMeltConfiguration<T>,
                                                                     const T temp = 300.0)
 {
     std::unordered_map<std::string, T> params;
-    T xmin, xmax, ymin, ymax, zmin, zmax;  
+    T xmin, xmax, ymin, ymax, zmin, zmax;
 
     // Parse the given file ... 
     //
@@ -2077,6 +2077,7 @@ std::pair<PolymerMeltConfiguration<T>,
         } 
     }
     lengths.push_back(curr_length);    // Add the last polymer length
+    int n_chains = lengths.size(); 
 
     // Now parse the rest of the file to get the final configuration 
     std::vector<std::vector<Matrix<T, Dynamic, 3> > > melt_coords;
@@ -2127,7 +2128,8 @@ std::pair<PolymerMeltConfiguration<T>,
     }
 
     PolymerMeltConfiguration<T> config(
-        melt_coords[config_idx], units, temp, xmin, xmax, ymin, ymax, zmin, zmax
+        n_chains, melt_coords[config_idx], units, temp, xmin, xmax, ymin, ymax,
+        zmin, zmax
     ); 
     return std::make_pair(config, params); 
 }
