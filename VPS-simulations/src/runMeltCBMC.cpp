@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/7/2026
+ *     4/10/2026
  */
 
 #include <iostream>
@@ -201,29 +201,57 @@ int main(int argc, char** argv)
         zmax, bond_length_cdf
     );
 
-    // TODO Handle continuation of previous runs 
-    /*
     // Determine if a prior run is to be continued
-    Matrix<double, Dynamic, Dynamic> ensemble_coords; 
-    if (argc == 6 && strcmp(argv[4], "-c") == 0)
+    if (argc >= 6)    // There are three required input arguments, plus a fourth optional argument 
     {
-        std::string prev_filename = argv[5];
-        ensemble_coords = sampler.run(prev_filename, n_target - 1, outfile, true);  
+        // The input file can either be a config.txt file or a .lammpstrj file 
+        //
+        // The "-c" or "-l" should be either index 4 or 5
+        if (strcmp(argv[4], "-c") == 0)
+        {
+            std::string prev_filename = argv[5];
+            sampler.run(prev_filename, n_target - 1, outfile, true);  
+        }
+        else if (strcmp(argv[5], "-c") == 0)
+        {
+            std::string prev_filename = argv[6];
+            sampler.run(prev_filename, n_target - 1, outfile, true);  
+        }
+        else if (strcmp(argv[4], "-l") == 0)
+        {
+            std::string prev_filename = argv[5];
+            sampler.run(
+                prev_filename, n_candidates, move_probs, multimer_reptation_length,
+                terminal_segment_length, max_iter, n_burnin, mod_collect, 
+                mod_write, max_stall, outfile, true
+            ); 
+        }
+        else if (strcmp(argv[5], "-l") == 0)
+        {
+            std::string prev_filename = argv[5];
+            sampler.run(
+                prev_filename, n_candidates, move_probs, multimer_reptation_length,
+                terminal_segment_length, max_iter, n_burnin, mod_collect, 
+                mod_write, max_stall, outfile, true
+            ); 
+        }
+        else    // Otherwise, start a new run
+        {
+            sampler.run(
+                n_candidates, move_probs, multimer_reptation_length,
+                terminal_segment_length, max_iter, n_burnin, mod_collect,
+                mod_write, max_stall, outfile, true
+            );
+        }
     }
     else    // Otherwise, start a new run
     {
-        ensemble_coords = sampler.run(
+        sampler.run(
             n_candidates, move_probs, multimer_reptation_length,
             terminal_segment_length, max_iter, n_burnin, mod_collect,
             mod_write, max_stall, outfile, true
         );
     } 
-    */
-    sampler.run(
-        n_candidates, move_probs, multimer_reptation_length,
-        terminal_segment_length, max_iter, n_burnin, mod_collect, mod_write,
-        max_stall, outfile, true
-    ); 
 
     return 0; 
 }
