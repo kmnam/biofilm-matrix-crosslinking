@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/6/2026
+ *     4/10/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -4431,7 +4431,7 @@ class PolymerMeltCBMCSampler
 
         /**
          * Restart configurational-bias Monte Carlo sampling from the final
-         * configuration in the given file.
+         * configuration in the given configurations file.
          *
          * The sampling procedure uses the same parameters that were used 
          * to generate the configurations in the given file.  
@@ -4484,6 +4484,67 @@ class PolymerMeltCBMCSampler
             // Fix number of sampling iterations 
             const int max_iter = n_collect * mod_collect; 
             
+            // Update the stored coordinates
+            this->updateCoords(); 
+
+            // Run the sampling
+            return this->run(
+                n_candidates, move_probs, multimer_reptation_length,
+                terminal_segment_length, max_iter, n_burnin, mod_collect,
+                mod_write, max_stall, outfile, verbose 
+            );  
+        }
+
+        /**
+         * Restart configurational-bias Monte Carlo sampling from the final
+         * configuration in the given .lammpstrj file.
+         *
+         * Here, since the final configuration is from a .lammpstrj file, 
+         * the burn-in is not automatically set to zero. 
+         *
+         * @param filename Input filename.
+         * @param n_candidates Number of candidate moves to generate. 
+         * @param move_probs Array of probabilities for choosing each move type.
+         * @param multimer_reptation_length Multimer reptation length. 
+         * @param terminal_segment_length Segment length for terminal segment
+         *                                moves. 
+         * @param max_iter Maximum number of iterations. 
+         * @param n_burnin Number of burn-in iterations.
+         * @param mod_collect Collect only one of every given number of
+         *                    configurations in the sample, to reduce 
+         *                    auto-correlation.
+         * @param mod_write Write accumulated configurations to file once 
+         *                  every this many iterations. 
+         * @param max_stall Maximum number of consecutive iterations in which
+         *                  the sampling "stalls" at one configuration without
+         *                  accepting a new move. 
+         * @param outfile Output file stream. 
+         * @param verbose If true, print intermittent output to stdout.  
+         * @returns Representative sub-sample of sampled configurations.  
+         */
+        std::vector<std::vector<Matrix<T, Dynamic, 3> > > run(const std::string& filename,
+                                                              const int n_candidates, 
+                                                              const Ref<const Matrix<T, 3, 1> >& move_probs,
+                                                              const int multimer_reptation_length, 
+                                                              const int terminal_segment_length, 
+                                                              const int max_iter,
+                                                              const int n_burnin,
+                                                              const int mod_collect,
+                                                              int mod_write, 
+                                                              const int max_stall,
+                                                              std::ofstream& outfile,  
+                                                              const bool verbose = false)
+        {
+            // Parse the given file and extract the final configuration
+            //
+            // Note that the timestep does not matter here 
+            auto result = parseMeltLammpstrj(
+                filename, 1.0, this->melt_config.getUnits(),
+                this->melt_config.getTemp()
+            );
+            int n_configs = result.first.size(); 
+            this->melt_config = result.first[n_configs - 1];
+
             // Update the stored coordinates
             this->updateCoords(); 
 
