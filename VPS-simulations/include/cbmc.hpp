@@ -914,7 +914,7 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors 
+                    // Calculate the corresponding Boltzmann factors
                     Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
 
                     // Calculate the corresponding Rosenbluth weight for the
@@ -2209,6 +2209,22 @@ class PolymerCBMCSampler
                             this->fene_params, this->angle_mode,
                             this->angle_params, this->dihedral_params
                         );
+                        if (isnan(energy_total) || isinf(energy_total))
+                        {
+                            std::cout << "[WARN] Found accepted configuration "
+                                      << "(" << i << ") with NaN or infinite "
+                                      << "energy\n"
+                                      << "- Nonbonded energy: " << energy_nonbonded
+                                      << std::endl
+                                      << "- Bond energy: " << energy_bond
+                                      << std::endl
+                                      << "- Angle energy: " << energy_angle
+                                      << std::endl
+                                      << "- Dihedral energy: " << energy_dihedral
+                                      << std::endl
+                                      << "- Total energy: " << energy_total
+                                      << std::endl;
+                        } 
 
                         // Calculate the radius of gyration  
                         T radius = config_i.radiusOfGyration(); 
@@ -2271,6 +2287,22 @@ class PolymerCBMCSampler
                     this->fene_params, this->angle_mode,
                     this->angle_params, this->dihedral_params
                 );
+                if (isnan(energy_total) || isinf(energy_total))
+                {
+                    std::cout << "[WARN] Found accepted configuration "
+                              << "(" << i << ") with NaN or infinite "
+                              << "energy\n"
+                              << "- Nonbonded energy: " << energy_nonbonded
+                              << std::endl
+                              << "- Bond energy: " << energy_bond
+                              << std::endl
+                              << "- Angle energy: " << energy_angle
+                              << std::endl
+                              << "- Dihedral energy: " << energy_dihedral
+                              << std::endl
+                              << "- Total energy: " << energy_total
+                              << std::endl;
+                } 
 
                 // Calculate the radius of gyration  
                 T radius = config_i.radiusOfGyration(); 
@@ -4347,7 +4379,23 @@ class PolymerMeltCBMCSampler
                         T energy_total = (
                             energy_nonbonded + energy_bond + energy_angle +
                             energy_dihedral
-                        ); 
+                        );
+                        if (isnan(energy_total) || isinf(energy_total))
+                        {
+                            std::cout << "[WARN] Found accepted configuration "
+                                      << "(" << i << ") with NaN or infinite "
+                                      << "energy\n"
+                                      << "- Nonbonded energy: " << energy_nonbonded
+                                      << std::endl
+                                      << "- Bond energy: " << energy_bond
+                                      << std::endl
+                                      << "- Angle energy: " << energy_angle
+                                      << std::endl
+                                      << "- Dihedral energy: " << energy_dihedral
+                                      << std::endl
+                                      << "- Total energy: " << energy_total
+                                      << std::endl;
+                        } 
 
                         // Write coordinates and energy terms to file
                         outfile << "# CONFIG\t" << i << std::endl
@@ -4406,7 +4454,23 @@ class PolymerMeltCBMCSampler
                 T energy_total = (
                     energy_nonbonded + energy_bond + energy_angle +
                     energy_dihedral
-                ); 
+                );
+                if (isnan(energy_total) || isinf(energy_total))
+                {
+                    std::cout << "[WARN] Found accepted configuration "
+                              << "(" << i << ") with NaN or infinite "
+                                  << "energy\n"
+                                  << "- Nonbonded energy: " << energy_nonbonded
+                                  << std::endl
+                                  << "- Bond energy: " << energy_bond
+                                  << std::endl
+                                  << "- Angle energy: " << energy_angle
+                                  << std::endl
+                                  << "- Dihedral energy: " << energy_dihedral
+                                  << std::endl
+                                  << "- Total energy: " << energy_total
+                                  << std::endl;
+                } 
 
                 // Write coordinates and energy terms to file
                 outfile << "# CONFIG\t" << i << std::endl
