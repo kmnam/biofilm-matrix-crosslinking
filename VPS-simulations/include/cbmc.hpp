@@ -617,8 +617,8 @@ class PolymerCBMCSampler
                         ss << "Found invalid bond angle: " << angles(i) << std::endl; 
                         throw std::runtime_error(ss.str()); 
                     } 
-                    // Check that the dihedrals are within [0, 360)
-                    if (dihedrals(i) < 0 || dihedrals(i) >= boost::math::constants::two_pi<T>())
+                    // Check that the dihedrals are within [-180, 180)
+                    if (abs(dihedrals(i)) > boost::math::constants::pi<T>())
                     {
                         ss << "Found invalid dihedral angle: " << dihedrals(i) << std::endl; 
                         throw std::runtime_error(ss.str()); 
@@ -756,8 +756,8 @@ class PolymerCBMCSampler
                         ss << "Found invalid bond angle: " << angles(i) << std::endl; 
                         throw std::runtime_error(ss.str()); 
                     } 
-                    // Check that the dihedrals are within [0, 360)
-                    if (dihedrals(i) < 0 || dihedrals(i) >= boost::math::constants::two_pi<T>())
+                    // Check that the dihedrals are within [-180, 180)
+                    if (abs(dihedrals(i)) > boost::math::constants::pi<T>())
                     {
                         ss << "Found invalid dihedral angle: " << dihedrals(i) << std::endl; 
                         throw std::runtime_error(ss.str()); 
@@ -922,8 +922,8 @@ class PolymerCBMCSampler
                             ss << "Found invalid bond angle: " << angles(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
                         } 
-                        // Check that the dihedrals are within [0, 360)
-                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        // Check that the dihedrals are within [-180, 180)
+                        if (abs(dihedrals(i, j)) > boost::math::constants::pi<T>())
                         {
                             ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
@@ -1190,8 +1190,8 @@ class PolymerCBMCSampler
                             ss << "Found invalid bond angle: " << angles(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
                         } 
-                        // Check that the dihedrals are within [0, 360)
-                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        // Check that the dihedrals are within [-180, 180)
+                        if (abs(dihedrals(i, j)) > boost::math::constants::pi<T>())
                         {
                             ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
@@ -1477,8 +1477,8 @@ class PolymerCBMCSampler
                             ss << "Found invalid bond angle: " << angles(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
                         } 
-                        // Check that the dihedrals are within [0, 360)
-                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        // Check that the dihedrals are within [-180, 180)
+                        if (abs(dihedrals(i, j)) > boost::math::constants::pi<T>())
                         {
                             ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
@@ -1752,8 +1752,8 @@ class PolymerCBMCSampler
                             ss << "Found invalid bond angle: " << angles(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
                         } 
-                        // Check that the dihedrals are within [0, 360)
-                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        // Check that the dihedrals are within [-180, 180)
+                        if (abs(dihedrals(i, j)) > boost::math::constants::pi<T>())
                         {
                             ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
@@ -2935,8 +2935,8 @@ class PolymerMeltCBMCSampler
                         ss << "Found invalid bond angle: " << bond_angles(i) << std::endl; 
                         throw std::runtime_error(ss.str()); 
                     } 
-                    // Check that the dihedrals are within [0, 360)
-                    if (dihedrals(i) < 0 || dihedrals(i) >= boost::math::constants::two_pi<T>())
+                    // Check that the dihedrals are within [-180, 180)
+                    if (abs(dihedrals(i)) > boost::math::constants::pi<T>())
                     {
                         ss << "Found invalid dihedral angle: " << dihedrals(i) << std::endl; 
                         throw std::runtime_error(ss.str()); 
@@ -3095,8 +3095,8 @@ class PolymerMeltCBMCSampler
                         ss << "Found invalid bond angle: " << bond_angles(i) << std::endl; 
                         throw std::runtime_error(ss.str()); 
                     } 
-                    // Check that the dihedrals are within [0, 360)
-                    if (dihedrals(i) < 0 || dihedrals(i) >= boost::math::constants::two_pi<T>())
+                    // Check that the dihedrals are within [-180, 180)
+                    if (abs(dihedrals(i)) > boost::math::constants::pi<T>())
                     {
                         ss << "Found invalid dihedral angle: " << dihedrals(i) << std::endl; 
                         throw std::runtime_error(ss.str()); 
@@ -3269,8 +3269,8 @@ class PolymerMeltCBMCSampler
                             ss << "Found invalid bond angle: " << bond_angles(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
                         } 
-                        // Check that the dihedrals are within [0, 360)
-                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        // Check that the dihedrals are within [-180, 180)
+                        if (abs(dihedrals(i, j)) > boost::math::constants::pi<T>())
                         {
                             ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
@@ -3548,8 +3548,8 @@ class PolymerMeltCBMCSampler
                             ss << "Found invalid bond angle: " << bond_angles(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
                         } 
-                        // Check that the dihedrals are within [0, 360)
-                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        // Check that the dihedrals are within [-180, 180)
+                        if (abs(dihedrals(i, j)) > boost::math::constants::pi<T>())
                         {
                             ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
@@ -3838,8 +3838,8 @@ class PolymerMeltCBMCSampler
                             ss << "Found invalid bond angle: " << bond_angles(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
                         } 
-                        // Check that the dihedrals are within [0, 360)
-                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        // Check that the dihedrals are within [-180, 180)
+                        if (abs(dihedrals(i, j)) > boost::math::constants::pi<T>())
                         {
                             ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
@@ -4125,8 +4125,8 @@ class PolymerMeltCBMCSampler
                             ss << "Found invalid bond angle: " << bond_angles(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
                         } 
-                        // Check that the dihedrals are within [0, 360)
-                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        // Check that the dihedrals are within [-180, 180)
+                        if (abs(dihedrals(i, j)) > boost::math::constants::pi<T>())
                         {
                             ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
                             throw std::runtime_error(ss.str()); 
