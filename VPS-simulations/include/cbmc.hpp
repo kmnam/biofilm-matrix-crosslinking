@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/10/2026
+ *     4/11/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -601,6 +601,30 @@ class PolymerCBMCSampler
                     this->uniform_dist
                 );
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    // Check that the bond lengths are within the desired range 
+                    std::stringstream ss; 
+                    if (lengths(i) < 1e-6 || lengths(i) > this->fene_params["R0"] - 1e-6)
+                    {
+                        ss << "Found invalid FENE bond length: " << lengths(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                    // Check that the bond angles are within [0, 180)
+                    if (angles(i) < 0 || angles(i) >= boost::math::constants::pi<T>())
+                    {
+                        ss << "Found invalid bond angle: " << angles(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                    // Check that the dihedrals are within [0, 360)
+                    if (dihedrals(i) < 0 || dihedrals(i) >= boost::math::constants::two_pi<T>())
+                    {
+                        ss << "Found invalid dihedral angle: " << dihedrals(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    }
+                } 
+            #endif
              
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
@@ -716,6 +740,30 @@ class PolymerCBMCSampler
                     this->uniform_dist
                 );
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    // Check that the bond lengths are within the desired range 
+                    std::stringstream ss; 
+                    if (lengths(i) < 1e-6 || lengths(i) > this->fene_params["R0"] - 1e-6)
+                    {
+                        ss << "Found invalid FENE bond length: " << lengths(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                    // Check that the bond angles are within [0, 180)
+                    if (angles(i) < 0 || angles(i) >= boost::math::constants::pi<T>())
+                    {
+                        ss << "Found invalid bond angle: " << angles(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                    // Check that the dihedrals are within [0, 360)
+                    if (dihedrals(i) < 0 || dihedrals(i) >= boost::math::constants::two_pi<T>())
+                    {
+                        ss << "Found invalid dihedral angle: " << dihedrals(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    }
+                } 
+            #endif
              
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
@@ -856,6 +904,33 @@ class PolymerCBMCSampler
                     );
                 }
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < n_reptate; ++i)
+                {
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        // Check that the bond lengths are within the desired range 
+                        std::stringstream ss; 
+                        if (lengths(i, j) < 1e-6 || lengths(i, j) > this->fene_params["R0"] - 1e-6)
+                        {
+                            ss << "Found invalid FENE bond length: " << lengths(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the bond angles are within [0, 180)
+                        if (angles(i, j) < 0 || angles(i, j) >= boost::math::constants::pi<T>())
+                        {
+                            ss << "Found invalid bond angle: " << angles(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the dihedrals are within [0, 360)
+                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        {
+                            ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        }
+                    } 
+                } 
+            #endif
 
             // Keep track of the growing segment and the total Rosenbluth weight
             Matrix<T, Dynamic, 3> segment(0, 3); 
@@ -1083,6 +1158,33 @@ class PolymerCBMCSampler
                     );
                 }
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < n_reptate; ++i)
+                {
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        // Check that the bond lengths are within the desired range 
+                        std::stringstream ss; 
+                        if (lengths(i, j) < 1e-6 || lengths(i, j) > this->fene_params["R0"] - 1e-6)
+                        {
+                            ss << "Found invalid FENE bond length: " << lengths(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the bond angles are within [0, 180)
+                        if (angles(i, j) < 0 || angles(i, j) >= boost::math::constants::pi<T>())
+                        {
+                            ss << "Found invalid bond angle: " << angles(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the dihedrals are within [0, 360)
+                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        {
+                            ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        }
+                    } 
+                } 
+            #endif
 
             // Keep track of the Rosenbluth weight; we are not generating a
             // new segment 
@@ -1335,6 +1437,33 @@ class PolymerCBMCSampler
                     );
                 }
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < segment_length; ++i)
+                {
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        // Check that the bond lengths are within the desired range 
+                        std::stringstream ss; 
+                        if (lengths(i, j) < 1e-6 || lengths(i, j) > this->fene_params["R0"] - 1e-6)
+                        {
+                            ss << "Found invalid FENE bond length: " << lengths(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the bond angles are within [0, 180)
+                        if (angles(i, j) < 0 || angles(i, j) >= boost::math::constants::pi<T>())
+                        {
+                            ss << "Found invalid bond angle: " << angles(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the dihedrals are within [0, 360)
+                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        {
+                            ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        }
+                    } 
+                } 
+            #endif
 
             // Keep track of the growing segment and the total Rosenbluth weight
             Matrix<T, Dynamic, 3> segment(0, 3); 
@@ -1569,6 +1698,33 @@ class PolymerCBMCSampler
                     );
                 }
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < segment_length; ++i)
+                {
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        // Check that the bond lengths are within the desired range 
+                        std::stringstream ss; 
+                        if (lengths(i, j) < 1e-6 || lengths(i, j) > this->fene_params["R0"] - 1e-6)
+                        {
+                            ss << "Found invalid FENE bond length: " << lengths(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the bond angles are within [0, 180)
+                        if (angles(i, j) < 0 || angles(i, j) >= boost::math::constants::pi<T>())
+                        {
+                            ss << "Found invalid bond angle: " << angles(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the dihedrals are within [0, 360)
+                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        {
+                            ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        }
+                    } 
+                } 
+            #endif
 
             // Keep track of the Rosenbluth weight; we are not generating a
             // new segment 
@@ -2644,6 +2800,30 @@ class PolymerMeltCBMCSampler
                     this->rng, this->uniform_dist
                 );
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    // Check that the bond lengths are within the desired range 
+                    std::stringstream ss; 
+                    if (bond_lengths(i) < 1e-6 || bond_lengths(i) > this->fene_params["R0"] - 1e-6)
+                    {
+                        ss << "Found invalid FENE bond length: " << bond_lengths(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                    // Check that the bond angles are within [0, 180)
+                    if (bond_angles(i) < 0 || bond_angles(i) >= boost::math::constants::pi<T>())
+                    {
+                        ss << "Found invalid bond angle: " << bond_angles(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                    // Check that the dihedrals are within [0, 360)
+                    if (dihedrals(i) < 0 || dihedrals(i) >= boost::math::constants::two_pi<T>())
+                    {
+                        ss << "Found invalid dihedral angle: " << dihedrals(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                } 
+            #endif
              
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
@@ -2780,6 +2960,30 @@ class PolymerMeltCBMCSampler
                     this->rng, this->uniform_dist
                 );
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    // Check that the bond lengths are within the desired range 
+                    std::stringstream ss; 
+                    if (bond_lengths(i) < 1e-6 || bond_lengths(i) > this->fene_params["R0"] - 1e-6)
+                    {
+                        ss << "Found invalid FENE bond length: " << bond_lengths(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                    // Check that the bond angles are within [0, 180)
+                    if (bond_angles(i) < 0 || bond_angles(i) >= boost::math::constants::pi<T>())
+                    {
+                        ss << "Found invalid bond angle: " << bond_angles(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                    // Check that the dihedrals are within [0, 360)
+                    if (dihedrals(i) < 0 || dihedrals(i) >= boost::math::constants::two_pi<T>())
+                    {
+                        ss << "Found invalid dihedral angle: " << dihedrals(i) << std::endl; 
+                        throw std::runtime_error(ss.str()); 
+                    } 
+                } 
+            #endif
              
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
@@ -2928,6 +3132,33 @@ class PolymerMeltCBMCSampler
                     );
                 }
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < n_reptate; ++i)
+                {
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        // Check that the bond lengths are within the desired range 
+                        std::stringstream ss; 
+                        if (bond_lengths(i, j) < 1e-6 || bond_lengths(i, j) > this->fene_params["R0"] - 1e-6)
+                        {
+                            ss << "Found invalid FENE bond length: " << bond_lengths(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the bond angles are within [0, 180)
+                        if (bond_angles(i, j) < 0 || bond_angles(i, j) >= boost::math::constants::pi<T>())
+                        {
+                            ss << "Found invalid bond angle: " << bond_angles(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the dihedrals are within [0, 360)
+                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        {
+                            ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        }
+                    } 
+                } 
+            #endif
 
             // Keep track of the growing segment and the total Rosenbluth weight
             Matrix<T, Dynamic, 3> segment(0, 3); 
@@ -3180,6 +3411,33 @@ class PolymerMeltCBMCSampler
                     );
                 }
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < n_reptate; ++i)
+                {
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        // Check that the bond lengths are within the desired range 
+                        std::stringstream ss; 
+                        if (bond_lengths(i, j) < 1e-6 || bond_lengths(i, j) > this->fene_params["R0"] - 1e-6)
+                        {
+                            ss << "Found invalid FENE bond length: " << bond_lengths(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the bond angles are within [0, 180)
+                        if (bond_angles(i, j) < 0 || bond_angles(i, j) >= boost::math::constants::pi<T>())
+                        {
+                            ss << "Found invalid bond angle: " << bond_angles(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the dihedrals are within [0, 360)
+                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        {
+                            ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        }
+                    } 
+                } 
+            #endif
 
             // Keep track of the Rosenbluth weight; we are not generating a
             // new segment 
@@ -3443,6 +3701,33 @@ class PolymerMeltCBMCSampler
                     );
                 }
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < segment_length; ++i)
+                {
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        // Check that the bond lengths are within the desired range 
+                        std::stringstream ss; 
+                        if (bond_lengths(i, j) < 1e-6 || bond_lengths(i, j) > this->fene_params["R0"] - 1e-6)
+                        {
+                            ss << "Found invalid FENE bond length: " << bond_lengths(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the bond angles are within [0, 180)
+                        if (bond_angles(i, j) < 0 || bond_angles(i, j) >= boost::math::constants::pi<T>())
+                        {
+                            ss << "Found invalid bond angle: " << bond_angles(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the dihedrals are within [0, 360)
+                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        {
+                            ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        }
+                    } 
+                } 
+            #endif
 
             // Keep track of the growing segment and the total Rosenbluth weight
             Matrix<T, Dynamic, 3> segment(0, 3);
@@ -3703,6 +3988,33 @@ class PolymerMeltCBMCSampler
                     );
                 }
             }
+            #ifdef CHECK_CBMC_SAMPLED_VALUES
+                for (int i = 0; i < segment_length; ++i)
+                {
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        // Check that the bond lengths are within the desired range 
+                        std::stringstream ss; 
+                        if (bond_lengths(i, j) < 1e-6 || bond_lengths(i, j) > this->fene_params["R0"] - 1e-6)
+                        {
+                            ss << "Found invalid FENE bond length: " << bond_lengths(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the bond angles are within [0, 180)
+                        if (bond_angles(i, j) < 0 || bond_angles(i, j) >= boost::math::constants::pi<T>())
+                        {
+                            ss << "Found invalid bond angle: " << bond_angles(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        } 
+                        // Check that the dihedrals are within [0, 360)
+                        if (dihedrals(i, j) < 0 || dihedrals(i, j) >= boost::math::constants::two_pi<T>())
+                        {
+                            ss << "Found invalid dihedral angle: " << dihedrals(i, j) << std::endl; 
+                            throw std::runtime_error(ss.str()); 
+                        }
+                    } 
+                } 
+            #endif
 
             // Keep track of the Rosenbluth weight; we are not generating a
             // new segment 
