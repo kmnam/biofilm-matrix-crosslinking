@@ -3983,21 +3983,27 @@ class PolymerMeltCBMCSampler
                 T log_reverse_rosenbluth = max_residual + log(prob_total);  
 
                 // Calculate the Metropolis acceptance probability
-                T prob_accept = min(
-                    1.0, exp(log_forward_rosenbluth - log_reverse_rosenbluth)
+                T log_prob_accept = min(
+                    0.0, log_forward_rosenbluth - log_reverse_rosenbluth
                 );
 
                 // Change the polymer configuration according to that probability
-                T r = this->uniform_dist(this->rng); 
-                if (r < prob_accept)
+                T r = this->uniform_dist(this->rng);
+                CBMCMoveResult move_result;  
+                if (log(r) < log_prob_accept)
                 {
                     // Reptate towards the head 
                     if (rept_dir == ReptationDirection::HEAD)
                         this->melt_config.reptateTowardsHead(polymer_idx, r_new); 
                     else    // Reptate towards the tail 
-                        this->melt_config.reptateTowardsTail(polymer_idx, r_new); 
+                        this->melt_config.reptateTowardsTail(polymer_idx, r_new);
+                    this->updateCoords(); 
+                    move_result = CBMCMoveResult::ACCEPT; 
                 }
-                this->updateCoords(); 
+                else 
+                {
+                    move_result = CBMCMoveResult::REJECT; 
+                }
 
                 // Return the forward and reverse candidate moves, the index
                 // of the chosen move, its Metropolis acceptance probability, 
@@ -4007,9 +4013,8 @@ class PolymerMeltCBMCSampler
                 std::unordered_map<std::string, T> move_info; 
                 move_info["direction"] = (rept_dir == ReptationDirection::HEAD ? 0 : 1);
                 return std::make_tuple(
-                    forward_moves_, reverse_moves_, move_idx, prob_accept, 
-                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
-                    move_info
+                    forward_moves_, reverse_moves_, move_idx, exp(log_prob_accept),  
+                    move_result, move_info
                 ); 
             }
             else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
@@ -4061,13 +4066,14 @@ class PolymerMeltCBMCSampler
                 ); 
 
                 // Calculate the Metropolis acceptance probability
-                T prob_accept = min(
-                    1.0, exp(log_forward_rosenbluth - log_reverse_rosenbluth)
+                T log_prob_accept = min(
+                    0.0, log_forward_rosenbluth - log_reverse_rosenbluth
                 );
 
                 // Change the polymer configuration according to that probability
-                T r = this->uniform_dist(this->rng); 
-                if (r < prob_accept)
+                T r = this->uniform_dist(this->rng);
+                CBMCMoveResult move_result;  
+                if (log(r) < log_prob_accept)
                 {
                     // Reptate towards the head
                     //
@@ -4079,9 +4085,14 @@ class PolymerMeltCBMCSampler
                     else    // Reptate towards the tail 
                         this->melt_config.reptateTowardsTailMultimer(
                             polymer_idx, forward_move
-                        ); 
+                        );
+                    this->updateCoords(); 
+                    move_result = CBMCMoveResult::ACCEPT;  
                 }
-                this->updateCoords(); 
+                else 
+                {
+                    move_result = CBMCMoveResult::REJECT; 
+                }
 
                 // Return the forward and reverse candidate moves (latter is 
                 // ill-defined), the index of the chosen move (0), its Metropolis
@@ -4091,9 +4102,8 @@ class PolymerMeltCBMCSampler
                 std::unordered_map<std::string, T> move_info; 
                 move_info["direction"] = (rept_dir == ReptationDirection::HEAD ? 0 : 1);
                 return std::make_tuple(
-                    forward_move_, reverse_move, 0, prob_accept, 
-                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
-                    move_info
+                    forward_move_, reverse_move, 0, exp(log_prob_accept),
+                    move_result, move_info
                 ); 
             }
             else      // move_type == CBMCMoveType::TERMINAL_SEGMENT
@@ -4138,13 +4148,14 @@ class PolymerMeltCBMCSampler
                 );
 
                 // Calculate the Metropolis acceptance probability
-                T prob_accept = min(
-                    1.0, exp(log_forward_rosenbluth - log_reverse_rosenbluth)
+                T log_prob_accept = min(
+                    0.0, log_forward_rosenbluth - log_reverse_rosenbluth
                 );
 
                 // Change the polymer configuration according to that probability
-                T r = this->uniform_dist(this->rng); 
-                if (r < prob_accept)
+                T r = this->uniform_dist(this->rng);
+                CBMCMoveResult move_result;  
+                if (log(r) < log_prob_accept)
                 {
                     // Move terminal segment at the head 
                     //
@@ -4156,9 +4167,14 @@ class PolymerMeltCBMCSampler
                     else    // Move terminal segment at the tail 
                         this->melt_config.replaceSegment(
                             polymer_idx, forward_move, n - segment_length
-                        ); 
+                        );
+                    this->updateCoords();
+                    move_result = CBMCMoveResult::ACCEPT;  
                 }
-                this->updateCoords(); 
+                else 
+                {
+                    move_result = CBMCMoveResult::REJECT; 
+                }
 
                 // Return the forward and reverse candidate moves (latter is 
                 // ill-defined), the index of the chosen move (0), its Metropolis
@@ -4168,9 +4184,8 @@ class PolymerMeltCBMCSampler
                 std::unordered_map<std::string, T> move_info; 
                 move_info["terminal_end"] = (terminal_end == TerminalSegmentEnd::HEAD ? 0 : 1);
                 return std::make_tuple(
-                    forward_move_, reverse_move, 0, prob_accept, 
-                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
-                    move_info
+                    forward_move_, reverse_move, 0, exp(log_prob_accept), 
+                    move_result, move_info 
                 ); 
             }
         }
