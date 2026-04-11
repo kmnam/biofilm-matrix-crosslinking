@@ -147,7 +147,10 @@ minimize 1e-4 1e-6 5000 10000
 # ====================================================================== #
 # RUN SECOND SIMULATION
 # =====================
+undump sim1
 reset_timestep 0
+dump sim1 all custom ${nsteps_per_dump} ${lammpstrj_filename} id mol type xu yu zu vx vy vz
+dump_modify sim1 sort id append yes
 run ${nsteps2}
 
 # ====================================================================== #
