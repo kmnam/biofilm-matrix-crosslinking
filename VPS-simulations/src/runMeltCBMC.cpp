@@ -22,6 +22,36 @@ int main(int argc, char** argv)
     std::string outprefix = argv[2]; 
     const int seed = std::stoi(argv[3]);
 
+    // Determine if a prior run is to be continued
+    bool continue_prev_run = false;
+    std::string prev_filename = ""; 
+    if (argc >= 6)    // There are three required input arguments, plus a fourth optional argument 
+    {
+        // The input file can either be a config.txt file or a .lammpstrj file 
+        //
+        // The "-c" or "-l" should be either index 4 or 5
+        if (strcmp(argv[4], "-c") == 0)
+        {
+            continue_prev_run = true;  
+            prev_filename = argv[5];
+        }
+        else if (strcmp(argv[5], "-c") == 0)
+        {
+            continue_prev_run = true; 
+            prev_filename = argv[6];
+        }
+        else if (strcmp(argv[4], "-l") == 0)
+        {
+            continue_prev_run = true;
+            prev_filename = argv[5];
+        }
+        else if (strcmp(argv[5], "-l") == 0)
+        {
+            continue_prev_run = true; 
+            prev_filename = argv[6];
+        }
+    }
+
     // Parse input json file 
     boost::json::object json_data = parseConfigFile(json_filename).as_object();
 
@@ -103,7 +133,8 @@ int main(int argc, char** argv)
         kT, n_bins
     );
 
-    // Generate an initial melt configuration
+    // Generate an initial melt configuration, regardless of whether a previous
+    // run is to be continued
     std::cout << "Generating " << n_chains << " chains of length "
               << length << " ...\n";  
     PolymerMeltConfiguration<double> melt_config = generateKMerMelt<double>(
@@ -114,144 +145,128 @@ int main(int argc, char** argv)
         bond_length_cdf, Units::NANO, 300, true
     );
 
-    // If a LAMMPS pre-equilibration run is desired ... 
-    if (run_lammps_soft)
+    // If a previous run is to be continued, simply parse the given input 
+    // file and run the sampling 
+    if (continue_prev_run)
     {
-        // Parse additional input parameters
-        const int ncores = std::stoi(argv[4]);  
-        const double mass = json_data["monomer_mass"].as_double();
-        const double dt = json_data["dt"].as_double(); 
-        const double damp = json_data["damp"].as_double();
-        const double t_final_soft = json_data["t_final_soft"].as_double();
-        const double t_final_preeq = json_data["t_final_preeq"].as_double(); 
-        const double dt_per_dump = json_data["dt_per_dump"].as_double();  
-
-        // Write the melt configuration to a LAMMPS initial data file
+        // Initialize CBMC output file
         std::stringstream ss; 
-        ss << "Melt of " << n_chains << " polymers of length " << length; 
-        std::string header = ss.str();
-        ss.str(std::string()); 
-        ss.clear(); 
-        ss << outprefix << "_init.data"; 
-        std::string init_filename = ss.str();  
-        melt_config.writeLammps(
-            init_filename, lj_params, fene_params, angle_mode, angle_params,
-            dihedral_params, header, mass
-        ); 
+        ss << outprefix << "_cbmc_configs.txt"; 
+        std::string outfilename = ss.str(); 
+        std::ofstream outfile(outfilename); 
 
-        // Run LAMMPS with a soft potential to relax the configuration
-        //
-        // Prepare an input file for LAMMPS 
-        ss.str(std::string()); 
-        ss.clear(); 
-        ss << outprefix << "_soft_paths.txt"; 
-        std::string soft_input_filename = ss.str(); 
-        std::ofstream outfile(soft_input_filename);
-        boost::random::uniform_int_distribution<> lammps_seed_dist(0, 999); 
-        outfile << init_filename << std::endl
-                << outprefix << "_soft.lammpstrj" << std::endl
-                << outprefix << "_resolved.data" << std::endl
-                << outprefix << "_lj_coeffs.data" << std::endl
-                << dt << std::endl
-                << damp << std::endl
-                << static_cast<int>(t_final_soft / dt) << std::endl
-                << static_cast<int>((t_final_preeq - t_final_soft) / dt) << std::endl
-                << static_cast<int>(dt_per_dump / dt) << std::endl
-                << lammps_seed_dist(rng) << std::endl
-                << lammps_seed_dist(rng) << std::endl;
-        outfile.close();
+        // Initialize and run CBMC sampler 
+        const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+        PolymerMeltCBMCSampler<double> sampler(
+            melt_config, lj_params, neighbor_threshold, fene_params, angle_mode, 
+            angle_params, dihedral_params, rng, -xmax, xmax, -ymax, ymax, -zmax,
+            zmax, bond_length_cdf
+        );
 
-        // Run LAMMPS
-        std::string lammps_script_filename; 
-        if (angle_mode == AngleMode::GAUSSIAN)
-            lammps_script_filename = "bimodal_angles_gaussian_soft.lammps";
-        else if (angle_params["cosine_K"] != 0)
-            lammps_script_filename = "bimodal_angles_static.lammps";    // TODO Change this 
-        else 
-            lammps_script_filename = "random_coil_soft.lammps"; 
-        ss.str(std::string()); 
-        ss.clear();
-        ss << "mpirun -np " << ncores << " lmp -i " << lammps_script_filename
-           << " -v VARS " << soft_input_filename;
-        std::string cmd = ss.str(); 
-        std::system(cmd.c_str()); 
-
-        // Parse the relaxed configuration
-        ss.str(std::string()); 
-        ss.clear(); 
-        ss << outprefix << "_soft.lammpstrj"; 
-        std::string lammpstrj_filename = ss.str(); 
-        auto result = parseMeltLammpstrj<double>(
-            lammpstrj_filename, dt, Units::NANO, 300.0
-        ); 
-        melt_config = result.first[result.first.size() - 1]; 
-    } 
-
-    // Initialize CBMC output file
-    std::stringstream ss; 
-    ss << outprefix << "_cbmc_configs.txt"; 
-    std::string outfilename = ss.str(); 
-    std::ofstream outfile(outfilename); 
-
-    // Initialize CBMC sampler 
-    const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
-    PolymerMeltCBMCSampler<double> sampler(
-        melt_config, lj_params, neighbor_threshold, fene_params, angle_mode, 
-        angle_params, dihedral_params, rng, -xmax, xmax, -ymax, ymax, -zmax,
-        zmax, bond_length_cdf
-    );
-
-    // Determine if a prior run is to be continued
-    if (argc >= 6)    // There are three required input arguments, plus a fourth optional argument 
-    {
-        // The input file can either be a config.txt file or a .lammpstrj file 
-        //
-        // The "-c" or "-l" should be either index 4 or 5
-        if (strcmp(argv[4], "-c") == 0)
-        {
-            std::string prev_filename = argv[5];
+        // If the input file is a configurations file ... 
+        if (strcmp(argv[4], "-c") == 0 || strcmp(argv[5], "-c") == 0)
             sampler.run(prev_filename, n_target - 1, outfile, true);  
-        }
-        else if (strcmp(argv[5], "-c") == 0)
-        {
-            std::string prev_filename = argv[6];
-            sampler.run(prev_filename, n_target - 1, outfile, true);  
-        }
-        else if (strcmp(argv[4], "-l") == 0)
-        {
-            std::string prev_filename = argv[5];
+        else    // If the input file is a .lammpstrj file ...
             sampler.run(
                 prev_filename, n_candidates, move_probs, multimer_reptation_length,
                 terminal_segment_length, max_iter, n_burnin, mod_collect, 
                 mod_write, max_stall, outfile, true
             ); 
-        }
-        else if (strcmp(argv[5], "-l") == 0)
-        {
-            std::string prev_filename = argv[5];
-            sampler.run(
-                prev_filename, n_candidates, move_probs, multimer_reptation_length,
-                terminal_segment_length, max_iter, n_burnin, mod_collect, 
-                mod_write, max_stall, outfile, true
-            ); 
-        }
-        else    // Otherwise, start a new run
-        {
-            sampler.run(
-                n_candidates, move_probs, multimer_reptation_length,
-                terminal_segment_length, max_iter, n_burnin, mod_collect,
-                mod_write, max_stall, outfile, true
-            );
-        }
     }
-    else    // Otherwise, start a new run
+    else    // Otherwise, start fresh
     {
+        // If a LAMMPS pre-equilibration run is desired ... 
+        if (run_lammps_soft)
+        {
+            // Parse additional input parameters
+            const int ncores = std::stoi(argv[4]);  
+            const double mass = json_data["monomer_mass"].as_double();
+            const double dt = json_data["dt"].as_double(); 
+            const double damp = json_data["damp"].as_double();
+            const double t_final_soft = json_data["t_final_soft"].as_double();
+            const double t_final_preeq = json_data["t_final_preeq"].as_double(); 
+            const double dt_per_dump = json_data["dt_per_dump"].as_double();  
+
+            // Write the melt configuration to a LAMMPS initial data file
+            std::stringstream ss; 
+            ss << "Melt of " << n_chains << " polymers of length " << length; 
+            std::string header = ss.str();
+            ss.str(std::string()); 
+            ss.clear(); 
+            ss << outprefix << "_init.data"; 
+            std::string init_filename = ss.str();  
+            melt_config.writeLammps(
+                init_filename, lj_params, fene_params, angle_mode, angle_params,
+                dihedral_params, header, mass
+            ); 
+
+            // Run LAMMPS with a soft potential to relax the configuration
+            //
+            // Prepare an input file for LAMMPS 
+            ss.str(std::string()); 
+            ss.clear(); 
+            ss << outprefix << "_soft_paths.txt"; 
+            std::string soft_input_filename = ss.str(); 
+            std::ofstream outfile(soft_input_filename);
+            boost::random::uniform_int_distribution<> lammps_seed_dist(0, 999); 
+            outfile << init_filename << std::endl
+                    << outprefix << "_soft.lammpstrj" << std::endl
+                    << outprefix << "_resolved.data" << std::endl
+                    << outprefix << "_lj_coeffs.data" << std::endl
+                    << dt << std::endl
+                    << damp << std::endl
+                    << static_cast<int>(t_final_soft / dt) << std::endl
+                    << static_cast<int>((t_final_preeq - t_final_soft) / dt) << std::endl
+                    << static_cast<int>(dt_per_dump / dt) << std::endl
+                    << lammps_seed_dist(rng) << std::endl
+                    << lammps_seed_dist(rng) << std::endl;
+            outfile.close();
+
+            // Run LAMMPS
+            std::string lammps_script_filename; 
+            if (angle_mode == AngleMode::GAUSSIAN)
+                lammps_script_filename = "bimodal_angles_gaussian_soft.lammps";
+            else if (angle_params["cosine_K"] != 0)
+                lammps_script_filename = "bimodal_angles_static.lammps";    // TODO Change this 
+            else 
+                lammps_script_filename = "random_coil_soft.lammps"; 
+            ss.str(std::string()); 
+            ss.clear();
+            ss << "mpirun -np " << ncores << " lmp -i " << lammps_script_filename
+               << " -v VARS " << soft_input_filename;
+            std::string cmd = ss.str(); 
+            std::system(cmd.c_str()); 
+
+            // Parse the relaxed configuration
+            ss.str(std::string()); 
+            ss.clear(); 
+            ss << outprefix << "_soft.lammpstrj"; 
+            std::string lammpstrj_filename = ss.str(); 
+            auto result = parseMeltLammpstrj<double>(
+                lammpstrj_filename, dt, Units::NANO, 300.0
+            ); 
+            melt_config = result.first[result.first.size() - 1]; 
+        } 
+
+        // Initialize CBMC output file
+        std::stringstream ss; 
+        ss << outprefix << "_cbmc_configs.txt"; 
+        std::string outfilename = ss.str(); 
+        std::ofstream outfile(outfilename); 
+
+        // Initialize and run CBMC sampler 
+        const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+        PolymerMeltCBMCSampler<double> sampler(
+            melt_config, lj_params, neighbor_threshold, fene_params, angle_mode, 
+            angle_params, dihedral_params, rng, -xmax, xmax, -ymax, ymax, -zmax,
+            zmax, bond_length_cdf
+        );
         sampler.run(
             n_candidates, move_probs, multimer_reptation_length,
             terminal_segment_length, max_iter, n_burnin, mod_collect,
             mod_write, max_stall, outfile, true
         );
-    } 
+    }
 
     return 0; 
 }
