@@ -2485,19 +2485,20 @@ class PolymerCBMCSampler
                         );
                         if (isnan(energy_total) || isinf(energy_total))
                         {
-                            std::cout << "[WARN] Found accepted configuration "
-                                      << "(" << i << ") with NaN or infinite "
-                                      << "energy\n"
-                                      << "- Nonbonded energy: " << energy_nonbonded
-                                      << std::endl
-                                      << "- Bond energy: " << energy_bond
-                                      << std::endl
-                                      << "- Angle energy: " << energy_angle
-                                      << std::endl
-                                      << "- Dihedral energy: " << energy_dihedral
-                                      << std::endl
-                                      << "- Total energy: " << energy_total
-                                      << std::endl;
+                            std::stringstream ss; 
+                            ss << "Found accepted configuration " << "(" << i
+                               << ") with NaN or infinite energy\n"
+                               << "- Nonbonded energy: " << energy_nonbonded
+                               << std::endl
+                               << "- Bond energy: " << energy_bond
+                               << std::endl
+                               << "- Angle energy: " << energy_angle
+                               << std::endl
+                               << "- Dihedral energy: " << energy_dihedral
+                               << std::endl
+                               << "- Total energy: " << energy_total
+                               << std::endl;
+                            throw std::runtime_error(ss.str()); 
                         } 
 
                         // Calculate the radius of gyration  
@@ -2563,19 +2564,20 @@ class PolymerCBMCSampler
                 );
                 if (isnan(energy_total) || isinf(energy_total))
                 {
-                    std::cout << "[WARN] Found accepted configuration "
-                              << "(" << i << ") with NaN or infinite "
-                              << "energy\n"
-                              << "- Nonbonded energy: " << energy_nonbonded
-                              << std::endl
-                              << "- Bond energy: " << energy_bond
-                              << std::endl
-                              << "- Angle energy: " << energy_angle
-                              << std::endl
-                              << "- Dihedral energy: " << energy_dihedral
-                              << std::endl
-                              << "- Total energy: " << energy_total
-                              << std::endl;
+                    std::stringstream ss; 
+                    ss << "Found accepted configuration " << "(" << i
+                       << ") with NaN or infinite energy\n"
+                       << "- Nonbonded energy: " << energy_nonbonded
+                       << std::endl
+                       << "- Bond energy: " << energy_bond
+                       << std::endl
+                       << "- Angle energy: " << energy_angle
+                       << std::endl
+                       << "- Dihedral energy: " << energy_dihedral
+                       << std::endl
+                       << "- Total energy: " << energy_total
+                       << std::endl;
+                    throw std::runtime_error(ss.str()); 
                 } 
 
                 // Calculate the radius of gyration  
@@ -4963,19 +4965,20 @@ class PolymerMeltCBMCSampler
                         );
                         if (isnan(energy_total) || isinf(energy_total))
                         {
-                            std::cout << "[WARN] Found accepted configuration "
-                                      << "(" << i << ") with NaN or infinite "
-                                      << "energy\n"
-                                      << "- Nonbonded energy: " << energy_nonbonded
-                                      << std::endl
-                                      << "- Bond energy: " << energy_bond
-                                      << std::endl
-                                      << "- Angle energy: " << energy_angle
-                                      << std::endl
-                                      << "- Dihedral energy: " << energy_dihedral
-                                      << std::endl
-                                      << "- Total energy: " << energy_total
-                                      << std::endl;
+                            std::stringstream ss; 
+                            ss << "Found accepted configuration " << "(" << i
+                               << ") with NaN or infinite energy\n"
+                               << "- Nonbonded energy: " << energy_nonbonded
+                               << std::endl
+                               << "- Bond energy: " << energy_bond
+                               << std::endl
+                               << "- Angle energy: " << energy_angle
+                               << std::endl
+                               << "- Dihedral energy: " << energy_dihedral
+                               << std::endl
+                               << "- Total energy: " << energy_total
+                               << std::endl;
+                            throw std::runtime_error(ss.str()); 
                         } 
 
                         // Write coordinates and energy terms to file
@@ -5038,19 +5041,20 @@ class PolymerMeltCBMCSampler
                 );
                 if (isnan(energy_total) || isinf(energy_total))
                 {
-                    std::cout << "[WARN] Found accepted configuration "
-                              << "(" << i << ") with NaN or infinite "
-                                  << "energy\n"
-                                  << "- Nonbonded energy: " << energy_nonbonded
-                                  << std::endl
-                                  << "- Bond energy: " << energy_bond
-                                  << std::endl
-                                  << "- Angle energy: " << energy_angle
-                                  << std::endl
-                                  << "- Dihedral energy: " << energy_dihedral
-                                  << std::endl
-                                  << "- Total energy: " << energy_total
-                                  << std::endl;
+                    std::stringstream ss; 
+                    ss << "Found accepted configuration " << "(" << i
+                       << ") with NaN or infinite energy\n"
+                       << "- Nonbonded energy: " << energy_nonbonded
+                       << std::endl
+                       << "- Bond energy: " << energy_bond
+                       << std::endl
+                       << "- Angle energy: " << energy_angle
+                       << std::endl
+                       << "- Dihedral energy: " << energy_dihedral
+                       << std::endl
+                       << "- Total energy: " << energy_total
+                       << std::endl;
+                    throw std::runtime_error(ss.str()); 
                 } 
 
                 // Write coordinates and energy terms to file
