@@ -4342,7 +4342,32 @@ class PolymerMeltCBMCSampler
                 if (rept_dir == ReptationDirection::HEAD)
                     forward_config.reptateTowardsHead(polymer_idx, r_new); 
                 else
-                    forward_config.reptateTowardsTail(polymer_idx, r_new); 
+                    forward_config.reptateTowardsTail(polymer_idx, r_new);
+                #ifdef CHECK_CBMC_PLAUSIBLE_FORWARD_MOVE
+                    // Calculate the energy of the new configuration 
+                    T energy_nonbonded = forward_config.getTotalNonbondedEnergy(
+                        this->lj_params, this->neighbor_threshold, true
+                    );
+                    T energy_bond = forward_config.getTotalBondEnergy(
+                        this->fene_params, true, this->lj_params
+                    );
+                    T energy_angle = forward_config.getTotalBondAngleEnergy( 
+                        this->angle_mode, this->angle_params
+                    );
+                    T energy_dihedral = forward_config.getTotalDihedralAngleEnergy(
+                        this->dihedral_params
+                    );
+                    T energy_total = (
+                        energy_nonbonded + energy_bond + energy_angle +
+                        energy_dihedral
+                    );
+                    if (isnan(energy_total) || isinf(energy_total))
+                    {
+                        throw std::runtime_error(
+                            "Proposed reptation move with infinite/undefined energy"
+                        );  
+                    } 
+                #endif
 
                 // Identify the reverse direction 
                 ReptationDirection reverse_dir; 
@@ -4433,7 +4458,33 @@ class PolymerMeltCBMCSampler
                 else
                     forward_config.reptateTowardsTailMultimer(
                         polymer_idx, forward_move
-                    ); 
+                    );
+                #ifdef CHECK_CBMC_PLAUSIBLE_FORWARD_MOVE
+                    // Calculate the energy of the new configuration 
+                    T energy_nonbonded = forward_config.getTotalNonbondedEnergy(
+                        this->lj_params, this->neighbor_threshold, true
+                    );
+                    T energy_bond = forward_config.getTotalBondEnergy(
+                        this->fene_params, true, this->lj_params
+                    );
+                    T energy_angle = forward_config.getTotalBondAngleEnergy( 
+                        this->angle_mode, this->angle_params
+                    );
+                    T energy_dihedral = forward_config.getTotalDihedralAngleEnergy(
+                        this->dihedral_params
+                    );
+                    T energy_total = (
+                        energy_nonbonded + energy_bond + energy_angle +
+                        energy_dihedral
+                    );
+                    if (isnan(energy_total) || isinf(energy_total))
+                    {
+                        throw std::runtime_error(
+                            "Proposed multimer reptation move with infinite/"
+                            "undefined energy"
+                        );  
+                    } 
+                #endif
 
                 // Identify the reverse direction 
                 ReptationDirection reverse_dir; 
@@ -4522,7 +4573,33 @@ class PolymerMeltCBMCSampler
                 else
                     forward_config.replaceSegment(
                         polymer_idx, forward_move, n - segment_length
-                    ); 
+                    );
+                #ifdef CHECK_CBMC_PLAUSIBLE_FORWARD_MOVE
+                    // Calculate the energy of the new configuration 
+                    T energy_nonbonded = forward_config.getTotalNonbondedEnergy(
+                        this->lj_params, this->neighbor_threshold, true
+                    );
+                    T energy_bond = forward_config.getTotalBondEnergy(
+                        this->fene_params, true, this->lj_params
+                    );
+                    T energy_angle = forward_config.getTotalBondAngleEnergy( 
+                        this->angle_mode, this->angle_params
+                    );
+                    T energy_dihedral = forward_config.getTotalDihedralAngleEnergy(
+                        this->dihedral_params
+                    );
+                    T energy_total = (
+                        energy_nonbonded + energy_bond + energy_angle +
+                        energy_dihedral
+                    );
+                    if (isnan(energy_total) || isinf(energy_total))
+                    {
+                        throw std::runtime_error(
+                            "Proposed terminal segment move with infinite/"
+                            "undefined energy"
+                        );  
+                    } 
+                #endif
 
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
