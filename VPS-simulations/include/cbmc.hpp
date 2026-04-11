@@ -2010,7 +2010,21 @@ class PolymerCBMCSampler
                 if (rept_dir == ReptationDirection::HEAD)
                     forward_config.reptateTowardsHead(r_new); 
                 else
-                    forward_config.reptateTowardsTail(r_new); 
+                    forward_config.reptateTowardsTail(r_new);
+                #ifdef CHECK_CBMC_PLAUSIBLE_FORWARD_MOVE
+                    // Calculate the energy of the new configuration 
+                    T energy_total = forward_config.getTotalEnergy(
+                        this->lj_params, this->neighbor_threshold, 
+                        this->fene_params, this->angle_mode,
+                        this->angle_params, this->dihedral_params
+                    );
+                    if (isnan(energy_total) || isinf(energy_total))
+                    {
+                        throw std::runtime_error(
+                            "Proposed reptation move with infinite/undefined energy"
+                        );  
+                    } 
+                #endif
 
                 // Identify the reverse direction 
                 ReptationDirection reverse_dir; 
@@ -2095,7 +2109,22 @@ class PolymerCBMCSampler
                 if (rept_dir == ReptationDirection::HEAD)
                     forward_config.reptateTowardsHeadMultimer(forward_move.colwise().reverse());
                 else
-                    forward_config.reptateTowardsTailMultimer(forward_move); 
+                    forward_config.reptateTowardsTailMultimer(forward_move);
+                #ifdef CHECK_CBMC_PLAUSIBLE_FORWARD_MOVE
+                    // Calculate the energy of the new configuration 
+                    T energy_total = forward_config.getTotalEnergy(
+                        this->lj_params, this->neighbor_threshold, 
+                        this->fene_params, this->angle_mode,
+                        this->angle_params, this->dihedral_params
+                    );
+                    if (isnan(energy_total) || isinf(energy_total))
+                    {
+                        throw std::runtime_error(
+                            "Proposed multimer reptation move with infinite/"
+                            "undefined energy"
+                        );  
+                    } 
+                #endif
 
                 // Identify the reverse direction 
                 ReptationDirection reverse_dir; 
@@ -2173,7 +2202,22 @@ class PolymerCBMCSampler
                 if (terminal_end == TerminalSegmentEnd::HEAD)
                     forward_config.replaceSegment(forward_move.colwise().reverse(), 0);
                 else
-                    forward_config.replaceSegment(forward_move, n - segment_length); 
+                    forward_config.replaceSegment(forward_move, n - segment_length);
+                #ifdef CHECK_CBMC_PLAUSIBLE_FORWARD_MOVE
+                    // Calculate the energy of the new configuration 
+                    T energy_total = forward_config.getTotalEnergy(
+                        this->lj_params, this->neighbor_threshold, 
+                        this->fene_params, this->angle_mode,
+                        this->angle_params, this->dihedral_params
+                    );
+                    if (isnan(energy_total) || isinf(energy_total))
+                    {
+                        throw std::runtime_error(
+                            "Proposed terminal segment move with infinite/"
+                            "undefined energy"
+                        );  
+                    } 
+                #endif
 
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
