@@ -934,7 +934,7 @@ class PolymerCBMCSampler
 
             // Keep track of the growing segment and the total Rosenbluth weight
             Matrix<T, Dynamic, 3> segment(0, 3); 
-            T rosenbluth_total = 1; 
+            T log_rosenbluth_total = 0; 
 
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
@@ -989,19 +989,26 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors
-                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+                    // Calculate the corresponding atom position probabilities 
+                    Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->config.kT;
+                    T max_residual = residuals_norm.maxCoeff();  
+                    Matrix<T, Dynamic, 1> probs(n_candidates);
+                    T prob_total = 0;  
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        probs(j) = exp(residuals_norm(j) - max_residual);
+                        prob_total += probs(j); 
+                    }
+                    probs /= prob_total;
+
+                    // Choose one candidate position
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
 
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
-                    T rosenbluth_i = boltzmann.sum();
-                    rosenbluth_total *= rosenbluth_i; 
-
-                    // Choose one candidate position with probability 
-                    // proportional to its Boltzmann weight
-                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
-                    boost::random::discrete_distribution<> dist(probs);  
-                    int move_idx = dist(this->rng);
+                    T log_rosenbluth_i = max_residual + log(prob_total); 
+                    log_rosenbluth_total += log_rosenbluth_i; 
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -1061,19 +1068,26 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors 
-                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+                    // Calculate the corresponding atom position probabilities 
+                    Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->config.kT;
+                    T max_residual = residuals_norm.maxCoeff();  
+                    Matrix<T, Dynamic, 1> probs(n_candidates);
+                    T prob_total = 0;  
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        probs(j) = exp(residuals_norm(j) - max_residual);
+                        prob_total += probs(j); 
+                    }
+                    probs /= prob_total;
+
+                    // Choose one candidate position
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
 
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
-                    T rosenbluth_i = boltzmann.sum();
-                    rosenbluth_total *= rosenbluth_i; 
-
-                    // Choose one candidate position with probability 
-                    // proportional to its Boltzmann weight
-                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
-                    boost::random::discrete_distribution<> dist(probs);  
-                    int move_idx = dist(this->rng);
+                    T log_rosenbluth_i = max_residual + log(prob_total); 
+                    log_rosenbluth_total += log_rosenbluth_i; 
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -1081,7 +1095,7 @@ class PolymerCBMCSampler
                 }
             }
 
-            return std::make_pair(segment, rosenbluth_total);  
+            return std::make_pair(segment, log_rosenbluth_total);  
         }
 
         /**
@@ -1188,7 +1202,7 @@ class PolymerCBMCSampler
 
             // Keep track of the Rosenbluth weight; we are not generating a
             // new segment 
-            T rosenbluth_total = 1;
+            T log_rosenbluth_total = 0;
 
             // Extract the segment being re-introduced into the given configuration
             //
@@ -1276,13 +1290,17 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors 
-                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+                    // Calculate the corresponding atom position probabilities 
+                    Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->config.kT;
+                    T max_residual = residuals_norm.maxCoeff();  
+                    T prob_total = 0;  
+                    for (int j = 0; j < n_candidates; ++j)
+                        prob_total += exp(residuals_norm(j) - max_residual);
 
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
-                    T rosenbluth_i = boltzmann.sum();
-                    rosenbluth_total *= rosenbluth_i; 
+                    T log_rosenbluth_i = max_residual + log(prob_total); 
+                    log_rosenbluth_total += log_rosenbluth_i; 
                 }
             }
             else        // Reptate towards the tail 
@@ -1351,17 +1369,21 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors 
-                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+                    // Calculate the corresponding atom position probabilities 
+                    Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->config.kT;
+                    T max_residual = residuals_norm.maxCoeff();  
+                    T prob_total = 0;  
+                    for (int j = 0; j < n_candidates; ++j)
+                        prob_total += exp(residuals_norm(j) - max_residual);
 
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
-                    T rosenbluth_i = boltzmann.sum();
-                    rosenbluth_total *= rosenbluth_i; 
+                    T log_rosenbluth_i = max_residual + log(prob_total); 
+                    log_rosenbluth_total += log_rosenbluth_i; 
                 }
             }
 
-            return rosenbluth_total; 
+            return log_rosenbluth_total; 
         }
 
         /** -------------------------------------------------------------- // 
@@ -1467,7 +1489,7 @@ class PolymerCBMCSampler
 
             // Keep track of the growing segment and the total Rosenbluth weight
             Matrix<T, Dynamic, 3> segment(0, 3); 
-            T rosenbluth_total = 1; 
+            T log_rosenbluth_total = 0;  
              
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
             {
@@ -1523,19 +1545,26 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors 
-                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+                    // Calculate the corresponding atom position probabilities 
+                    Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->config.kT;
+                    T max_residual = residuals_norm.maxCoeff();  
+                    Matrix<T, Dynamic, 1> probs(n_candidates);
+                    T prob_total = 0;  
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        probs(j) = exp(residuals_norm(j) - max_residual);
+                        prob_total += probs(j); 
+                    }
+                    probs /= prob_total;
+
+                    // Choose one candidate position
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
 
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
-                    T rosenbluth_i = boltzmann.sum();
-                    rosenbluth_total *= rosenbluth_i; 
-
-                    // Choose one candidate position with probability 
-                    // proportional to its Boltzmann weight
-                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
-                    boost::random::discrete_distribution<> dist(probs);  
-                    int move_idx = dist(this->rng);
+                    T log_rosenbluth_i = max_residual + log(prob_total); 
+                    log_rosenbluth_total += log_rosenbluth_i; 
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -1600,19 +1629,26 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors 
-                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+                    // Calculate the corresponding atom position probabilities 
+                    Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->config.kT;
+                    T max_residual = residuals_norm.maxCoeff();  
+                    Matrix<T, Dynamic, 1> probs(n_candidates);
+                    T prob_total = 0;  
+                    for (int j = 0; j < n_candidates; ++j)
+                    {
+                        probs(j) = exp(residuals_norm(j) - max_residual);
+                        prob_total += probs(j); 
+                    }
+                    probs /= prob_total;
+
+                    // Choose one candidate position
+                    boost::random::discrete_distribution<> dist(probs);  
+                    int move_idx = dist(this->rng);
 
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
-                    T rosenbluth_i = boltzmann.sum();
-                    rosenbluth_total *= rosenbluth_i; 
-
-                    // Choose one candidate position with probability 
-                    // proportional to its Boltzmann weight
-                    Matrix<T, Dynamic, 1> probs = boltzmann / rosenbluth_i; 
-                    boost::random::discrete_distribution<> dist(probs);  
-                    int move_idx = dist(this->rng);
+                    T log_rosenbluth_i = max_residual + log(prob_total); 
+                    log_rosenbluth_total += log_rosenbluth_i; 
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -1620,7 +1656,7 @@ class PolymerCBMCSampler
                 }
             }
 
-            return std::make_pair(segment, rosenbluth_total); 
+            return std::make_pair(segment, log_rosenbluth_total); 
         }
 
         /**
@@ -1728,7 +1764,7 @@ class PolymerCBMCSampler
 
             // Keep track of the Rosenbluth weight; we are not generating a
             // new segment 
-            T rosenbluth_total = 1;
+            T log_rosenbluth_total = 0;
 
             // Extract the segment being re-introduced into the given configuration
             Matrix<T, Dynamic, 3> segment; 
@@ -1810,13 +1846,17 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors 
-                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+                    // Calculate the corresponding atom position probabilities 
+                    Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->config.kT;
+                    T max_residual = residuals_norm.maxCoeff();  
+                    T prob_total = 0;  
+                    for (int j = 0; j < n_candidates; ++j)
+                        prob_total += exp(residuals_norm(j) - max_residual);
 
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
-                    T rosenbluth_i = boltzmann.sum();
-                    rosenbluth_total *= rosenbluth_i; 
+                    T log_rosenbluth_i = max_residual + log(prob_total); 
+                    log_rosenbluth_total += log_rosenbluth_i; 
                 }
             }
             else        // Move the terminal segment at the tail 
@@ -1887,17 +1927,21 @@ class PolymerCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors 
-                    Matrix<T, Dynamic, 1> boltzmann = (-residuals_i / this->config.kT).array().exp().matrix();
+                    // Calculate the corresponding atom position probabilities 
+                    Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->config.kT;
+                    T max_residual = residuals_norm.maxCoeff();  
+                    T prob_total = 0;  
+                    for (int j = 0; j < n_candidates; ++j)
+                        prob_total += exp(residuals_norm(j) - max_residual);
 
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
-                    T rosenbluth_i = boltzmann.sum();
-                    rosenbluth_total *= rosenbluth_i; 
+                    T log_rosenbluth_i = max_residual + log(prob_total); 
+                    log_rosenbluth_total += log_rosenbluth_i; 
                 }
             }
 
-            return rosenbluth_total; 
+            return log_rosenbluth_total; 
         }
 
         /** -------------------------------------------------------------- // 
@@ -1940,18 +1984,25 @@ class PolymerCBMCSampler
                 Matrix<T, Dynamic, 3> forward_moves = forward_result.first;
                 Matrix<T, Dynamic, 1> forward_residuals = forward_result.second;
 
-                // Calculate the forward Rosenbluth weight
-                Matrix<T, Dynamic, 1> forward_weights
-                    = (-forward_residuals / this->config.kT).array().exp().matrix(); 
-                T forward_rosenbluth = forward_weights.sum();
+                // Calculate the move probabilities
+                Matrix<T, Dynamic, 1> residuals_norm = -forward_residuals / this->config.kT; 
+                T max_residual = residuals_norm.maxCoeff();
+                Matrix<T, Dynamic, 1> probs(n_candidates);
+                T prob_total = 0;  
+                for (int i = 0; i < n_candidates; ++i)
+                {
+                    probs(i) = exp(residuals_norm(i) - max_residual);
+                    prob_total += probs(i); 
+                }
+                probs /= prob_total;
 
                 // Choose one move out of the candidates 
-                std::vector<T> probs; 
-                for (int i = 0; i < n_candidates; ++i)
-                    probs.push_back(forward_weights(i) / forward_rosenbluth);
                 boost::random::discrete_distribution<> dist(probs);  
                 int move_idx = dist(this->rng);
                 Matrix<T, 3, 1> r_new = forward_moves.row(move_idx);
+
+                // Calculate the forward Rosenbluth factor 
+                T log_forward_rosenbluth = max_residual + log(prob_total); 
 
                 // Generate a copy of the current configuration and apply 
                 // the forward move 
@@ -1976,25 +2027,36 @@ class PolymerCBMCSampler
                 Matrix<T, Dynamic, 3> reverse_moves = reverse_result.first;
                 Matrix<T, Dynamic, 1> reverse_residuals = reverse_result.second;
 
-                // Calculate the reverse Rosenbluth weight
-                Matrix<T, Dynamic, 1> reverse_weights
-                    = (-reverse_residuals / this->config.kT).array().exp().matrix(); 
-                T reverse_rosenbluth = reverse_weights.sum();
+                // Calculate the reverse Rosenbluth factor
+                residuals_norm = -reverse_residuals / this->config.kT;
+                max_residual = residuals_norm.maxCoeff(); 
+                prob_total = 0; 
+                for (int i = 0; i < n_candidates; ++i)
+                    prob_total += exp(residuals_norm(i) - max_residual);
+                T log_reverse_rosenbluth = max_residual + log(prob_total);  
 
                 // Calculate the Metropolis acceptance probability
-                T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
+                T log_prob_accept = min(
+                    0.0, log_forward_rosenbluth - log_reverse_rosenbluth
+                );
 
                 // Change the polymer configuration according to that probability
                 T r = this->uniform_dist(this->rng); 
-                if (r < prob_accept)
+                CBMCMoveResult move_result;  
+                if (log(r) < log_prob_accept)
                 {
                     // Reptate towards the head 
                     if (rept_dir == ReptationDirection::HEAD)
                         this->config.reptateTowardsHead(r_new); 
                     else    // Reptate towards the tail 
-                        this->config.reptateTowardsTail(r_new); 
+                        this->config.reptateTowardsTail(r_new);
+                    this->updateCoords(); 
+                    move_result = CBMCMoveResult::ACCEPT; 
                 }
-                this->updateCoords(); 
+                else 
+                {
+                    move_result = CBMCMoveResult::REJECT; 
+                }
 
                 // Return the forward and reverse candidate moves, the index
                 // of the chosen move, its Metropolis acceptance probability, 
@@ -2004,9 +2066,8 @@ class PolymerCBMCSampler
                 std::unordered_map<std::string, T> move_info; 
                 move_info["direction"] = (rept_dir == ReptationDirection::HEAD ? 0 : 1);
                 return std::make_tuple(
-                    forward_moves_, reverse_moves_, move_idx, prob_accept, 
-                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
-                    move_info
+                    forward_moves_, reverse_moves_, move_idx, exp(log_prob_accept),  
+                    move_result, move_info
                 ); 
             }
             else if (move_type == CBMCMoveType::MULTIMER_REPTATION)
@@ -2023,7 +2084,7 @@ class PolymerCBMCSampler
                     rept_dir, segment_length, n_candidates
                 );
                 Matrix<T, Dynamic, 3> forward_move = forward_result.first; 
-                T forward_rosenbluth = forward_result.second;
+                T log_forward_rosenbluth = forward_result.second;
 
                 // Generate a copy of the current configuration and apply 
                 // the forward move
@@ -2046,16 +2107,19 @@ class PolymerCBMCSampler
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(0, n);  
-                T reverse_rosenbluth = this->getBackwardMultimerReptationRosenbluthWeight(
+                T log_reverse_rosenbluth = this->getBackwardMultimerReptationRosenbluthWeight(
                     reverse_dir, segment_length, n_candidates, forward_coords
                 ); 
 
                 // Calculate the Metropolis acceptance probability
-                T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
+                T log_prob_accept = min(
+                    0.0, log_forward_rosenbluth - log_reverse_rosenbluth
+                );
 
                 // Change the polymer configuration according to that probability
                 T r = this->uniform_dist(this->rng); 
-                if (r < prob_accept)
+                CBMCMoveResult move_result;  
+                if (log(r) < log_prob_accept)
                 {
                     // Reptate towards the head
                     //
@@ -2064,8 +2128,13 @@ class PolymerCBMCSampler
                         this->config.reptateTowardsHeadMultimer(forward_move.colwise().reverse()); 
                     else    // Reptate towards the tail 
                         this->config.reptateTowardsTailMultimer(forward_move); 
+                    this->updateCoords();
+                    move_result = CBMCMoveResult::ACCEPT;  
                 }
-                this->updateCoords(); 
+                else 
+                {
+                    move_result = CBMCMoveResult::REJECT; 
+                }
 
                 // Return the forward and reverse candidate moves (latter is 
                 // ill-defined), the index of the chosen move (0), its Metropolis
@@ -2075,9 +2144,8 @@ class PolymerCBMCSampler
                 std::unordered_map<std::string, T> move_info; 
                 move_info["direction"] = (rept_dir == ReptationDirection::HEAD ? 0 : 1);
                 return std::make_tuple(
-                    forward_move_, reverse_move, 0, prob_accept, 
-                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
-                    move_info
+                    forward_move_, reverse_move, 0, exp(log_prob_accept),  
+                    move_result, move_info
                 ); 
             }
             else      // move_type == CBMCMoveType::TERMINAL_SEGMENT
@@ -2094,7 +2162,7 @@ class PolymerCBMCSampler
                     segment_length, terminal_end, n_candidates
                 );
                 Matrix<T, Dynamic, 3> forward_move = forward_result.first; 
-                T forward_rosenbluth = forward_result.second;
+                T log_forward_rosenbluth = forward_result.second;
 
                 // Generate a copy of the current configuration and apply 
                 // the forward move
@@ -2110,16 +2178,19 @@ class PolymerCBMCSampler
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(0, n);  
-                T reverse_rosenbluth = this->getBackwardTerminalSegmentMoveRosenbluthWeight(
+                T log_reverse_rosenbluth = this->getBackwardTerminalSegmentMoveRosenbluthWeight(
                     segment_length, terminal_end, n_candidates, forward_coords
                 );
 
                 // Calculate the Metropolis acceptance probability
-                T prob_accept = min(1.0, forward_rosenbluth / reverse_rosenbluth);
+                T log_prob_accept = min(
+                    0.0, log_forward_rosenbluth - log_reverse_rosenbluth
+                );
 
                 // Change the polymer configuration according to that probability
                 T r = this->uniform_dist(this->rng); 
-                if (r < prob_accept)
+                CBMCMoveResult move_result;  
+                if (log(r) < log_prob_accept)
                 {
                     // Move terminal segment at the head 
                     //
@@ -2128,8 +2199,13 @@ class PolymerCBMCSampler
                         this->config.replaceSegment(forward_move.colwise().reverse(), 0); 
                     else    // Move terminal segment at the tail 
                         this->config.replaceSegment(forward_move, n - segment_length); 
+                    this->updateCoords(); 
+                    move_result = CBMCMoveResult::ACCEPT; 
                 }
-                this->updateCoords(); 
+                else 
+                {
+                    move_result = CBMCMoveResult::REJECT; 
+                }
 
                 // Return the forward and reverse candidate moves (latter is 
                 // ill-defined), the index of the chosen move (0), its Metropolis
@@ -2139,9 +2215,8 @@ class PolymerCBMCSampler
                 std::unordered_map<std::string, T> move_info; 
                 move_info["terminal_end"] = (terminal_end == TerminalSegmentEnd::HEAD ? 0 : 1);
                 return std::make_tuple(
-                    forward_move_, reverse_move, 0, prob_accept, 
-                    (r < prob_accept ? CBMCMoveResult::ACCEPT : CBMCMoveResult::REJECT),
-                    move_info
+                    forward_move_, reverse_move, 0, exp(log_prob_accept),  
+                    move_result, move_info
                 ); 
             }
         }
