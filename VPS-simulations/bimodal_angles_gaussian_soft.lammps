@@ -140,6 +140,7 @@ run ${nsteps1}
 # RE-INTRODUCE LENNARD-JONES POTENTIAL
 # ===================================
 unfix fx3
+pair_style lj/cut 4.6632124352
 include ${lj_coeffs_filename}
 pair_modify shift yes
 

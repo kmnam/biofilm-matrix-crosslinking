@@ -126,6 +126,14 @@ fix fx3 all adapt 1 pair soft a * * v_soft_prefactor
 run ${nsteps1}
 
 # ====================================================================== #
+# RE-INTRODUCE LENNARD-JONES POTENTIAL
+# ===================================
+unfix fx3
+pair_style lj/cut 4.6632124352
+include ${lj_coeffs_filename}
+pair_modify shift yes
+
+# ====================================================================== #
 # PRINT THERMODYNAMIC INFORMATION DURING MINIMIZATION
 # ===================================================
 thermo 10
@@ -139,8 +147,6 @@ minimize 1e-4 1e-6 5000 10000
 # ====================================================================== #
 # RUN SECOND SIMULATION
 # =====================
-unfix fx3
-include ${lj_coeffs_filename}
 reset_timestep 0
 run ${nsteps2}
 
