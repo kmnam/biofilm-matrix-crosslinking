@@ -50,7 +50,7 @@ template <typename T>
 class PolymerMeltConfiguration 
 {
     private:
-        int n; 
+        int n_chains; 
         std::vector<int> lengths;  
         T temp;
         PolymerEnsemble<T> configs;
@@ -75,7 +75,7 @@ class PolymerMeltConfiguration
          */
         PolymerMeltConfiguration()
         {
-            this->n = 1; 
+            this->n_chains = 1; 
             this->lengths.push_back(1);
             PolymerConfiguration<T> config;
             this->configs.push_back(config); 
@@ -97,7 +97,7 @@ class PolymerMeltConfiguration
         /**
          * Default constructor.
          *
-         * @param n Number of polymers. 
+         * @param n_chains Number of polymers. 
          * @param r Atomic coordinates for each polymer.  
          * @param units Units for keeping track of Boltzmann's constant. 
          * @param temp Temperature (in Kelvin).
@@ -105,17 +105,17 @@ class PolymerMeltConfiguration
          * @param ymin, ymax Domain limits along y-axis. 
          * @param zmin, zmax Domain limits along z-axis.
          */
-        PolymerMeltConfiguration(const int n,
+        PolymerMeltConfiguration(const int n_chains,
                                  const std::vector<Matrix<T, Dynamic, 3> >& r, 
                                  const Units units, const T temp, 
                                  const T xmin, const T xmax, const T ymin, 
                                  const T ymax, const T zmin, const T zmax)
         {
-            this->n = n; 
+            this->n_chains = n_chains; 
 
             // Check that the given number of polymers matches the number 
             // of entries in the coordinate vector 
-            if (this->n != r.size())
+            if (this->n_chains != r.size())
                 throw std::runtime_error(
                     "Number of polymers does not match coordinate vector"
                 );
@@ -160,7 +160,7 @@ class PolymerMeltConfiguration
          */
         int numPolymers() const 
         {
-            return this->n; 
+            return this->n_chains; 
         }
 
         /**
@@ -172,7 +172,7 @@ class PolymerMeltConfiguration
         Matrix<T, Dynamic, 1> bondLengths(const int i) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].bondLengths();  
@@ -187,7 +187,7 @@ class PolymerMeltConfiguration
         int getLength(const int i) const 
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->lengths[i];
@@ -225,7 +225,7 @@ class PolymerMeltConfiguration
         Matrix<T, Dynamic, 1> bondAngles(const int i) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].bondAngles(); 
@@ -240,7 +240,7 @@ class PolymerMeltConfiguration
         Matrix<T, Dynamic, 1> dihedralAngles(const int i) const 
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].dihedralAngles(); 
@@ -255,7 +255,7 @@ class PolymerMeltConfiguration
         T radiusOfGyration(const int i) const 
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].radiusOfGyration(); 
@@ -271,7 +271,7 @@ class PolymerMeltConfiguration
         Matrix<T, Dynamic, 3> tangentVectors(const int i) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].tangentVectors(); 
@@ -286,7 +286,7 @@ class PolymerMeltConfiguration
         T meanBondLength(const int i) const 
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].meanBondLength(); 
@@ -305,7 +305,7 @@ class PolymerMeltConfiguration
                                          const int seg_length) const 
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].getSegment(atom_idx, seg_length); 
@@ -324,7 +324,7 @@ class PolymerMeltConfiguration
         T getMinDist(const int i, const Ref<const Matrix<T, 3, 1> >& p) const 
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             // Compute the minimum distance under periodic boundary conditions
@@ -354,7 +354,7 @@ class PolymerMeltConfiguration
         Matrix<T, 3, 1> centerOfMass(const int i) const 
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].centerOfMass(); 
@@ -373,7 +373,7 @@ class PolymerMeltConfiguration
                             const int atom_idx)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].replaceSegment(segment, atom_idx); 
@@ -386,10 +386,10 @@ class PolymerMeltConfiguration
          */
         void setPolymers(std::vector<Matrix<T, Dynamic, 3> >& polymers)
         {
-            this->n = polymers.size();
+            this->n_chains = polymers.size();
             this->lengths.clear(); 
             this->configs.clear(); 
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 this->lengths.push_back(polymers[i].rows());
                 this->configs.push_back(polymers[i]);
@@ -405,7 +405,7 @@ class PolymerMeltConfiguration
         void appendAtomToTail(const int i, const Ref<const Matrix<T, 3, 1> >& r)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].appendAtomToTail(r);
@@ -421,7 +421,7 @@ class PolymerMeltConfiguration
         void appendAtomToHead(const int i, const Ref<const Matrix<T, 3, 1> >& r)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].appendAtomToHead(r);
@@ -438,7 +438,7 @@ class PolymerMeltConfiguration
                                  const Ref<const Matrix<T, Dynamic, 3> >& segment)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].appendSegmentToTail(segment);
@@ -455,7 +455,7 @@ class PolymerMeltConfiguration
                                  const Ref<const Matrix<T, Dynamic, 3> >& segment)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].appendSegmentToHead(segment);
@@ -470,7 +470,7 @@ class PolymerMeltConfiguration
         void popAtomFromTail(const int i)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].popAtomFromTail();
@@ -485,7 +485,7 @@ class PolymerMeltConfiguration
         void popAtomFromHead(const int i)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].popAtomFromHead();
@@ -501,7 +501,7 @@ class PolymerMeltConfiguration
         void popSegmentFromTail(const int i, const int atom_idx)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].popSegmentFromTail(atom_idx);
@@ -518,7 +518,7 @@ class PolymerMeltConfiguration
         void popSegmentFromHead(const int i, const int atom_idx)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].popSegmentFromHead(atom_idx);
@@ -537,7 +537,7 @@ class PolymerMeltConfiguration
         void reptateTowardsTail(const int i, const Ref<const Matrix<T, 3, 1> >& r)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].reptateTowardsTail(r); 
@@ -554,7 +554,7 @@ class PolymerMeltConfiguration
         void reptateTowardsHead(const int i, const Ref<const Matrix<T, 3, 1> >& r)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].reptateTowardsHead(r); 
@@ -573,7 +573,7 @@ class PolymerMeltConfiguration
                                         const Ref<const Matrix<T, Dynamic, 3> >& segment)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].reptateTowardsTailMultimer(segment); 
@@ -592,7 +592,7 @@ class PolymerMeltConfiguration
                                         const Ref<const Matrix<T, Dynamic, 3> >& segment)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].reptateTowardsHeadMultimer(segment); 
@@ -614,7 +614,7 @@ class PolymerMeltConfiguration
                                const int idx_center)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].rotateHeadSegment(atom_idx, theta, u, idx_center); 
@@ -636,7 +636,7 @@ class PolymerMeltConfiguration
                                const int idx_center)
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             this->configs[i].rotateTailSegment(atom_idx, theta, u, idx_center); 
@@ -664,7 +664,7 @@ class PolymerMeltConfiguration
                              const bool nonconsecutive = false) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             // Start with the non-bonded energy of the i-th polymer by itself ... 
@@ -690,7 +690,7 @@ class PolymerMeltConfiguration
             } 
 
             // Look for further non-bonded interactions with the other polymers
-            for (int j = 0; j < this->n; ++j)
+            for (int j = 0; j < this->n_chains; ++j)
             {
                 if (i != j)
                 {
@@ -738,7 +738,7 @@ class PolymerMeltConfiguration
                                   const bool nonconsecutive = false) const
         {
             T energy = 0;
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 // Start with the non-bonded energy along the i-th polymer ...
                 const int ni = this->lengths[i];
@@ -765,7 +765,7 @@ class PolymerMeltConfiguration
                 
                 // Then get the non-bonded energy between the i-th polymer 
                 // and every other polymer ... 
-                for (int j = 0; j < this->n; ++j)
+                for (int j = 0; j < this->n_chains; ++j)
                 {
                     if (i != j)
                     {
@@ -814,7 +814,7 @@ class PolymerMeltConfiguration
                         const std::unordered_map<std::string, T>& lj_params = {}) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].getBondEnergy(fene_params, include_lj, lj_params); 
@@ -839,7 +839,7 @@ class PolymerMeltConfiguration
                              const std::unordered_map<std::string, T>& lj_params = {}) const
         {
             T energy = 0; 
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
                 energy += this->getBondEnergy(i, fene_params, include_lj, lj_params);
 
             return energy; 
@@ -861,7 +861,7 @@ class PolymerMeltConfiguration
                              std::unordered_map<std::string, T>& angle_params) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].getBondAngleEnergy(angle_mode, angle_params); 
@@ -882,7 +882,7 @@ class PolymerMeltConfiguration
                                   std::unordered_map<std::string, T>& angle_params) const
         {
             T energy = 0;
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
                 energy += this->getBondAngleEnergy(i, angle_mode, angle_params); 
             
             return energy; 
@@ -900,7 +900,7 @@ class PolymerMeltConfiguration
                                  std::unordered_map<std::string, T>& dihedral_params) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             return this->configs[i].getDihedralAngleEnergy(dihedral_params); 
@@ -916,7 +916,7 @@ class PolymerMeltConfiguration
         T getTotalDihedralAngleEnergy(std::unordered_map<std::string, T>& dihedral_params) const
         {
             T energy = 0;
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
                 energy += this->getDihedralAngleEnergy(i, dihedral_params); 
             
             return energy; 
@@ -950,7 +950,7 @@ class PolymerMeltConfiguration
                          std::unordered_map<std::string, T>& dihedral_params) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             // Get each energy contribution
@@ -987,7 +987,7 @@ class PolymerMeltConfiguration
                                      const T neighbor_threshold) const
         {
             // Check that i is a valid index
-            if (i < 0 || i >= this->n)
+            if (i < 0 || i >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             // Get the residual energy within the i-th polymer ...
@@ -1013,7 +1013,7 @@ class PolymerMeltConfiguration
             }
 
             // Run through all the other polymers ...
-            for (int j = 0; j < this->n; ++j)
+            for (int j = 0; j < this->n_chains; ++j)
             {
                 if (i != j)
                 {
@@ -1074,7 +1074,7 @@ class PolymerMeltConfiguration
                                              const T neighbor_threshold) const
         {
             // Check that m is a valid index
-            if (m < 0 || m >= this->n)
+            if (m < 0 || m >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             // Get the residual energy within the m-th polymer ...
@@ -1162,7 +1162,7 @@ class PolymerMeltConfiguration
             }
             
             // Run through all the other polymers ... 
-            for (int j = 0; j < this->n; ++j)
+            for (int j = 0; j < this->n_chains; ++j)
             {
                 if (m != j)
                 {
@@ -1223,7 +1223,7 @@ class PolymerMeltConfiguration
                                                       const T neighbor_threshold) const 
         {
             // Check that i is a valid index
-            if (m < 0 || m >= this->n)
+            if (m < 0 || m >= this->n_chains)
                 throw std::runtime_error("Undefined polymer index");
 
             // Get the residual energy within the m-th polymer ... 
@@ -1312,7 +1312,7 @@ class PolymerMeltConfiguration
             }
 
             // Run through all the remaining polymers ... 
-            for (int j = 0; j < this->n; ++j)
+            for (int j = 0; j < this->n_chains; ++j)
             {
                 if (m != j)
                 {
@@ -1387,7 +1387,7 @@ class PolymerMeltConfiguration
             int n_dihedrals = 0; 
             const bool no_angles = (angle_mode == AngleMode::COSINE && angle_params["K"] == 0);
             const bool no_dihedrals = (dihedral_params["K"] == 0); 
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 n_atoms += this->lengths[i];
                 n_bonds += (this->lengths[i] - 1);
@@ -1474,7 +1474,7 @@ class PolymerMeltConfiguration
             // under periodic boundary conditions) 
             outfile << "Atoms\n\n";
             int offset = 0; 
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 const int ni = this->lengths[i]; 
                 Matrix<T, Dynamic, 3> ri = this->configs[i].getSegment(0, ni);  
@@ -1515,7 +1515,7 @@ class PolymerMeltConfiguration
             outfile << "Bonds\n\n";
             int atom_offset = 0;
             int bond_offset = 0;  
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 const int ni = this->lengths[i]; 
                 for (int j = 0; j < ni - 1; ++j)
@@ -1539,7 +1539,7 @@ class PolymerMeltConfiguration
                 outfile << "Angles\n\n";
                 atom_offset = 0; 
                 int angle_offset = 0; 
-                for (int i = 0; i < this->n; ++i)
+                for (int i = 0; i < this->n_chains; ++i)
                 {
                     const int ni = this->lengths[i];  
                     for (int j = 0; j < ni - 2; ++j)
@@ -1566,7 +1566,7 @@ class PolymerMeltConfiguration
                 outfile << "Dihedrals\n\n";
                 atom_offset = 0; 
                 int dihedral_offset = 0; 
-                for (int i = 0; i < this->n; ++i)
+                for (int i = 0; i < this->n_chains; ++i)
                 {
                     const int ni = this->lengths[i]; 
                     for (int j = 0; j < ni - 3; ++j)
