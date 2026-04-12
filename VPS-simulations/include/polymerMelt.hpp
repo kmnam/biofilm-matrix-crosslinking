@@ -2062,12 +2062,12 @@ std::pair<PolymerMeltConfiguration<T>,
             std::string token; 
             std::getline(ss, token, '\t');    // Polymer index 
             int polymer_idx = std::stoi(token); 
-            std::getline(ss, token, '\t');    // Atom index 
-            int atom_idx = std::stoi(token); 
             if (polymer_idx > curr_idx)       // Polymer index should be one greater at most
             {
+                // Keep track of the accumulated polymer length and start 
+                // tracking the new polymer  
                 lengths.push_back(curr_length); 
-                curr_length = 0; 
+                curr_length = 1;       // We have already begun the new polymer  
                 curr_idx = polymer_idx; 
             }
             else 
@@ -2079,22 +2079,28 @@ std::pair<PolymerMeltConfiguration<T>,
     lengths.push_back(curr_length);    // Add the last polymer length
     int n_chains = lengths.size(); 
 
-    // Now parse the rest of the file to get the final configuration 
+    // Now parse the rest of the file to get the final configuration ... 
     std::vector<std::vector<Matrix<T, Dynamic, 3> > > melt_coords;
-    for (int i = 0; i < lengths.size(); ++i)
-    {
-        std::vector<Matrix<T, Dynamic, 3> > melt_coords_i;
-        for (int j = 0; j < lengths[i]; ++i) 
-            melt_coords_i.push_back(Matrix<T, Dynamic, 3>::Zero(lengths[i], 3));
-        melt_coords.push_back(melt_coords_i); 
-    } 
-    int config_idx = 0; 
+
+    // Initialize the zeroth configuration 
+    int config_idx = 0;
+    std::vector<Matrix<T, Dynamic, 3> > melt_coords_i;
+    for (const int length : lengths)
+        melt_coords_i.push_back(Matrix<T, Dynamic, 3>::Zero(length, 3));
+    melt_coords.push_back(melt_coords_i);
+
+    // Parse the file ...  
     while (std::getline(infile, line))
     {
         // If we reach a new configuration, keep parsing
         if (line.find("# CONFIG") == 0)
         {
-            config_idx++; 
+            // Initialize the coordinate array for the next configuration 
+            config_idx++;
+            std::vector<Matrix<T, Dynamic, 3> > melt_coords_next;
+            for (const int length : lengths)
+                melt_coords_next.push_back(Matrix<T, Dynamic, 3>::Zero(length, 3));
+            melt_coords.push_back(melt_coords_next); 
         }
         // If we reach an ensemble-level output line at the end of
         // the file, stop parsing
@@ -2117,7 +2123,7 @@ std::pair<PolymerMeltConfiguration<T>,
             std::getline(ss, token, '\t');    // Polymer index
             int polymer_idx = std::stoi(token); 
             std::getline(ss, token, '\t');    // Atom index
-            int atom_idx = std::stoi(token); 
+            int atom_idx = std::stoi(token);
             std::getline(ss, token, '\t');    // x-coordinate 
             melt_coords[config_idx][polymer_idx](atom_idx, 0) = static_cast<T>(std::stod(token));
             std::getline(ss, token, '\t');    // y-coordinate
