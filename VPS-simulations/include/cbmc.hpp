@@ -4994,7 +4994,8 @@ class PolymerMeltCBMCSampler
                         { 
                             for (int k = 0; k < this->lengths[j]; ++k)
                             {
-                                outfile << ensemble_coords[i][j](k, 0) << '\t'
+                                outfile << j << '\t' << k << '\t'
+                                        << ensemble_coords[i][j](k, 0) << '\t'
                                         << ensemble_coords[i][j](k, 1) << '\t'
                                         << ensemble_coords[i][j](k, 2) << std::endl;
                             } 
