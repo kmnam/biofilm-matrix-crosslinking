@@ -2680,7 +2680,7 @@ class PolymerMeltCBMCSampler
     private:
         // Current polymer melt configuration
         PolymerMeltConfiguration<T> melt_config;
-        int n; 
+        int n_chains; 
 
         // Polymer lengths and atomic coordinates
         std::vector<int> lengths;  
@@ -2718,7 +2718,7 @@ class PolymerMeltCBMCSampler
          */
         void updateCoords()
         {
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
                 this->r[i] = this->melt_config.getSegment(i, 0, this->lengths[i]); 
         }
 
@@ -2739,8 +2739,8 @@ class PolymerMeltCBMCSampler
                                const int n_bins = 10000)
         {
             this->melt_config = melt_config;
-            this->n = melt_config.numPolymers();  
-            for (int i = 0; i < this->n; ++i)
+            this->n_chains = melt_config.numPolymers();  
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 int ni = this->melt_config.getLength(i); 
                 this->lengths.push_back(ni); 
@@ -2788,8 +2788,8 @@ class PolymerMeltCBMCSampler
                                const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf)
         {
             this->melt_config = melt_config;
-            this->n = melt_config.numPolymers();  
-            for (int i = 0; i < this->n; ++i)
+            this->n_chains = melt_config.numPolymers();  
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 int ni = this->melt_config.getLength(i); 
                 this->lengths.push_back(ni); 
@@ -3020,7 +3020,7 @@ class PolymerMeltCBMCSampler
 
             // Generate new configuration with the given coordinates
             std::vector<Matrix<T, Dynamic, 3> > melt_coords; 
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 if (i != polymer_idx)
                     melt_coords.push_back(this->r[i]); 
@@ -3028,7 +3028,7 @@ class PolymerMeltCBMCSampler
                     melt_coords.push_back(coords); 
             } 
             PolymerMeltConfiguration<T> melt_config_(
-                this->n, melt_coords, this->melt_config.getUnits(),
+                this->n_chains, melt_coords, this->melt_config.getUnits(),
                 this->melt_config.getTemp(), this->xmin, this->xmax,
                 this->ymin, this->ymax, this->zmin, this->zmax 
             );    
@@ -3149,7 +3149,7 @@ class PolymerMeltCBMCSampler
                 //
                 // Therefore, the new atom here is the final atom in the 
                 // current configuration 
-                moves.row(0) = this->r[polymer_idx].row(n - 1);
+                moves.row(0) = this->r[polymer_idx].row(ni - 1);
 
                 // Get the residual energy 
                 residuals(0) = melt_config_.getReptationResidualEnergy(
@@ -3161,7 +3161,7 @@ class PolymerMeltCBMCSampler
                 for (int i = 1; i < n_candidates; ++i)
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
-                        coords.row(n - 3), coords.row(n - 2), coords.row(n - 1),
+                        coords.row(ni - 3), coords.row(ni - 2), coords.row(ni - 1),
                         bond_lengths(i), bond_angles(i), dihedrals(i),
                         this->rng, this->uniform_dist,
                         (dihedrals(i) > 0 ? 1 : -1)
@@ -3376,19 +3376,19 @@ class PolymerMeltCBMCSampler
                     {
                         if (i == 0)
                         {
-                            r1 = this->r[polymer_idx].row(n - 3);
-                            r2 = this->r[polymer_idx].row(n - 2);
-                            r3 = this->r[polymer_idx].row(n - 1); 
+                            r1 = this->r[polymer_idx].row(ni - 3);
+                            r2 = this->r[polymer_idx].row(ni - 2);
+                            r3 = this->r[polymer_idx].row(ni - 1); 
                         }
                         else if (i == 1)
                         {
-                            r1 = this->r[polymer_idx].row(n - 2); 
-                            r2 = this->r[polymer_idx].row(n - 1); 
+                            r1 = this->r[polymer_idx].row(ni - 2); 
+                            r2 = this->r[polymer_idx].row(ni - 1); 
                             r3 = segment.row(0); 
                         }
                         else if (i == 2)
                         {
-                            r1 = this->r[polymer_idx].row(n - 1); 
+                            r1 = this->r[polymer_idx].row(ni - 1); 
                             r2 = segment.row(0);
                             r3 = segment.row(1); 
                         }
@@ -3468,7 +3468,7 @@ class PolymerMeltCBMCSampler
 
             // Generate new configuration with the given coordinates
             std::vector<Matrix<T, Dynamic, 3> > melt_coords; 
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 if (i != polymer_idx)
                     melt_coords.push_back(this->r[i]); 
@@ -3476,7 +3476,7 @@ class PolymerMeltCBMCSampler
                     melt_coords.push_back(coords); 
             } 
             PolymerMeltConfiguration<T> melt_config_(
-                this->n, melt_coords, this->melt_config.getUnits(),
+                this->n_chains, melt_coords, this->melt_config.getUnits(),
                 this->melt_config.getTemp(), this->xmin, this->xmax, 
                 this->ymin, this->ymax, this->zmin, this->zmax
             );
@@ -3580,7 +3580,7 @@ class PolymerMeltCBMCSampler
             } 
             else
             { 
-                segment = curr_coords(Eigen::seqN(n - n_reptate - 1, n_reptate), Eigen::all); 
+                segment = curr_coords(Eigen::seqN(ni - n_reptate - 1, n_reptate), Eigen::all); 
             }
             
             // Again, the reptation direction is from the given configuration,
@@ -3679,28 +3679,28 @@ class PolymerMeltCBMCSampler
                     // We must have reptated toward the head to get the given
                     // configuration
                     //
-                    // Therefore, the i-th atom here is the (n - K + i)-th
+                    // Therefore, the i-th atom here is the (ni - K + i)-th
                     // of the current configuration  
-                    candidates_i.row(0) = curr_coords.row(n - n_reptate + i); 
+                    candidates_i.row(0) = curr_coords.row(ni - n_reptate + i); 
 
                     // Generate every other candidate position 
                     for (int j = 1; j < n_candidates; ++j)
                     {
                         if (i == 0)
                         {
-                            r1 = coords.row(n - 3); 
-                            r2 = coords.row(n - 2); 
-                            r3 = coords.row(n - 1); 
+                            r1 = coords.row(ni - 3); 
+                            r2 = coords.row(ni - 2); 
+                            r3 = coords.row(ni - 1); 
                         }
                         else if (i == 1)
                         {
-                            r1 = coords.row(n - 2); 
-                            r2 = coords.row(n - 1); 
+                            r1 = coords.row(ni - 2); 
+                            r2 = coords.row(ni - 1); 
                             r3 = segment.row(0); 
                         }
                         else if (i == 2)
                         {
-                            r1 = coords.row(n - 1); 
+                            r1 = coords.row(ni - 1); 
                             r2 = segment.row(0);
                             r3 = segment.row(1); 
                         }
@@ -3949,22 +3949,22 @@ class PolymerMeltCBMCSampler
                         //
                         // Since we are moving the last (segment_length) atoms
                         // in the polymer, the last atom that is not moved 
-                        // has index n - segment_length - 1
+                        // has index ni - segment_length - 1
                         if (i == 0)
                         {
-                            r1 = curr_coords.row(n - segment_length - 3);
-                            r2 = curr_coords.row(n - segment_length - 2); 
-                            r3 = curr_coords.row(n - segment_length - 1);  
+                            r1 = curr_coords.row(ni - segment_length - 3);
+                            r2 = curr_coords.row(ni - segment_length - 2); 
+                            r3 = curr_coords.row(ni - segment_length - 1);  
                         }
                         else if (i == 1)    // Second atom in the segment
                         {
-                            r1 = curr_coords.row(n - segment_length - 2); 
-                            r2 = curr_coords.row(n - segment_length - 1); 
+                            r1 = curr_coords.row(ni - segment_length - 2); 
+                            r2 = curr_coords.row(ni - segment_length - 1); 
                             r3 = segment.row(0); 
                         }
                         else if (i == 2)    // Third atom in the segment
                         {
-                            r1 = curr_coords.row(n - segment_length - 1); 
+                            r1 = curr_coords.row(ni - segment_length - 1); 
                             r2 = segment.row(0); 
                             r3 = segment.row(1);
                         }
@@ -4045,7 +4045,7 @@ class PolymerMeltCBMCSampler
 
             // Generate new configuration with the given coordinates
             std::vector<Matrix<T, Dynamic, 3> > melt_coords; 
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 if (i != polymer_idx)
                     melt_coords.push_back(this->r[i]); 
@@ -4053,7 +4053,7 @@ class PolymerMeltCBMCSampler
                     melt_coords.push_back(coords); 
             } 
             PolymerMeltConfiguration<T> melt_config_(
-                this->n, melt_coords, this->melt_config.getUnits(),
+                this->n_chains, melt_coords, this->melt_config.getUnits(),
                 this->melt_config.getTemp(), this->xmin, this->xmax,
                 this->ymin, this->ymax, this->zmin, this->zmax 
             );
@@ -4154,7 +4154,7 @@ class PolymerMeltCBMCSampler
             } 
             else
             { 
-                segment = curr_coords(Eigen::seqN(n - segment_length - 1, segment_length), Eigen::all); 
+                segment = curr_coords(Eigen::seqN(ni - segment_length - 1, segment_length), Eigen::all); 
             }
              
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
@@ -4249,7 +4249,7 @@ class PolymerMeltCBMCSampler
                     //
                     // If we are moving the terminal segment at the tail,
                     // the i-th atom has index n - segment_length + i
-                    candidates_i.row(0) = curr_coords.row(n - segment_length + i);
+                    candidates_i.row(0) = curr_coords.row(ni - segment_length + i);
 
                     // Generate every other candidate position
                     for (int j = 1; j < n_candidates; ++j)
@@ -4258,22 +4258,22 @@ class PolymerMeltCBMCSampler
                         //
                         // Since we are moving the last (segment_length) atoms
                         // in the polymer, the last atom that is not moved 
-                        // has index n - segment_length - 1
+                        // has index ni - segment_length - 1
                         if (i == 0)
                         {
-                            r1 = coords.row(n - segment_length - 3);
-                            r2 = coords.row(n - segment_length - 2); 
-                            r3 = coords.row(n - segment_length - 1);  
+                            r1 = coords.row(ni - segment_length - 3);
+                            r2 = coords.row(ni - segment_length - 2); 
+                            r3 = coords.row(ni - segment_length - 1);  
                         }
                         else if (i == 1)    // Second atom in the segment
                         {
-                            r1 = coords.row(n - segment_length - 2); 
-                            r2 = coords.row(n - segment_length - 1); 
+                            r1 = coords.row(ni - segment_length - 2); 
+                            r2 = coords.row(ni - segment_length - 1); 
                             r3 = segment.row(0); 
                         }
                         else if (i == 2)    // Third atom in the segment
                         {
-                            r1 = coords.row(n - segment_length - 1); 
+                            r1 = coords.row(ni - segment_length - 1); 
                             r2 = segment.row(0); 
                             r3 = segment.row(1);
                         }
@@ -4424,7 +4424,7 @@ class PolymerMeltCBMCSampler
 
                 // Generate reverse moves
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(
-                    polymer_idx, 0, n
+                    polymer_idx, 0, this->lengths[polymer_idx]
                 );  
                 auto reverse_result = this->generateReptationMoves(
                     polymer_idx, reverse_dir, n_candidates, forward_coords
@@ -4488,7 +4488,7 @@ class PolymerMeltCBMCSampler
                 auto forward_result = this->generateForwardMultimerReptationMove(
                     polymer_idx, rept_dir, segment_length, n_candidates
                 );
-                Matrix<T, Dynamic, 3> forward_move = forward_result.first; 
+                Matrix<T, Dynamic, 3> forward_move = forward_result.first;
                 T log_forward_rosenbluth = forward_result.second;
 
                 // Generate a copy of the current configuration and apply 
@@ -4542,7 +4542,7 @@ class PolymerMeltCBMCSampler
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(
-                    polymer_idx, 0, n
+                    polymer_idx, 0, this->lengths[polymer_idx]
                 );  
                 T log_reverse_rosenbluth = this->getBackwardMultimerReptationRosenbluthWeight(
                     polymer_idx, reverse_dir, segment_length, n_candidates,
@@ -4618,7 +4618,8 @@ class PolymerMeltCBMCSampler
                     );
                 else
                     forward_config.replaceSegment(
-                        polymer_idx, forward_move, n - segment_length
+                        polymer_idx, forward_move,
+                        this->lengths[polymer_idx] - segment_length
                     );
                 #ifdef CHECK_CBMC_PLAUSIBLE_FORWARD_MOVE
                     // Calculate the energy of the new configuration 
@@ -4650,7 +4651,7 @@ class PolymerMeltCBMCSampler
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(
-                    polymer_idx, 0, n
+                    polymer_idx, 0, this->lengths[polymer_idx]
                 );  
                 T log_reverse_rosenbluth = this->getBackwardTerminalSegmentMoveRosenbluthWeight(
                     polymer_idx, segment_length, terminal_end, n_candidates,
@@ -4676,7 +4677,8 @@ class PolymerMeltCBMCSampler
                         ); 
                     else    // Move terminal segment at the tail 
                         this->melt_config.replaceSegment(
-                            polymer_idx, forward_move, n - segment_length
+                            polymer_idx, forward_move,
+                            this->lengths[polymer_idx] - segment_length
                         );
                     this->updateCoords();
                     move_result = CBMCMoveResult::ACCEPT;  
@@ -4743,7 +4745,7 @@ class PolymerMeltCBMCSampler
         {
             // Write sampling parameters to file
             outfile << std::setprecision(10); 
-            outfile << "## n_chains = " << this->n << std::endl
+            outfile << "## n_chains = " << this->n_chains << std::endl
                     << "## domain_xmin = " << this->xmin << std::endl
                     << "## domain_xmax = " << this->xmax << std::endl
                     << "## domain_ymin = " << this->ymin << std::endl
@@ -4770,7 +4772,7 @@ class PolymerMeltCBMCSampler
 
             // Write the initial coordinates to file 
             outfile << "# CONFIG\tINIT\n";
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
             {
                 for (int j = 0; j < this->lengths[i]; ++j)
                 {
@@ -4794,7 +4796,7 @@ class PolymerMeltCBMCSampler
             for (int i = 0; i < n_collect; ++i)
             {
                 std::vector<Matrix<T, Dynamic, 3> > ensemble_coords_i;
-                for (int j = 0; j < this->n; ++j)
+                for (int j = 0; j < this->n_chains; ++j)
                 {
                     Matrix<T, Dynamic, 3> rj = Matrix<T, Dynamic, 3>::Zero(this->lengths[j], 3); 
                     ensemble_coords_i.push_back(rj); 
@@ -4819,9 +4821,9 @@ class PolymerMeltCBMCSampler
             // lengths
             std::vector<T> polymer_probs;
             int total_length = 0; 
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
                 total_length += this->lengths[i];
-            for (int i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n_chains; ++i)
                 polymer_probs.push_back(
                     static_cast<double>(this->lengths[i]) / total_length
                 );
@@ -4845,7 +4847,7 @@ class PolymerMeltCBMCSampler
                     move_type = CBMCMoveType::TERMINAL_SEGMENT;
 
                 // Sample a polymer in the melt 
-                int polymer_idx = polymer_dist(rng);
+                const int polymer_idx = polymer_dist(rng);
 
                 // Generate and accept/reject a corresponding move 
                 int segment_length = 0;
@@ -4911,7 +4913,7 @@ class PolymerMeltCBMCSampler
                 // Decide whether to collect this configuration 
                 if (curr_idx >= n_burnin && (curr_idx - n_burnin) % mod_collect == 0)
                 {
-                    for (int i = 0; i < this->n; ++i)
+                    for (int i = 0; i < this->n_chains; ++i)
                     {
                         for (int j = 0; j < this->lengths[i]; ++j)
                         {
@@ -4933,7 +4935,7 @@ class PolymerMeltCBMCSampler
                         // its energy and radius of gyration ... 
                         std::vector<Matrix<T, Dynamic, 3> > coords_i(ensemble_coords[i]);
                         PolymerMeltConfiguration<T> melt_config_i(
-                            this->n, coords_i, this->melt_config.getUnits(),
+                            this->n_chains, coords_i, this->melt_config.getUnits(),
                             this->melt_config.getTemp(), this->xmin, this->xmax,
                             this->ymin, this->ymax, this->zmin, this->zmax
                         );
@@ -4988,7 +4990,7 @@ class PolymerMeltCBMCSampler
                                 << "# ENERGY_BOND\t" << energy_bond << std::endl
                                 << "# ENERGY_ANGLE\t" << energy_angle << std::endl
                                 << "# ENERGY_DIHEDRAL\t" << energy_dihedral << std::endl;
-                        for (int j = 0; j < this->n; ++j)
+                        for (int j = 0; j < this->n_chains; ++j)
                         { 
                             for (int k = 0; k < this->lengths[j]; ++k)
                             {
@@ -5010,7 +5012,7 @@ class PolymerMeltCBMCSampler
                 // and radius of gyration ... 
                 std::vector<Matrix<T, Dynamic, 3> > coords_i(ensemble_coords[i]);
                 PolymerMeltConfiguration<T> melt_config_i(
-                    this->n, coords_i, this->melt_config.getUnits(),
+                    this->n_chains, coords_i, this->melt_config.getUnits(),
                     this->melt_config.getTemp(), this->xmin, this->xmax,
                     this->ymin, this->ymax, this->zmin, this->zmax
                 );
@@ -5064,7 +5066,7 @@ class PolymerMeltCBMCSampler
                         << "# ENERGY_BOND\t" << energy_bond << std::endl
                         << "# ENERGY_ANGLE\t" << energy_angle << std::endl
                         << "# ENERGY_DIHEDRAL\t" << energy_dihedral << std::endl; 
-                for (int j = 0; j < this->n; ++j)
+                for (int j = 0; j < this->n_chains; ++j)
                 { 
                     for (int k = 0; k < this->lengths[j]; ++k)
                     {
