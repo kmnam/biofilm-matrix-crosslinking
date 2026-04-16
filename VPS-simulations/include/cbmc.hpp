@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/11/2026
+ *     4/15/2026
  */
 
 #ifndef CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -2739,7 +2739,7 @@ class PolymerMeltCBMCSampler
                                const int n_bins = 10000)
         {
             this->melt_config = melt_config;
-            this->n_chains = melt_config.numPolymers();  
+            this->n_chains = melt_config.numChains(); 
             for (int i = 0; i < this->n_chains; ++i)
             {
                 int ni = this->melt_config.getLength(i); 
@@ -2788,7 +2788,7 @@ class PolymerMeltCBMCSampler
                                const Ref<const Matrix<T, Dynamic, 2> >& bond_length_cdf)
         {
             this->melt_config = melt_config;
-            this->n_chains = melt_config.numPolymers();  
+            this->n_chains = melt_config.numChains();
             for (int i = 0; i < this->n_chains; ++i)
             {
                 int ni = this->melt_config.getLength(i); 
@@ -5071,7 +5071,8 @@ class PolymerMeltCBMCSampler
                 { 
                     for (int k = 0; k < this->lengths[j]; ++k)
                     {
-                        outfile << ensemble_coords[i][j](k, 0) << '\t'
+                        outfile << j << '\t' << k << '\t'
+                                << ensemble_coords[i][j](k, 0) << '\t'
                                 << ensemble_coords[i][j](k, 1) << '\t'
                                 << ensemble_coords[i][j](k, 2) << std::endl;
                     } 
