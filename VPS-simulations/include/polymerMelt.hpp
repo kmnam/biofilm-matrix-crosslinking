@@ -217,6 +217,19 @@ class PolymerMeltConfiguration
         }
 
         /**
+         * Return the box bounds. 
+         *
+         * @returns Box bounds as a tuple of six scalars. 
+         */
+        std::tuple<T, T, T, T, T, T> getBounds() const
+        {
+            return std::make_tuple(
+                this->xmin, this->xmax, this->ymin, this->ymax, this->zmin, 
+                this->zmax
+            ); 
+        }
+
+        /**
          * Return the bond angles for the i-th polymer.
          *
          * @param i Polymer index.
