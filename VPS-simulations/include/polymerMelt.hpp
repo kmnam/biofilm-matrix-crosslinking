@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/10/2026
+ *     4/15/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -154,11 +154,11 @@ class PolymerMeltConfiguration
         }
 
         /**
-         * Return the number of polymers in the melt.
+         * Return the number of chains in the melt.
          *
-         * @returns Number of polymers in the melt.  
+         * @returns Number of chains in the melt. 
          */
-        int numPolymers() const 
+        int numChains() const
         {
             return this->n_chains; 
         }
@@ -1591,555 +1591,9 @@ class PolymerMeltConfiguration
         }
 };
 
-/**
- * Parse the given LAMMPS data file. 
- *
- * @param filename Input filename.
- * @param units Units used in the LAMMPS file. 
- * @param temp Temperature.  
- * @returns Polymer melt configuration in the given file, along with all
- *          potential parameters.  
- */
-template <typename T>
-std::tuple<PolymerMeltConfiguration<T>,
-           std::unordered_map<std::string, T>,
-           std::unordered_map<std::string, T>,
-           AngleMode,
-           std::unordered_map<std::string, T>,
-           std::unordered_map<std::string, T> > parseMeltLammps(const std::string& filename,
-                                                                const Units units, 
-                                                                const T temp)
-{
-    std::ifstream infile(filename);
-
-    // Begin parsing the file ...
-    //
-    // Keep parsing the file until we encounter the box bounds 
-    std::stringstream ss; 
-    std::string line, token;
-    while (std::getline(infile, line))
-    {
-        if (line.compare(line.size() - 7, 7, "xlo xhi") == 0)
-            break;
-    }
-    ss << line; 
-    std::getline(ss, token, ' ');
-    const T xmin = static_cast<T>(std::stod(token));
-    std::getline(ss, token, ' '); 
-    const T xmax = static_cast<T>(std::stod(token)); 
-    std::getline(infile, line);     // y-bounds 
-    ss.clear(); 
-    ss.str(std::string()); 
-    ss << line; 
-    std::getline(ss, token, ' ');
-    const T ymin = static_cast<T>(std::stod(token)); 
-    std::getline(ss, token, ' '); 
-    const T ymax = static_cast<T>(std::stod(token));
-    std::getline(infile, line);     // z-bounds
-    ss.clear(); 
-    ss.str(std::string());
-    ss << line; 
-    std::getline(ss, token, ' ');
-    const T zmin = static_cast<T>(std::stod(token));
-    std::getline(ss, token, ' '); 
-    const T zmax = static_cast<T>(std::stod(token));
-
-    // Parse the Lennard-Jones parameters
-    std::unordered_map<std::string, T> lj_params;
-    std::getline(infile, line);    // Skip header and blank lines
-    std::getline(infile, line);
-    std::getline(infile, line);
-    std::getline(infile, line);    // Potential parameters
-    ss.clear();
-    ss.str(std::string());
-    ss << line;  
-    std::getline(ss, token, ' ');    // Skip first two entries in the line 
-    std::getline(ss, token, ' ');
-    std::getline(ss, token, ' ');    // Epsilon
-    lj_params["eps"] = static_cast<T>(std::stod(token)); 
-    std::getline(ss, token, ' ');    // Sigma (no need to parse last parameter)
-    lj_params["sigma"] = static_cast<T>(std::stod(token)); 
-
-    // Parse the FENE parameters
-    std::unordered_map<std::string, T> fene_params; 
-    std::getline(infile, line);    // Skip header and blank lines
-    std::getline(infile, line);
-    std::getline(infile, line);
-    std::getline(infile, line);    // Potential parameters
-    ss.clear(); 
-    ss.str(std::string()); 
-    ss << line; 
-    std::getline(ss, token, ' ');    // Skip first entry in the line 
-    std::getline(ss, token, ' ');    // K
-    fene_params["K"] = static_cast<T>(std::stod(token)); 
-    std::getline(ss, token, ' ');    // R0 (no need to parse remaining parameters)
-    fene_params["R0"] = static_cast<T>(std::stod(token)); 
-
-    // Parse the angle potential parameters
-    AngleMode angle_mode;  
-    std::unordered_map<std::string, T> angle_params; 
-    std::getline(infile, line);    // Skip header and blank lines
-    std::getline(infile, line);
-    std::getline(infile, line);
-    std::getline(infile, line);    // Potential parameters
-    ss.clear(); 
-    ss.str(std::string()); 
-    ss << line;
-    
-    // First parse the number of parameters in the line 
-    int n_params = 0; 
-    while (std::getline(ss, token, ' '))
-        n_params++; 
-
-    // Distinguish between the two possible potentials 
-    if (n_params == 3)
-    {
-        angle_mode = AngleMode::COSINE; 
-        ss.clear(); 
-        ss.str(std::string()); 
-        ss << line; 
-        std::getline(ss, token, ' ');    // Skip first entry in the line 
-        std::getline(ss, token, ' ');    // K
-        angle_params["K"] = static_cast<T>(std::stod(token));
-        std::getline(ss, token, ' ');    // theta0 (convert to radians)
-        angle_params["theta0"] = (
-            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
-        );
-    }
-    else     // n_params == 9
-    {
-        angle_mode = AngleMode::GAUSSIAN; 
-        ss.clear(); 
-        ss.str(std::string()); 
-        ss << line; 
-        std::getline(ss, token, ' ');    // Skip first three entries in the line
-        std::getline(ss, token, ' ');
-        std::getline(ss, token, ' ');
-        std::getline(ss, token, ' ');    // A1
-        angle_params["A1"] = static_cast<T>(std::stod(token)); 
-        std::getline(ss, token, ' ');    // w1
-        angle_params["w1"] = static_cast<T>(std::stod(token)); 
-        std::getline(ss, token, ' ');    // theta1 (convert to radians)
-        angle_params["theta1"] = (
-            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
-        ); 
-        std::getline(ss, token, ' ');    // A2
-        angle_params["A2"] = static_cast<T>(std::stod(token)); 
-        std::getline(ss, token, ' ');    // w2
-        angle_params["w2"] = static_cast<T>(std::stod(token)); 
-        std::getline(ss, token, ' ');    // theta2 (convert to radians)
-        angle_params["theta2"] = (
-            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
-        );
-    }
-
-    // Parse the dihedral potential parameters
-    std::unordered_map<std::string, T> dihedral_params; 
-    std::getline(infile, line);    // Skip header and blank lines
-    std::getline(infile, line);
-    std::getline(infile, line);
-    std::getline(infile, line);    // Potential parameters
-    ss.clear(); 
-    ss.str(std::string()); 
-    ss << line;
-    std::getline(ss, token, ' ');    // Skip first entry in the line 
-    std::getline(ss, token, ' ');    // K
-    dihedral_params["K"] = static_cast<T>(std::stod(token)); 
-    std::getline(ss, token, ' ');    // d
-    dihedral_params["d"] = static_cast<T>(std::stod(token));
-    std::getline(ss, token, ' ');    // n
-    dihedral_params["n"] = static_cast<T>(std::stod(token)); 
- 
-    // Parse the atomic coordinates
-    //
-    // Store each molecule's coordinates in a dictionary 
-    std::vector<Matrix<T, Dynamic, 3> > coords;
-    std::vector<int> lengths; 
-    std::getline(infile, line);    // Skip header and blank lines
-    std::getline(infile, line);
-    std::getline(infile, line);
-    while (std::getline(infile, line)) 
-    {
-        // Parse until the line is empty 
-        if (line.empty())
-            break; 
-
-        // Parse the entries in the line 
-        ss.clear(); 
-        ss.str(std::string()); 
-        ss << line;
-        std::getline(ss, token, ' ');    // Atom ID (skip) 
-        std::getline(ss, token, ' ');    // Molecule ID
-        int mol_id = std::stoi(token);
-        std::getline(ss, token, ' ');    // Atom type (skip)
-        std::getline(ss, token, ' ');    // x-coordinate
-        T x = static_cast<T>(std::stod(token));
-        std::getline(ss, token, ' ');    // y-coordinate
-        T y = static_cast<T>(std::stod(token)); 
-        std::getline(ss, token, ' ');    // z-coordinate
-        T z = static_cast<T>(std::stod(token));
-
-        // Has this molecule been encountered previously? 
-        if (mol_id > coords.size())
-        {
-            // If not, initialize a new array
-            Matrix<T, Dynamic, 3> new_coords(1, 3); 
-            new_coords << x, y, z;
-            coords.push_back(new_coords); 
-            lengths.push_back(1);  
-        }
-        else 
-        {
-            // If so, append onto the array
-            lengths[mol_id - 1]++; 
-            coords[mol_id - 1].conservativeResize(lengths[mol_id - 1], 3);
-            coords[mol_id - 1](lengths[mol_id - 1] - 1, 0) = x; 
-            coords[mol_id - 1](lengths[mol_id - 1] - 1, 1) = y; 
-            coords[mol_id - 1](lengths[mol_id - 1] - 1, 2) = z;  
-        }
-    }
-
-    // Generate polymer configurations and return
-    const int n = lengths.size(); 
-    PolymerMeltConfiguration<T> configs(n, coords, units, temp); 
-    return std::make_tuple(
-        configs, lj_params, fene_params, angle_mode, angle_params,
-        dihedral_params
-    ); 
-}
-
-/**
- * Parse the given .lammpstrj file and return the trajectory of polymer 
- * melt configurations.  
- *
- * @param filename Input filename.
- * @param dt Timestep. 
- * @param units Units used in the LAMMPS file. 
- * @param temp Temperature. 
- * @param tmin Minimum timepoint (in timesteps). 
- * @param tmax Maximum timepoint (in timesteps). 
- * @returns Polymer melt configurations in the given file.
- */
-template <typename T>
-std::pair<std::vector<PolymerMeltConfiguration<T> >,
-          std::vector<T> > parseMeltLammpstrj(const std::string& filename,
-                                              const T dt, const Units units, 
-                                              const T temp, const int tmin = 0,
-                                              const int tmax = std::numeric_limits<int>::infinity())
-{
-    // Stitch together the ensemble, one configuration at a time ... 
-    std::vector<PolymerMeltConfiguration<T> > ensemble; 
-    std::vector<T> times; 
-
-    // Parse the given file, up to the first timestep ... 
-    std::ifstream infile(filename); 
-    std::string line;
-    int n_chains = 0; 
-
-    // Parse the first line, which marks the first timestep 
-    std::getline(infile, line);
-    std::getline(infile, line);    // Timepoint
-    std::getline(infile, line);
-    std::getline(infile, line);    // Number of atoms
-    const int n_atoms = std::stoi(line); 
-
-    // Parse the x-, y-, and z-bounds 
-    std::getline(infile, line);
-    std::getline(infile, line);    // x-bounds
-    std::stringstream ss;
-    ss << line; 
-    std::string token; 
-    std::getline(ss, token, ' '); 
-    const T xmin = static_cast<T>(std::stod(token));  
-    std::getline(ss, token, ' '); 
-    const T xmax = static_cast<T>(std::stod(token));  
-    std::getline(infile, line);    // y-bounds
-    ss.clear(); 
-    ss.str(std::string()); 
-    ss << line; 
-    std::getline(ss, token, ' '); 
-    const T ymin = static_cast<T>(std::stod(token)); 
-    std::getline(ss, token, ' '); 
-    const T ymax = static_cast<T>(std::stod(token)); 
-    std::getline(infile, line);    // z-bounds 
-    ss.clear(); 
-    ss.str(std::string()); 
-    ss << line; 
-    std::getline(ss, token, ' '); 
-    const T zmin = static_cast<T>(std::stod(token)); 
-    std::getline(ss, token, ' '); 
-    const T zmax = static_cast<T>(std::stod(token)); 
-    std::getline(infile, line);
-
-    // Parse each atom in the system  
-    while (std::getline(infile, line))
-    {
-        // If we have reached a new timestep, break
-        if (line.find("ITEM: TIMESTEP") == 0)
-            break; 
-
-        // Otherwise, parse the line
-        std::stringstream ss; 
-        std::string token;
-        ss << line;
-        std::getline(ss, token, ' ');    // Atom ID 
-        std::getline(ss, token, ' ');    // Molecule ID
-        int mol_id = std::stoi(token);
-        n_chains = max(n_chains, mol_id);
-    }
-    const int length = n_atoms / n_chains; 
-    infile.close();  
-
-    // Re-parse the given file, this time to the end ...
-    Matrix<T, Dynamic, Dynamic> coords(n_chains, 3 * length);  
-    infile.open(filename); 
-    while (std::getline(infile, line))
-    {
-        // If we have arrived at a new timestep ... 
-        if (line.find("ITEM: TIMESTEP") == 0)
-        {
-            // Read the next line to get the timepoint
-            std::getline(infile, line);
-            double t_curr = std::stod(line) * dt; 
-            times.push_back(t_curr); 
-
-            // Read the next two lines to get the total number of atoms (which
-            // should be the same throughout the file)
-            std::getline(infile, line); 
-            std::getline(infile, line); 
-
-            // Skip over the next four lines, which give the box bounds 
-            std::getline(infile, line); 
-            std::getline(infile, line);  
-            std::getline(infile, line);  
-            std::getline(infile, line);
-
-            // Then parse the atom coordinates
-            std::getline(infile, line);    // Header line 
-            for (int i = 0; i < n_chains * length; ++i)
-            {
-                // Parse the line 
-                std::getline(infile, line); 
-                std::stringstream ss; 
-                std::string token;
-                ss << line; 
-
-                // Atom index
-                std::getline(ss, token, ' ');
-                int atom_idx = std::stoi(token) - 1; 
-
-                // Molecule index 
-                std::getline(ss, token, ' ');
-                int mol_idx = std::stoi(token) - 1;
-
-                // Skip over the next token (atom type) 
-                std::getline(ss, token, ' ');
-
-                // x-, y-, and z-coordinates 
-                std::getline(ss, token, ' ');
-                double rx = std::stod(token);
-                std::getline(ss, token, ' '); 
-                double ry = std::stod(token);
-                std::getline(ss, token, ' ');
-                double rz = std::stod(token); 
-
-                // Collect the coordinates 
-                int atom_idx_within_mol = atom_idx % length;
-                coords(mol_idx, 3 * atom_idx_within_mol) = rx; 
-                coords(mol_idx, 3 * atom_idx_within_mol + 1) = ry;
-                coords(mol_idx, 3 * atom_idx_within_mol + 2) = rz; 
-
-                // Skip over the remaining tokens 
-            }
-
-            // Collect the polymer configuration
-            std::vector<Matrix<T, Dynamic, 3> > coords_vec; 
-            for (int i = 0; i < n_chains; ++i)
-            {
-                Matrix<T, Dynamic, 3> coords_i(length, 3); 
-                for (int j = 0; j < length; ++j)
-                    coords_i.row(j) = coords(i, Eigen::seqN(3 * j, 3)); 
-                coords_vec.push_back(coords_i); 
-            } 
-            ensemble.emplace_back(
-                PolymerMeltConfiguration<T>(
-                    n_chains, coords_vec, units, temp, xmin, xmax, ymin, ymax,
-                    zmin, zmax
-                )
-            ); 
-        }
-    } 
-
-    return std::pair(ensemble, times); 
-}
-
-/**
- * Parse the final configuration in the given file of polymer configurations. 
- *
- * @param filename Input filename.  
- * @param units Units for keeping track of Boltzmann's constant. 
- * @param temp Temperature (in Kelvin).
- * @returns Final polymer configuration in the given file, together with 
- *          the sampling parameters used to generate the ensemble.  
- */
-template <typename T>
-std::pair<PolymerMeltConfiguration<T>,
-          std::unordered_map<std::string, T> > parseMeltFinalConfig(const std::string& filename,
-                                                                    const Units units = Units::NANO, 
-                                                                    const T temp = 300.0)
-{
-    std::unordered_map<std::string, T> params;
-    T xmin, xmax, ymin, ymax, zmin, zmax;
-
-    // Parse the given file ... 
-    //
-    // First, parse the sampling parameters
-    std::ifstream infile(filename);  
-    std::string line;
-    while (std::getline(infile, line))
-    {
-        // If the line starts with "##", then parse
-        if (line.find("##") == 0)
-        {
-            std::string token = line.substr(3, line.find(" = ") - 3);   // Remove leading "## "
-            line.erase(0, line.find(" = ") + 3);
-            if (token == "domain_xmin")
-                xmin = static_cast<T>(std::stod(line));
-            else if (token == "domain_xmax")
-                xmax = static_cast<T>(std::stod(line));
-            else if (token == "domain_ymin")
-                ymin = static_cast<T>(std::stod(line));
-            else if (token == "domain_ymax")
-                ymax = static_cast<T>(std::stod(line));
-            else if (token == "domain_zmin")
-                zmin = static_cast<T>(std::stod(line));
-            else if (token == "domain_zmax")
-                zmax = static_cast<T>(std::stod(line)); 
-            else if (token == "n_candidates")
-                params["n_candidates"] = static_cast<T>(std::stoi(line));
-            else if (token == "move_prob_reptation")
-                params["move_prob_reptation"] = static_cast<T>(std::stod(line));  
-            else if (token == "move_prob_multimer_reptation")
-                params["move_prob_multimer_reptation"] = static_cast<T>(std::stod(line)); 
-            else if (token == "move_prob_terminal_segment")
-                params["move_prob_terminal_segment"] = static_cast<T>(std::stod(line)); 
-            else if (token == "multimer_reptation_length")
-                params["multimer_reptation_length"] = static_cast<T>(std::stoi(line));  
-            else if (token == "terminal_segment_length")
-                params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
-            else if (token == "n_bins_fene_cdf")
-                params["n_bins_fene_cdf"] = static_cast<T>(std::stoi(line));  
-            else if (token == "mod_collect")
-                params["mod_collect"] = static_cast<T>(std::stoi(line));  
-            else if (token == "mod_write")
-                params["mod_write"] = static_cast<T>(std::stoi(line)); 
-            else if (token == "max_stall")
-                params["max_stall"] = static_cast<T>(std::stoi(line));
-        }
-        // If not, then we have encountered the first configuration,
-        // so we must break 
-        else 
-        {
-            break; 
-        }
-    }
-
-    // Now parse the first configuration, to get the polymer lengths
-    std::vector<int> lengths;
-    int curr_length = 0;
-    int curr_idx = 0; 
-    while (std::getline(infile, line))
-    {
-        if (line.find("# CONFIG") == 0)   // If we reach the next configuration, break
-        {
-            break;
-        }
-        else
-        {
-            // Check the index of the polymer 
-            std::stringstream ss; 
-            ss << line; 
-            std::string token; 
-            std::getline(ss, token, '\t');    // Polymer index 
-            int polymer_idx = std::stoi(token); 
-            if (polymer_idx > curr_idx)       // Polymer index should be one greater at most
-            {
-                // Keep track of the accumulated polymer length and start 
-                // tracking the new polymer  
-                lengths.push_back(curr_length); 
-                curr_length = 1;       // We have already begun the new polymer  
-                curr_idx = polymer_idx; 
-            }
-            else 
-            {
-                curr_length++; 
-            } 
-        } 
-    }
-    lengths.push_back(curr_length);    // Add the last polymer length
-    int n_chains = lengths.size(); 
-
-    // Now parse the rest of the file to get the final configuration ... 
-    std::vector<std::vector<Matrix<T, Dynamic, 3> > > melt_coords;
-
-    // Initialize the zeroth configuration 
-    int config_idx = 0;
-    std::vector<Matrix<T, Dynamic, 3> > melt_coords_i;
-    for (const int length : lengths)
-        melt_coords_i.push_back(Matrix<T, Dynamic, 3>::Zero(length, 3));
-    melt_coords.push_back(melt_coords_i);
-
-    // Parse the file ...  
-    while (std::getline(infile, line))
-    {
-        // If we reach a new configuration, keep parsing
-        if (line.find("# CONFIG") == 0)
-        {
-            // Initialize the coordinate array for the next configuration 
-            config_idx++;
-            std::vector<Matrix<T, Dynamic, 3> > melt_coords_next;
-            for (const int length : lengths)
-                melt_coords_next.push_back(Matrix<T, Dynamic, 3>::Zero(length, 3));
-            melt_coords.push_back(melt_coords_next); 
-        }
-        // If we reach an ensemble-level output line at the end of
-        // the file, stop parsing
-        else if (line.find("##" ) == 0)
-        {
-            break; 
-        }
-        // If we reach a configuration-level output line, keep parsing
-        else if (line.find("# ") == 0)
-        {
-            // Do nothing
-        }
-        // Otherwise, the line specifies coordinates that should be
-        // collected 
-        else 
-        {
-            std::stringstream ss; 
-            ss << line;
-            std::string token;
-            std::getline(ss, token, '\t');    // Polymer index
-            int polymer_idx = std::stoi(token); 
-            std::getline(ss, token, '\t');    // Atom index
-            int atom_idx = std::stoi(token);
-            std::getline(ss, token, '\t');    // x-coordinate 
-            melt_coords[config_idx][polymer_idx](atom_idx, 0) = static_cast<T>(std::stod(token));
-            std::getline(ss, token, '\t');    // y-coordinate
-            melt_coords[config_idx][polymer_idx](atom_idx, 1) = static_cast<T>(std::stod(token));
-            std::getline(ss, token, '\t');    // z-coordinate
-            melt_coords[config_idx][polymer_idx](atom_idx, 2) = static_cast<T>(std::stod(token));
-        }
-    }
-
-    PolymerMeltConfiguration<T> config(
-        n_chains, melt_coords[config_idx], units, temp, xmin, xmax, ymin, ymax,
-        zmin, zmax
-    ); 
-    return std::make_pair(config, params); 
-}
-
+/** -------------------------------------------------------------------- //
+ *                     GENERATING MELT CONFIGURATIONS                    //
+ *  -------------------------------------------------------------------- */
 class TooManyBacktracksError : public std::runtime_error
 {
     public:
@@ -2806,6 +2260,642 @@ PolymerMeltConfiguration<T> generateKMerMelt(const int K, const int M,
     ); 
 
     return melt_config;  
+}
+
+/** -------------------------------------------------------------------- //
+ *           PARSERS FOR SINGLE AND MULTIPLE MELT CONFIGURATIONS         //
+ *  -------------------------------------------------------------------- */
+/**
+ * Parse the given LAMMPS data file. 
+ *
+ * @param filename Input filename.
+ * @param units Units used in the LAMMPS file. 
+ * @param temp Temperature.  
+ * @returns Polymer melt configuration in the given file, along with all
+ *          potential parameters.  
+ */
+template <typename T>
+std::tuple<PolymerMeltConfiguration<T>,
+           std::unordered_map<std::string, T>,
+           std::unordered_map<std::string, T>,
+           AngleMode,
+           std::unordered_map<std::string, T>,
+           std::unordered_map<std::string, T> > parseMeltLammps(const std::string& filename,
+                                                                const Units units, 
+                                                                const T temp)
+{
+    std::ifstream infile(filename);
+
+    // Begin parsing the file ...
+    //
+    // Keep parsing the file until we encounter the box bounds 
+    std::stringstream ss; 
+    std::string line, token;
+    while (std::getline(infile, line))
+    {
+        if (line.compare(line.size() - 7, 7, "xlo xhi") == 0)
+            break;
+    }
+    ss << line; 
+    std::getline(ss, token, ' ');
+    const T xmin = static_cast<T>(std::stod(token));
+    std::getline(ss, token, ' '); 
+    const T xmax = static_cast<T>(std::stod(token)); 
+    std::getline(infile, line);     // y-bounds 
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line; 
+    std::getline(ss, token, ' ');
+    const T ymin = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' '); 
+    const T ymax = static_cast<T>(std::stod(token));
+    std::getline(infile, line);     // z-bounds
+    ss.clear(); 
+    ss.str(std::string());
+    ss << line; 
+    std::getline(ss, token, ' ');
+    const T zmin = static_cast<T>(std::stod(token));
+    std::getline(ss, token, ' '); 
+    const T zmax = static_cast<T>(std::stod(token));
+
+    // Parse the Lennard-Jones parameters
+    std::unordered_map<std::string, T> lj_params;
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    std::getline(infile, line);    // Potential parameters
+    ss.clear();
+    ss.str(std::string());
+    ss << line;  
+    std::getline(ss, token, ' ');    // Skip first two entries in the line 
+    std::getline(ss, token, ' ');
+    std::getline(ss, token, ' ');    // Epsilon
+    lj_params["eps"] = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' ');    // Sigma (no need to parse last parameter)
+    lj_params["sigma"] = static_cast<T>(std::stod(token)); 
+
+    // Parse the FENE parameters
+    std::unordered_map<std::string, T> fene_params; 
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    std::getline(infile, line);    // Potential parameters
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line; 
+    std::getline(ss, token, ' ');    // Skip first entry in the line 
+    std::getline(ss, token, ' ');    // K
+    fene_params["K"] = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' ');    // R0 (no need to parse remaining parameters)
+    fene_params["R0"] = static_cast<T>(std::stod(token)); 
+
+    // Parse the angle potential parameters
+    AngleMode angle_mode;  
+    std::unordered_map<std::string, T> angle_params; 
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    std::getline(infile, line);    // Potential parameters
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line;
+    
+    // First parse the number of parameters in the line 
+    int n_params = 0; 
+    while (std::getline(ss, token, ' '))
+        n_params++; 
+
+    // Distinguish between the two possible potentials 
+    if (n_params == 3)
+    {
+        angle_mode = AngleMode::COSINE; 
+        ss.clear(); 
+        ss.str(std::string()); 
+        ss << line; 
+        std::getline(ss, token, ' ');    // Skip first entry in the line 
+        std::getline(ss, token, ' ');    // K
+        angle_params["K"] = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // theta0 (convert to radians)
+        angle_params["theta0"] = (
+            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
+        );
+    }
+    else     // n_params == 9
+    {
+        angle_mode = AngleMode::GAUSSIAN; 
+        ss.clear(); 
+        ss.str(std::string()); 
+        ss << line; 
+        std::getline(ss, token, ' ');    // Skip first three entries in the line
+        std::getline(ss, token, ' ');
+        std::getline(ss, token, ' ');
+        std::getline(ss, token, ' ');    // A1
+        angle_params["A1"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // w1
+        angle_params["w1"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // theta1 (convert to radians)
+        angle_params["theta1"] = (
+            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
+        ); 
+        std::getline(ss, token, ' ');    // A2
+        angle_params["A2"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // w2
+        angle_params["w2"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // theta2 (convert to radians)
+        angle_params["theta2"] = (
+            static_cast<T>(std::stod(token)) * boost::math::constants::pi<T>() / 180
+        );
+    }
+
+    // Parse the dihedral potential parameters
+    std::unordered_map<std::string, T> dihedral_params; 
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    std::getline(infile, line);    // Potential parameters
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line;
+    std::getline(ss, token, ' ');    // Skip first entry in the line 
+    std::getline(ss, token, ' ');    // K
+    dihedral_params["K"] = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' ');    // d
+    dihedral_params["d"] = static_cast<T>(std::stod(token));
+    std::getline(ss, token, ' ');    // n
+    dihedral_params["n"] = static_cast<T>(std::stod(token)); 
+ 
+    // Parse the atomic coordinates
+    //
+    // Store each molecule's coordinates in a dictionary 
+    std::vector<Matrix<T, Dynamic, 3> > coords;
+    std::vector<int> lengths; 
+    std::getline(infile, line);    // Skip header and blank lines
+    std::getline(infile, line);
+    std::getline(infile, line);
+    while (std::getline(infile, line)) 
+    {
+        // Parse until the line is empty 
+        if (line.empty())
+            break; 
+
+        // Parse the entries in the line 
+        ss.clear(); 
+        ss.str(std::string()); 
+        ss << line;
+        std::getline(ss, token, ' ');    // Atom ID (skip) 
+        std::getline(ss, token, ' ');    // Molecule ID
+        int mol_id = std::stoi(token);
+        std::getline(ss, token, ' ');    // Atom type (skip)
+        std::getline(ss, token, ' ');    // x-coordinate
+        T x = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // y-coordinate
+        T y = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // z-coordinate
+        T z = static_cast<T>(std::stod(token));
+
+        // Has this molecule been encountered previously? 
+        if (mol_id > coords.size())
+        {
+            // If not, initialize a new array
+            Matrix<T, Dynamic, 3> new_coords(1, 3); 
+            new_coords << x, y, z;
+            coords.push_back(new_coords); 
+            lengths.push_back(1);  
+        }
+        else 
+        {
+            // If so, append onto the array
+            lengths[mol_id - 1]++; 
+            coords[mol_id - 1].conservativeResize(lengths[mol_id - 1], 3);
+            coords[mol_id - 1](lengths[mol_id - 1] - 1, 0) = x; 
+            coords[mol_id - 1](lengths[mol_id - 1] - 1, 1) = y; 
+            coords[mol_id - 1](lengths[mol_id - 1] - 1, 2) = z;  
+        }
+    }
+
+    // Generate polymer configurations and return
+    const int n = lengths.size(); 
+    PolymerMeltConfiguration<T> configs(n, coords, units, temp); 
+    return std::make_tuple(
+        configs, lj_params, fene_params, angle_mode, angle_params,
+        dihedral_params
+    ); 
+}
+
+/**
+ * Parse the given .lammpstrj file and return the trajectory of polymer 
+ * melt configurations.  
+ *
+ * @param filename Input filename.
+ * @param dt Timestep. 
+ * @param units Units used in the LAMMPS file. 
+ * @param temp Temperature. 
+ * @param tmin Minimum timepoint (in timesteps). 
+ * @param tmax Maximum timepoint (in timesteps). 
+ * @returns Polymer melt configurations in the given file.
+ */
+template <typename T>
+std::pair<std::vector<PolymerMeltConfiguration<T> >,
+          std::vector<T> > parseMeltLammpstrj(const std::string& filename,
+                                              const T dt, const Units units, 
+                                              const T temp, const int tmin = 0,
+                                              const int tmax = std::numeric_limits<int>::infinity())
+{
+    // Stitch together the ensemble, one configuration at a time ... 
+    std::vector<PolymerMeltConfiguration<T> > ensemble; 
+    std::vector<T> times; 
+
+    // Parse the given file, up to the first timestep ... 
+    std::ifstream infile(filename); 
+    std::string line;
+    int n_chains = 0; 
+
+    // Parse the first line, which marks the first timestep 
+    std::getline(infile, line);
+    std::getline(infile, line);    // Timepoint
+    std::getline(infile, line);
+    std::getline(infile, line);    // Number of atoms
+    const int n_atoms = std::stoi(line); 
+
+    // Parse the x-, y-, and z-bounds 
+    std::getline(infile, line);
+    std::getline(infile, line);    // x-bounds
+    std::stringstream ss;
+    ss << line; 
+    std::string token; 
+    std::getline(ss, token, ' '); 
+    const T xmin = static_cast<T>(std::stod(token));  
+    std::getline(ss, token, ' '); 
+    const T xmax = static_cast<T>(std::stod(token));  
+    std::getline(infile, line);    // y-bounds
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line; 
+    std::getline(ss, token, ' '); 
+    const T ymin = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' '); 
+    const T ymax = static_cast<T>(std::stod(token)); 
+    std::getline(infile, line);    // z-bounds 
+    ss.clear(); 
+    ss.str(std::string()); 
+    ss << line; 
+    std::getline(ss, token, ' '); 
+    const T zmin = static_cast<T>(std::stod(token)); 
+    std::getline(ss, token, ' '); 
+    const T zmax = static_cast<T>(std::stod(token)); 
+    std::getline(infile, line);
+
+    // Parse each atom in the system  
+    while (std::getline(infile, line))
+    {
+        // If we have reached a new timestep, break
+        if (line.find("ITEM: TIMESTEP") == 0)
+            break; 
+
+        // Otherwise, parse the line
+        std::stringstream ss; 
+        std::string token;
+        ss << line;
+        std::getline(ss, token, ' ');    // Atom ID 
+        std::getline(ss, token, ' ');    // Molecule ID
+        int mol_id = std::stoi(token);
+        n_chains = max(n_chains, mol_id);
+    }
+    const int length = n_atoms / n_chains; 
+    infile.close();  
+
+    // Re-parse the given file, this time to the end ...
+    Matrix<T, Dynamic, Dynamic> coords(n_chains, 3 * length);  
+    infile.open(filename); 
+    while (std::getline(infile, line))
+    {
+        // If we have arrived at a new timestep ... 
+        if (line.find("ITEM: TIMESTEP") == 0)
+        {
+            // Read the next line to get the timepoint
+            std::getline(infile, line);
+            double t_curr = std::stod(line) * dt; 
+            times.push_back(t_curr); 
+
+            // Read the next two lines to get the total number of atoms (which
+            // should be the same throughout the file)
+            std::getline(infile, line); 
+            std::getline(infile, line); 
+
+            // Skip over the next four lines, which give the box bounds 
+            std::getline(infile, line); 
+            std::getline(infile, line);  
+            std::getline(infile, line);  
+            std::getline(infile, line);
+
+            // Then parse the atom coordinates
+            std::getline(infile, line);    // Header line 
+            for (int i = 0; i < n_chains * length; ++i)
+            {
+                // Parse the line 
+                std::getline(infile, line); 
+                std::stringstream ss; 
+                std::string token;
+                ss << line; 
+
+                // Atom index
+                std::getline(ss, token, ' ');
+                int atom_idx = std::stoi(token) - 1; 
+
+                // Molecule index 
+                std::getline(ss, token, ' ');
+                int mol_idx = std::stoi(token) - 1;
+
+                // Skip over the next token (atom type) 
+                std::getline(ss, token, ' ');
+
+                // x-, y-, and z-coordinates 
+                std::getline(ss, token, ' ');
+                double rx = std::stod(token);
+                std::getline(ss, token, ' '); 
+                double ry = std::stod(token);
+                std::getline(ss, token, ' ');
+                double rz = std::stod(token); 
+
+                // Collect the coordinates 
+                int atom_idx_within_mol = atom_idx % length;
+                coords(mol_idx, 3 * atom_idx_within_mol) = rx; 
+                coords(mol_idx, 3 * atom_idx_within_mol + 1) = ry;
+                coords(mol_idx, 3 * atom_idx_within_mol + 2) = rz; 
+
+                // Skip over the remaining tokens 
+            }
+
+            // Collect the polymer configuration
+            std::vector<Matrix<T, Dynamic, 3> > coords_vec; 
+            for (int i = 0; i < n_chains; ++i)
+            {
+                Matrix<T, Dynamic, 3> coords_i(length, 3); 
+                for (int j = 0; j < length; ++j)
+                    coords_i.row(j) = coords(i, Eigen::seqN(3 * j, 3)); 
+                coords_vec.push_back(coords_i); 
+            } 
+            ensemble.emplace_back(
+                PolymerMeltConfiguration<T>(
+                    n_chains, coords_vec, units, temp, xmin, xmax, ymin, ymax,
+                    zmin, zmax
+                )
+            ); 
+        }
+    } 
+
+    return std::pair(ensemble, times); 
+}
+
+/**
+ * Parse the polymer melt configurations in the given configurations file. 
+ *
+ * @param filename Input filename.  
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin).
+ * @returns Ensemble of polymer melt configurations in the given file, together
+ *          with the sampling parameters used to generate the ensemble.  
+ */
+template <typename T>
+std::pair<std::vector<PolymerMeltConfiguration<T> >,
+          std::unordered_map<std::string, T> > parseMeltConfigFile(const std::string& filename,
+                                                                   const Units units = Units::NANO, 
+                                                                   const T temp = 300.0)
+{
+    std::unordered_map<std::string, T> params;
+    T xmin, xmax, ymin, ymax, zmin, zmax;
+
+    // Parse the given file ... 
+    //
+    // First, parse the sampling parameters
+    std::ifstream infile(filename);  
+    std::string line;
+    while (std::getline(infile, line))
+    {
+        // If the line starts with "##", then parse
+        if (line.find("##") == 0)
+        {
+            std::string token = line.substr(3, line.find(" = ") - 3);   // Remove leading "## "
+            line.erase(0, line.find(" = ") + 3);
+            if (token == "domain_xmin")
+                xmin = static_cast<T>(std::stod(line));
+            else if (token == "domain_xmax")
+                xmax = static_cast<T>(std::stod(line));
+            else if (token == "domain_ymin")
+                ymin = static_cast<T>(std::stod(line));
+            else if (token == "domain_ymax")
+                ymax = static_cast<T>(std::stod(line));
+            else if (token == "domain_zmin")
+                zmin = static_cast<T>(std::stod(line));
+            else if (token == "domain_zmax")
+                zmax = static_cast<T>(std::stod(line)); 
+            else if (token == "n_candidates")
+                params["n_candidates"] = static_cast<T>(std::stoi(line));
+            else if (token == "move_prob_reptation")
+                params["move_prob_reptation"] = static_cast<T>(std::stod(line));  
+            else if (token == "move_prob_multimer_reptation")
+                params["move_prob_multimer_reptation"] = static_cast<T>(std::stod(line)); 
+            else if (token == "move_prob_terminal_segment")
+                params["move_prob_terminal_segment"] = static_cast<T>(std::stod(line)); 
+            else if (token == "multimer_reptation_length")
+                params["multimer_reptation_length"] = static_cast<T>(std::stoi(line));  
+            else if (token == "terminal_segment_length")
+                params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
+            else if (token == "n_bins_fene_cdf")
+                params["n_bins_fene_cdf"] = static_cast<T>(std::stoi(line));  
+            else if (token == "mod_collect")
+                params["mod_collect"] = static_cast<T>(std::stoi(line));  
+            else if (token == "mod_write")
+                params["mod_write"] = static_cast<T>(std::stoi(line)); 
+            else if (token == "max_stall")
+                params["max_stall"] = static_cast<T>(std::stoi(line));
+        }
+        // If not, then we have encountered the first configuration,
+        // so we must break 
+        else 
+        {
+            break; 
+        }
+    }
+
+    // Now parse the first configuration, to get the polymer lengths
+    std::vector<int> lengths;
+    int curr_length = 0;
+    int curr_idx = 0; 
+    while (std::getline(infile, line))
+    {
+        if (line.find("# CONFIG") == 0)   // If we reach the next configuration, break
+        {
+            break;
+        }
+        else
+        {
+            // Check the index of the polymer 
+            std::stringstream ss; 
+            ss << line; 
+            std::string token; 
+            std::getline(ss, token, '\t');    // Polymer index 
+            int polymer_idx = std::stoi(token); 
+            if (polymer_idx > curr_idx)       // Polymer index should be one greater at most
+            {
+                // Keep track of the accumulated polymer length and start 
+                // tracking the new polymer  
+                lengths.push_back(curr_length); 
+                curr_length = 1;       // We have already begun the new polymer  
+                curr_idx = polymer_idx; 
+            }
+            else 
+            {
+                curr_length++; 
+            } 
+        } 
+    }
+    lengths.push_back(curr_length);    // Add the last polymer length
+    int n_chains = lengths.size(); 
+
+    // Now parse the rest of the file ... 
+    std::vector<PolymerMeltConfiguration<T> > ensemble; 
+
+    // Initialize the zeroth configuration 
+    std::vector<Matrix<T, Dynamic, 3> > melt_coords_i;
+    for (const int length : lengths)
+        melt_coords_i.push_back(Matrix<T, Dynamic, 3>::Zero(length, 3));
+
+    // Parse the file ...  
+    while (std::getline(infile, line))
+    {
+        // If we reach a new configuration, keep parsing
+        if (line.find("# CONFIG") == 0)
+        {
+            // Define and collect the PolymerMeltConfiguration object
+            PolymerMeltConfiguration<T> melt_config(
+                n_chains, melt_coords_i, units, temp, xmin, xmax, ymin, ymax,
+                zmin, zmax
+            );
+            ensemble.push_back(melt_config);  
+
+            // Initialize the coordinate array for the next configuration 
+            std::vector<Matrix<T, Dynamic, 3> > melt_coords_next;
+            for (const int length : lengths)
+                melt_coords_next.push_back(Matrix<T, Dynamic, 3>::Zero(length, 3));
+            melt_coords_i = melt_coords_next; 
+        }
+        // If we reach an ensemble-level output line at the end of
+        // the file, stop parsing
+        else if (line.find("##" ) == 0)
+        {
+            break; 
+        }
+        // If we reach a configuration-level output line, keep parsing
+        else if (line.find("# ") == 0)
+        {
+            // Do nothing
+        }
+        // Otherwise, the line specifies coordinates that should be
+        // collected 
+        else 
+        {
+            std::stringstream ss; 
+            ss << line;
+            std::string token;
+            std::getline(ss, token, '\t');    // Polymer index
+            int polymer_idx = std::stoi(token); 
+            std::getline(ss, token, '\t');    // Atom index
+            int atom_idx = std::stoi(token);
+            std::getline(ss, token, '\t');    // x-coordinate 
+            melt_coords_i[polymer_idx](atom_idx, 0) = static_cast<T>(std::stod(token));
+            std::getline(ss, token, '\t');    // y-coordinate
+            melt_coords_i[polymer_idx](atom_idx, 1) = static_cast<T>(std::stod(token));
+            std::getline(ss, token, '\t');    // z-coordinate
+            melt_coords_i[polymer_idx](atom_idx, 2) = static_cast<T>(std::stod(token));
+        }
+    }
+
+    return std::make_pair(ensemble, params); 
+}
+
+/**
+ * Parse the final polymer melt configuration in the given configurations
+ * file. 
+ *
+ * @param filename Input filename.  
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin).
+ * @returns Final polymer melt configuration in the given file, together with 
+ *          the sampling parameters used to generate the ensemble.  
+ */
+template <typename T>
+std::pair<PolymerMeltConfiguration<T>,
+          std::unordered_map<std::string, T> > parseMeltFinalConfig(const std::string& filename,
+                                                                    const Units units = Units::NANO, 
+                                                                    const T temp = 300.0)
+{
+    auto result = parseMeltConfigFile<T>(filename, units, temp);
+    auto ensemble = result.first; 
+    const int n_configs = ensemble.size(); 
+    return std::make_pair(ensemble[n_configs - 1], result.second); 
+}
+
+/** -------------------------------------------------------------------- //
+ *           WRITERS FOR SINGLE AND MULTIPLE MELT CONFIGURATIONS         //
+ *  -------------------------------------------------------------------- */
+/**
+ * Write a new .lammpstrj file with the given polymer melt configurations.
+ *
+ * The timesteps are set to 0, 1, 2, ... by convention. 
+ *
+ * @param ensemble Ensemble of melt configurations. 
+ * @param outfilename Output filename. 
+ * @param xmin, xmax Box bounds in x-direction. 
+ * @param ymin, ymax Box bounds in y-direction. 
+ * @param zmin, zmax Box bounds in z-direction.
+ */
+template <typename T>
+void writeMeltLammpstrj(std::vector<PolymerMeltConfiguration<T> >& ensemble, 
+                        const std::string& outfilename, const T xmin, 
+                        const T xmax, const T ymin, const T ymax, const T zmin, 
+                        const T zmax)
+{
+    std::ofstream outfile(outfilename); 
+
+    // For each configuration ...
+    for (int i = 0; i < ensemble.size(); ++i)
+    {
+        // Write two lines for the timestep 
+        outfile << "ITEM: TIMESTEP\n"
+                << i << std::endl; 
+
+        // Write two lines for the total number of atoms 
+        const int n_chains = ensemble[i].numChains();
+        int n_atoms = 0; 
+        for (int j = 0; j < n_chains; ++j)
+            n_atoms += ensemble[i].getLength(j);
+        outfile << "ITEM: NUMBER OF ATOMS\n"
+                << n_atoms << std::endl;
+
+        // Write four lines for the box bounds (assume periodic boundary conditions)
+        outfile << "ITEM: BOX BOUNDS pp pp pp\n"
+                << xmin << " " << xmax << std::endl
+                << ymin << " " << ymax << std::endl
+                << zmin << " " << zmax << std::endl; 
+
+        // Write the coordinates of each atom in the polymer 
+        outfile << "ITEM: ATOMS id mol type xu yu zu\n";
+        int atom_idx = 1;  
+        for (int j = 0; j < n_chains; ++j)
+        {
+            const int length = ensemble[i].getLength(j); 
+            Matrix<T, Dynamic, 3> coords = ensemble[i].getSegment(j, 0, length); 
+            for (int k = 0; k < length; ++k)
+            {
+                outfile << atom_idx << " " << j + 1 << " 1 "
+                        << coords(k, 0) << " " << coords(k, 1) << " "
+                        << coords(k, 2) << std::endl;
+                atom_idx++;  
+            }
+        }
+    }
+    outfile.close(); 
 }
 
 #endif
