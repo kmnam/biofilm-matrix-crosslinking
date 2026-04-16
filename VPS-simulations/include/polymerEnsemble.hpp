@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/26/2026
+ *     4/15/2026
  */
 
 #ifndef POLYMER_ENSEMBLE_HPP
@@ -23,6 +23,10 @@
 #include "utils.hpp"
 #include "polymerConfiguration.hpp"
 
+using std::isinf; 
+using boost::multiprecision::isinf; 
+using std::isnan; 
+using boost::multiprecision::isnan; 
 using std::pow; 
 using boost::multiprecision::pow;
 
@@ -30,84 +34,6 @@ using namespace Eigen;
 
 template <typename T>
 using PolymerEnsemble = std::vector<PolymerConfiguration<T> >;
-
-/**
- * Estimate the persistence length of the polymer from the given ensemble of
- * polymer configurations, using the tangent vector autocorrelation along 
- * each configuration. 
- *
- * @param ensemble Ensemble of polymer configurations. 
- * @returns Persistence length. 
- */
-template <typename T>
-T getPersistenceLength(PolymerEnsemble<T>& ensemble)
-{
-    // Check that there are at least two configurations 
-    if (ensemble.size() < 2)
-        throw std::runtime_error(
-            "Invalid ensemble size for persistence length calculation"
-        ); 
-
-    // Get the tangent vectors along each configuration in the ensemble
-    const int n = ensemble.size();  
-    std::vector<Matrix<T, Dynamic, 3> > tangent_vectors; 
-    for (int i = 0; i < n; ++i)
-        tangent_vectors.push_back(ensemble[i].tangentVectors()); 
-
-    // Get the mean bond length in each configuration
-    T mean_bond_length = 0; 
-    for (int i = 0; i < n; ++i)
-    {
-        T mean_i = ensemble[i].meanBondLength(); 
-        mean_bond_length += ((mean_i - mean_bond_length) / (i + 1));
-    } 
-
-    // Get the 97.5-th percentile point of the standard normal 
-    boost::math::normal normal_dist(0.0, 1.0); 
-    const double z975 = quantile(normal_dist, 0.975); 
-
-    // For each value of k ...
-    Matrix<T, Dynamic, 1> autocorrs(0); 
-    int k = 1;
-    bool terminate = false;
-    int n_noisy = 0;  
-    while (!terminate)
-    {
-        // For each configuration ... 
-        Matrix<T, Dynamic, 1> autocorrs_per_config_k
-            = getTangentVectorAutocorrelation<T>(tangent_vectors, k);
-        T autocorr_k = autocorrs_per_config_k.mean(); 
-
-        // Keep track of the mean over all configurations for k 
-        autocorrs.conservativeResize(k); 
-        autocorrs(k - 1) = autocorr_k;
-
-        // Calculate the standard error
-        Array<T, Dynamic, 1> deviations = autocorrs_per_config_k.array() - autocorr_k; 
-        T variance = deviations.pow(2).sum() / (n - 1);
-        T std_error = sqrt(variance / n);
-
-        // Check if the mean is statistically indistinguishable from zero 
-        // using the Wald test
-        //
-        // More specifically, we check if the absolute value of the test
-        // statistic, (mean - 0) / standard error, exceeds the Z-score for 
-        // the 97.5-th percentile point of the standard normal 
-        if (autocorr_k / std_error < z975)
-            n_noisy++; 
-        else     // If not, then reset n_noisy to zero 
-            n_noisy = 0;
-
-        // If we have reached 5 consecutive iterations where the mean is 
-        // statistically indistiguishable from zero, then terminate  
-        if (n_noisy >= 5)
-            terminate = true;
-        k++;
-    }
-
-    // Estimate the persistence length
-    return mean_bond_length * (0.5 + autocorrs.sum()); 
-}
 
 /**
  * Parse the given file of polymer configurations. 
@@ -139,36 +65,16 @@ std::pair<PolymerEnsemble<T>, std::unordered_map<std::string, T> > parseEnsemble
             line.erase(0, line.find(" = ") + 3);
             if (token == "n_candidates")
                 params["n_candidates"] = static_cast<T>(std::stoi(line));
-            else if (token == "internal_move_tangent_stepsize")
-                params["tangent_stepsize"] = static_cast<T>(std::stod(line));
-            else if (token == "internal_move_generation_mode")
-                params["mode"] = static_cast<T>(std::stoi(line));
-            else if (token == "internal_move_n_attempts") 
-                params["n_attempts"] = static_cast<T>(std::stoi(line));  
-            else if (token == "internal_move_dx")
-                params["dx"] = static_cast<T>(std::stod(line)); 
-            else if (token == "internal_move_newton_tol")
-                params["newton_tol"] = static_cast<T>(std::stod(line)); 
-            else if (token == "internal_move_min_newton_stepsize")
-                params["min_newton_stepsize"] = static_cast<T>(std::stod(line));
-            else if (token == "internal_move_max_newton_iter")
-                params["max_newton_iter"] = static_cast<T>(std::stoi(line)); 
-            else if (token == "internal_move_armijo_const")
-                params["armijo_const"] = static_cast<T>(std::stod(line));  
             else if (token == "move_prob_reptation")
                 params["move_prob_reptation"] = static_cast<T>(std::stod(line));
             else if (token == "move_prob_multimer_reptation")
                 params["move_prob_multimer_reptation"] = static_cast<T>(std::stod(line)); 
             else if (token == "move_prob_terminal_segment")
                 params["move_prob_terminal_segment"] = static_cast<T>(std::stod(line)); 
-            else if (token == "move_prob_internal_segment")
-                params["move_prob_internal_segment"] = static_cast<T>(std::stod(line));
             else if (token == "multimer_reptation_length")
                 params["multimer_reptation_length"] = static_cast<T>(std::stoi(line));  
             else if (token == "terminal_segment_length")
                 params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
-            else if (token == "internal_segment_length")
-                params["internal_segment_length"] = static_cast<T>(std::stoi(line));
             else if (token == "n_bins_fene_cdf")
                 params["n_bins_fene_cdf"] = static_cast<T>(std::stoi(line));  
             else if (token == "mod_collect")
@@ -239,6 +145,25 @@ std::pair<PolymerEnsemble<T>, std::unordered_map<std::string, T> > parseEnsemble
     }
 
     return std::make_pair(ensemble, params); 
+}
+
+/**
+ * Parse the final configuration in the given file of polymer configurations. 
+ *
+ * @param filename Input filename.  
+ * @param units Units for keeping track of Boltzmann's constant. 
+ * @param temp Temperature (in Kelvin).
+ * @returns Final polymer configuration in the given file, together with 
+ *          the sampling parameters used to generate the ensemble.  
+ */
+template <typename T>
+std::pair<PolymerConfiguration<T>, std::unordered_map<std::string, T> > parseFinalConfig(const std::string& filename,
+                                                                                         const Units units = Units::NANO, 
+                                                                                         const T temp = 300.0)
+{
+    auto result = parseEnsemble<T>(filename, units, temp);
+    PolymerConfiguration<T> config = result.first[result.first.size() - 1];  
+    return std::make_pair(config, result.second); 
 }
 
 /**
@@ -326,132 +251,238 @@ std::pair<PolymerEnsemble<T>, std::vector<T> > parseLammpstrj(const std::string&
 }
 
 /**
- * Parse the final configuration in the given file of polymer configurations. 
+ * Write a new configurations file with the given configurations. 
  *
- * @param filename Input filename.  
- * @param units Units for keeping track of Boltzmann's constant. 
- * @param temp Temperature (in Kelvin).
- * @returns Final polymer configuration in the given file, together with 
- *          the sampling parameters used to generate the ensemble.  
+ * The .lammpstrj file is assumed to contain the coordinates of one polymer
+ * molecule.
+ *
+ * The timesteps are set to 0, 1, 2, ... by convention.  
+ *
+ * @param ensemble Ensemble of polymer configurations. 
+ * @param outfilename Output filename. 
  */
 template <typename T>
-std::pair<PolymerConfiguration<T>, std::unordered_map<std::string, T> > parseFinalConfig(const std::string& filename,
-                                                                                         const Units units = Units::NANO, 
-                                                                                         const T temp = 300.0)
+void writeConfigFile(PolymerEnsemble<T>& ensemble,
+                     std::unordered_map<std::string, T>& params,
+                     std::unordered_map<std::string, T>& lj_params, 
+                     std::unordered_map<std::string, T>& fene_params, 
+                     const AngleMode angle_mode,
+                     std::unordered_map<std::string, T>& angle_params, 
+                     std::unordered_map<std::string, T>& dihedral_params, 
+                     const std::string& outfilename)
 {
-    std::unordered_map<std::string, T> params; 
+    const double kT = 1.380649e-2 * 300;    // Use "nano" units 
+    const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
 
-    // Parse the given file ... 
+    // Write sampling parameters to file
+    std::ofstream outfile(outfilename);  
+    outfile << std::setprecision(10);
+    if (params.find("n_candidates") != params.end())
+    { 
+        outfile << "## n_candidates = "
+                << static_cast<int>(params["n_candidates"]) << std::endl;
+    }
+    else 
+    {
+        outfile << "## n_candidates = NA\n"; 
+    }
+    if (params.find("move_prob_reptation") != params.end())
+    {
+        outfile << "## move_prob_reptation = "
+                << params["move_prob_reptation"] << std::endl; 
+    }
+    else 
+    {
+        outfile << "## move_prob_reptation = NA\n"; 
+    }
+    if (params.find("move_prob_multimer_reptation") != params.end())
+    {
+        outfile << "## move_prob_multimer_reptation = "
+                << params["move_prob_multimer_reptation"] << std::endl;
+    }
+    else 
+    {
+        outfile << "## move_prob_multimer_reptation = NA\n"; 
+    }
+    if (params.find("move_prob_terminal_segment") != params.end())
+    {
+        outfile << "## move_prob_terminal_segment = "
+                << params["move_prob_terminal_segment"] << std::endl;
+    }
+    else 
+    {
+        outfile << "## move_prob_terminal_segment = NA\n";
+    }
+    if (params.find("multimer_reptation_length") != params.end())
+    {
+        outfile << "## multimer_reptation_length = "
+                << static_cast<int>(params["multimer_reptation_length"])
+                << std::endl;
+    }
+    else 
+    {
+        outfile << "## multimer_reptation_length = NA\n";
+    }
+    if (params.find("terminal_segment_length") != params.end())
+    {
+        outfile << "## terminal_segment_length = "
+                << static_cast<int>(params["terminal_segment_length"])
+                << std::endl;
+    }
+    else 
+    {
+        outfile << "## terminal_segment_length = NA\n";
+    }
+    if (params.find("n_bins_fene_cdf") != params.end())
+    {
+        outfile << "## n_bins_fene_cdf = "
+                << static_cast<int>(params["n_bins_fene_cdf"]) << std::endl;
+    }
+    else 
+    {
+        outfile << "## n_bins_fene_cdf = NA\n";
+    }
+    if (params.find("max_iter") != params.end())
+    {
+        outfile << "## max_iter = "
+                << static_cast<int>(params["max_iter"]) << std::endl;
+    }
+    else 
+    {
+        outfile << "## max_iter = NA\n";
+    }
+    if (params.find("mod_collect") != params.end())
+    {
+        outfile << "## mod_collect = "
+                << static_cast<int>(params["mod_collect"]) << std::endl;
+    }
+    else 
+    {
+        outfile << "## mod_collect = NA\n";
+    }
+    if (params.find("mod_write") != params.end())
+    {
+        outfile << "## mod_write = "
+                << static_cast<int>(params["mod_write"]) << std::endl;
+    }
+    else 
+    {
+        outfile << "## mod_write = NA\n";
+    }
+    if (params.find("max_stall") != params.end())
+    {
+        outfile << "## max_stall = "
+                << static_cast<int>(params["max_stall"]) << std::endl;
+    }
+    else 
+    {
+        outfile << "## max_stall = NA\n"; 
+    }
+
+    // Write the coordinates to file
     //
-    // First, parse the sampling parameters
-    std::ifstream infile(filename);  
-    std::string line;
-    while (std::getline(infile, line))
+    // Note that this file will lack an initial configuration
+    for (int i = 0; i < ensemble.size(); ++i)
     {
-        // If the line starts with "##", then parse
-        if (line.find("##") == 0)
-        {
-            std::string token = line.substr(3, line.find(" = ") - 3);   // Remove leading "## "
-            line.erase(0, line.find(" = ") + 3);
-            if (token == "n_candidates")
-                params["n_candidates"] = static_cast<T>(std::stoi(line));
-            else if (token == "internal_move_tangent_stepsize")
-                params["tangent_stepsize"] = static_cast<T>(std::stod(line));
-            else if (token == "internal_move_generation_mode")
-                params["mode"] = static_cast<T>(std::stoi(line));
-            else if (token == "internal_move_n_attempts") 
-                params["n_attempts"] = static_cast<T>(std::stoi(line));  
-            else if (token == "internal_move_dx")
-                params["dx"] = static_cast<T>(std::stod(line)); 
-            else if (token == "internal_move_newton_tol")
-                params["newton_tol"] = static_cast<T>(std::stod(line)); 
-            else if (token == "internal_move_min_newton_stepsize")
-                params["min_newton_stepsize"] = static_cast<T>(std::stod(line));
-            else if (token == "internal_move_max_newton_iter")
-                params["max_newton_iter"] = static_cast<T>(std::stoi(line)); 
-            else if (token == "internal_move_armijo_const")
-                params["armijo_const"] = static_cast<T>(std::stod(line));  
-            else if (token == "move_prob_reptation")
-                params["move_prob_reptation"] = static_cast<T>(std::stod(line));  
-            else if (token == "move_prob_multimer_reptation")
-                params["move_prob_multimer_reptation"] = static_cast<T>(std::stod(line)); 
-            else if (token == "move_prob_terminal_segment")
-                params["move_prob_terminal_segment"] = static_cast<T>(std::stod(line)); 
-            else if (token == "move_prob_internal_segment")
-                params["move_prob_internal_segment"] = static_cast<T>(std::stod(line));
-            else if (token == "multimer_reptation_length")
-                params["multimer_reptation_length"] = static_cast<T>(std::stoi(line));  
-            else if (token == "terminal_segment_length")
-                params["terminal_segment_length"] = static_cast<T>(std::stoi(line)); 
-            else if (token == "internal_segment_length")
-                params["internal_segment_length"] = static_cast<T>(std::stoi(line));
-            else if (token == "n_bins_fene_cdf")
-                params["n_bins_fene_cdf"] = static_cast<T>(std::stoi(line));  
-            else if (token == "mod_collect")
-                params["mod_collect"] = static_cast<T>(std::stoi(line));  
-            else if (token == "mod_write")
-                params["mod_write"] = static_cast<T>(std::stoi(line)); 
-            else if (token == "max_stall")
-                params["max_stall"] = static_cast<T>(std::stoi(line));
-        }
-        // If not, then we have encountered the first configuration,
-        // so we must break 
-        else 
-        {
-            break; 
-        }
-    }
+        const int length = ensemble[i].getLength();
+        Matrix<T, Dynamic, 3> coords = ensemble[i].getSegment(0, length);
 
-    // Now parse the first configuration, to get the polymer length
-    int length = 0;
-    while (std::getline(infile, line))
-    {
-        if (line.find("# CONFIG") == 0)   // If we reach the next configuration, break
-            break;
-        else
-            length++; 
-    }
+        // Exclude LJ terms between consecutive atoms from the non-bonded energy
+        T energy_nonbonded = ensemble[i].getNonbondedEnergy(
+            lj_params, neighbor_threshold, true
+        );
 
-    // Now parse the rest of the file to get the final configuration 
-    Matrix<T, Dynamic, 3> coords(length, 3);
-    int curr_idx = 0; 
-    while (std::getline(infile, line))
-    {
-        // If we reach a new configuration, keep parsing
-        if (line.find("# CONFIG") == 0)
-        {
-            curr_idx = 0;
-        }
-        // If we reach an ensemble-level output line at the end of
-        // the file, stop parsing
-        else if (line.find("##" ) == 0)
-        {
-            break; 
-        }
-        // If we reach a configuration-level output line, keep parsing
-        else if (line.find("# ") == 0)
-        {
-            // Do nothing
-        }
-        // Otherwise, the line specifies coordinates that should be
-        // collected 
-        else 
+        // Include LJ terms between consecutive atoms in the bond energy
+        T energy_bond = ensemble[i].getBondEnergy(fene_params, true, lj_params);
+
+        // Calculate bond angle and dihedral energies 
+        T energy_angle = ensemble[i].getBondAngleEnergy(angle_mode, angle_params); 
+        T energy_dihedral = ensemble[i].getDihedralAngleEnergy(dihedral_params); 
+
+        // Re-calculate the total energy 
+        T energy_total = ensemble[i].getTotalEnergy(
+            lj_params, neighbor_threshold, fene_params, angle_mode, angle_params,
+            dihedral_params
+        );
+        if (isnan(energy_total) || isinf(energy_total))
         {
             std::stringstream ss; 
-            ss << line;
-            std::string token;  
-            std::getline(ss, token, '\t');    // x-coordinate 
-            coords(curr_idx, 0) = static_cast<T>(std::stod(token));
-            std::getline(ss, token, '\t');    // y-coordinate
-            coords(curr_idx, 1) = static_cast<T>(std::stod(token));
-            std::getline(ss, token, '\t');    // z-coordinate
-            coords(curr_idx, 2) = static_cast<T>(std::stod(token));
-            curr_idx++; 
+            ss << "Found configuration " << "(" << i
+               << ") with NaN or infinite energy\n"
+               << "- Nonbonded energy: " << energy_nonbonded << std::endl
+               << "- Bond energy: " << energy_bond << std::endl
+               << "- Angle energy: " << energy_angle << std::endl
+               << "- Dihedral energy: " << energy_dihedral << std::endl
+               << "- Total energy: " << energy_total << std::endl;
+            throw std::runtime_error(ss.str()); 
+        } 
+
+        // Calculate the radius of gyration  
+        T radius = ensemble[i].radiusOfGyration(); 
+
+        // Write annotations and coordinates 
+        outfile << "# CONFIG\t" << i << std::endl
+                << "# ENERGY_TOTAL\t" << energy_total << std::endl
+                << "# ENERGY_NONBONDED\t" << energy_nonbonded << std::endl
+                << "# ENERGY_BOND\t" << energy_bond << std::endl
+                << "# ENERGY_ANGLE\t" << energy_angle << std::endl
+                << "# ENERGY_DIHEDRAL\t" << energy_dihedral << std::endl 
+                << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
+        for (int j = 0; j < length; ++i)
+        { 
+            outfile << coords(j, 0) << '\t' << coords(j, 1) << '\t'
+                    << coords(j, 2) << std::endl; 
         }
     }
+    outfile.close(); 
+}
 
-    PolymerConfiguration<T> config(coords, units, temp); 
-    return std::make_pair(config, params); 
+/**
+ * Write a new .lammpstrj file with the given configurations.
+ *
+ * The .lammpstrj file is assumed to contain the coordinates of one polymer
+ * molecule.
+ *
+ * The timesteps are set to 0, 1, 2, ... by convention.  
+ *
+ * @param ensemble Ensemble of polymer configurations. 
+ * @param outfilename Output filename. 
+ */
+template <typename T>
+void writeLammpstrj(PolymerEnsemble<T>& ensemble, const std::string& outfilename,
+                    const T xmin, const T xmax, const T ymin, const T ymax, 
+                    const T zmin, const T zmax)
+{
+    std::ofstream outfile(outfilename);
+
+    // For each configuration ... 
+    for (int i = 0; i < ensemble.size(); ++i)
+    {
+        // Write two lines for the timestep 
+        outfile << "ITEM: TIMESTEP\n"
+                << i << std::endl; 
+
+        // Write two lines for the polymer length
+        const int length = ensemble[i].getLength();  
+        outfile << "ITEM: NUMBER OF ATOMS\n"
+                << length << std::endl;
+
+        // Write four lines for the box bounds (assume periodic boundary conditions)
+        outfile << "ITEM: BOX BOUNDS pp pp pp\n"
+                << xmin << " " << xmax << std::endl
+                << ymin << " " << ymax << std::endl
+                << zmin << " " << zmax << std::endl; 
+
+        // Write the coordinates of each atom in the polymer 
+        outfile << "ITEM: ATOMS id mol type xu yu zu\n";
+        Matrix<T, Dynamic, 3> coords = ensemble[i].getSegment(0, length); 
+        for (int j = 0; j < length; ++j)
+        {
+            outfile << j + 1 << " 1 1 " << coords(j, 0) << " "
+                    << coords(j, 1) << " " << coords(j, 2) << std::endl; 
+        } 
+    }
+    outfile.close(); 
 }
 
 /**
