@@ -271,7 +271,6 @@ void writeConfigFile(PolymerEnsemble<T>& ensemble,
                      std::unordered_map<std::string, T>& dihedral_params, 
                      const std::string& outfilename)
 {
-    const double kT = 1.380649e-2 * 300;    // Use "nano" units 
     const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
 
     // Write sampling parameters to file
