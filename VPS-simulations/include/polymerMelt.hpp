@@ -2764,7 +2764,7 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
         } 
     }
     lengths.push_back(curr_length);    // Add the last polymer length
-    int n_chains = lengths.size(); 
+    const int n_chains = lengths.size(); 
 
     // Now parse the rest of the file ... 
     std::vector<PolymerMeltConfiguration<T> > ensemble; 
@@ -2785,7 +2785,7 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
                 n_chains, melt_coords_i, units, temp, xmin, xmax, ymin, ymax,
                 zmin, zmax
             );
-            ensemble.push_back(melt_config);  
+            ensemble.push_back(melt_config);
 
             // Initialize the coordinate array for the next configuration 
             std::vector<Matrix<T, Dynamic, 3> > melt_coords_next;
@@ -2823,6 +2823,13 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
             melt_coords_i[polymer_idx](atom_idx, 2) = static_cast<T>(std::stod(token));
         }
     }
+
+    // Define and collect the final PolymerMeltConfiguration object
+    PolymerMeltConfiguration<T> melt_config(
+        n_chains, melt_coords_i, units, temp, xmin, xmax, ymin, ymax,
+        zmin, zmax
+    );
+    ensemble.push_back(melt_config);
 
     return std::make_pair(ensemble, params); 
 }
