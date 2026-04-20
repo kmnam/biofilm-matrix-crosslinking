@@ -427,7 +427,7 @@ void writeConfigFile(PolymerEnsemble<T>& ensemble,
                 << "# ENERGY_ANGLE\t" << energy_angle << std::endl
                 << "# ENERGY_DIHEDRAL\t" << energy_dihedral << std::endl 
                 << "# RADIUS_OF_GYRATION\t" << radius << std::endl; 
-        for (int j = 0; j < length; ++i)
+        for (int j = 0; j < length; ++j)
         { 
             outfile << coords(j, 0) << '\t' << coords(j, 1) << '\t'
                     << coords(j, 2) << std::endl; 
@@ -439,13 +439,13 @@ void writeConfigFile(PolymerEnsemble<T>& ensemble,
 /**
  * Write a new .lammpstrj file with the given configurations.
  *
- * The .lammpstrj file is assumed to contain the coordinates of one polymer
- * molecule.
- *
  * The timesteps are set to 0, 1, 2, ... by convention.  
  *
  * @param ensemble Ensemble of polymer configurations. 
- * @param outfilename Output filename. 
+ * @param outfilename Output filename.
+ * @param xmin, xmax Box bounds in x-direction. 
+ * @param ymin, ymax Box bounds in y-direction. 
+ * @param zmin, zmax Box bounds in z-direction.  
  */
 template <typename T>
 void writeLammpstrj(PolymerEnsemble<T>& ensemble, const std::string& outfilename,
