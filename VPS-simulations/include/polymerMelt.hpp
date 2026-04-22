@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/15/2026
+ *     4/22/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -2306,21 +2306,21 @@ std::tuple<PolymerMeltConfiguration<T>,
     std::string line, token;
     while (std::getline(infile, line))
     {
-        if (line.compare(line.size() - 7, 7, "xlo xhi") == 0)
+        if (line.size() > 7 && line.compare(line.size() - 7, 7, "xlo xhi") == 0)
             break;
     }
-    ss << line; 
+    ss << line;
     std::getline(ss, token, ' ');
     const T xmin = static_cast<T>(std::stod(token));
-    std::getline(ss, token, ' '); 
+    std::getline(ss, token, ' ');
     const T xmax = static_cast<T>(std::stod(token)); 
-    std::getline(infile, line);     // y-bounds 
+    std::getline(infile, line);     // y-bounds
     ss.clear(); 
     ss.str(std::string()); 
     ss << line; 
     std::getline(ss, token, ' ');
     const T ymin = static_cast<T>(std::stod(token)); 
-    std::getline(ss, token, ' '); 
+    std::getline(ss, token, ' ');
     const T ymax = static_cast<T>(std::stod(token));
     std::getline(infile, line);     // z-bounds
     ss.clear(); 
@@ -2328,8 +2328,17 @@ std::tuple<PolymerMeltConfiguration<T>,
     ss << line; 
     std::getline(ss, token, ' ');
     const T zmin = static_cast<T>(std::stod(token));
-    std::getline(ss, token, ' '); 
+    std::getline(ss, token, ' ');
     const T zmax = static_cast<T>(std::stod(token));
+    const T xlen = xmax - xmin; 
+    const T ylen = ymax - ymin; 
+    const T zlen = zmax - zmin;
+
+    // Skip over the masses
+    std::getline(infile, line); 
+    std::getline(infile, line);    // Header 
+    std::getline(infile, line); 
+    std::getline(infile, line);    // Masses
 
     // Parse the Lennard-Jones parameters
     std::unordered_map<std::string, T> lj_params;
@@ -2435,7 +2444,7 @@ std::tuple<PolymerMeltConfiguration<T>,
     std::getline(ss, token, ' ');    // d
     dihedral_params["d"] = static_cast<T>(std::stod(token));
     std::getline(ss, token, ' ');    // n
-    dihedral_params["n"] = static_cast<T>(std::stod(token)); 
+    dihedral_params["n"] = static_cast<T>(std::stod(token));
  
     // Parse the atomic coordinates
     //
@@ -2465,6 +2474,17 @@ std::tuple<PolymerMeltConfiguration<T>,
         T y = static_cast<T>(std::stod(token)); 
         std::getline(ss, token, ' ');    // z-coordinate
         T z = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // Image flag for x-coordinate
+        int nx = std::stoi(token);
+        std::getline(ss, token, ' ');    // Image flag for y-coordinate
+        int ny = std::stoi(token); 
+        std::getline(ss, token, ' ');    // Image flag for z-coordinate 
+        int nz = std::stoi(token);
+
+        // Unwrap the coordinates
+        x += nx * xlen; 
+        y += ny * ylen; 
+        z += nz * zlen; 
 
         // Has this molecule been encountered previously? 
         if (mol_id > coords.size())
@@ -2488,7 +2508,9 @@ std::tuple<PolymerMeltConfiguration<T>,
 
     // Generate polymer configurations and return
     const int n = lengths.size(); 
-    PolymerMeltConfiguration<T> configs(n, coords, units, temp); 
+    PolymerMeltConfiguration<T> configs(
+        n, coords, units, temp, xmin, xmax, ymin, ymax, zmin, zmax
+    ); 
     return std::make_tuple(
         configs, lj_params, fene_params, angle_mode, angle_params,
         dihedral_params
