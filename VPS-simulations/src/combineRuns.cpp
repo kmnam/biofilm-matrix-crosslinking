@@ -36,6 +36,10 @@ int main(int argc, char** argv)
     auto melt_configs0 = result0.first; 
     auto params = result0.second; 
     auto melt_configs1 = result1.first;
+    std::cout << "... parsed " << melt_configs0.size() << " configurations from:\n"
+              << filename0 << std::endl; 
+    std::cout << "... parsed " << melt_configs1.size() << " configurations from:\n"
+              << filename1 << std::endl; 
 
     // Re-parse the first file to get the initial configuration ... 
     std::ifstream infile(filename0);  
@@ -86,6 +90,7 @@ int main(int argc, char** argv)
         params["domain_xmax"], params["domain_ymin"], params["domain_ymax"], 
         params["domain_zmin"], params["domain_zmax"]  
     );
+    std::cout << "... parsed initial configuration from original run\n"; 
 
     // Parse the .json file to get potential parameters 
     std::string json_filename = argv[2]; 
@@ -178,7 +183,8 @@ int main(int argc, char** argv)
         energies_dihedral.push_back(energy_dihedral);  
     }
 
-    // Write to file 
+    // Write to file
+    std::cout << "... writing to file: " << outfilename << std::endl;  
     writeMeltConfigFile<double>(
         melt_configs0, init_config, energies_total, energies_nonbonded,
         energies_bond, energies_angle, energies_dihedral, params, outfilename 
