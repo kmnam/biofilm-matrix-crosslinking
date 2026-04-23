@@ -1455,47 +1455,6 @@ class PolymerConfiguration
         }
 
         /**
-         * Get the *non-bonded* energy difference between the current polymer
-         * configuration and the configuration that would arise from replacing
-         * the current segment at the given index with the given segment.
-         *
-         * This function omits the non-bonded energetic contribution between
-         * all bonded pairs of atoms. 
-         *
-         * @param segment Input segment. 
-         * @param idx Index demarcating the polymer atoms to consider. 
-         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
-         * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
-         * @param fene_params FENE parameters. 
-         * @param angle_mode Angle potential type.  
-         * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0) or
-         *                     the dual Gaussian mixture potential parameters
-         *                     (A1, A2, w1, w2, theta1, theta2). 
-         * @param dihedral_params Dihedral angle potential parameters. 
-         * @returns Energy difference due to segment replacement. 
-         */
-        T getSegmentReplacementNonbondedEnergyDifference(const Ref<const Matrix<T, Dynamic, 3> >& segment,
-                                                         const int idx,
-                                                         std::unordered_map<std::string, T>& lj_params,  
-                                                         const T neighbor_threshold) const 
-        {
-            // Get the current segment 
-            const int n = segment.rows(); 
-            Matrix<T, Dynamic, 3> segment_curr = this->getSegment(idx, n);
-
-            // Get the energy difference 
-            T energy_curr = this->getSegmentNonbondedInteractionEnergy(
-                segment_curr, idx, lj_params, neighbor_threshold
-            ); 
-            T energy_new = this->getSegmentNonbondedInteractionEnergy(
-                segment, idx, lj_params, neighbor_threshold
-            ); 
-            return energy_new - energy_curr; 
-        } 
-
-        /**
          * Get the energy difference between the current polymer configuration 
          * and the configuration that would arise from replacing the current
          * segment at the given index with the given segment. 
