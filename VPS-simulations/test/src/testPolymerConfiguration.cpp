@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     3/28/2026
+ *     4/22/2026
  */
 
 #include <iostream>
@@ -475,7 +475,7 @@ TEST_CASE("Tests for k-mer generation", "[generateKMer()]")
     dihedral_params["K"] = 10 * kT;
     dihedral_params["d"] = 1; 
     dihedral_params["n"] = 1; 
-    const double collision_threshold = 0.1;
+    const double collision_threshold = 0.5 * pow(2., 1. / 6.) * lj_params["sigma"];
     const int max_tries_per_atom = 50;
     const int max_n_backtracks = 50; 
     Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
@@ -542,7 +542,7 @@ TEST_CASE("Tests for parsing and writing functions", "[writeLammps(), parseLammp
     dihedral_params["K"] = 10 * kT;
     dihedral_params["d"] = 1; 
     dihedral_params["n"] = 1; 
-    const double collision_threshold = 0.1;
+    const double collision_threshold = 0.5 * pow(2., 1. / 6.) * lj_params["sigma"];
     const int max_tries_per_atom = 50;
     const int max_n_backtracks = 50; 
     Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
@@ -824,220 +824,7 @@ TEST_CASE(
 }
 
 /**
- * Tests for getSegmentReplacementEnergyDifference(). 
- */
-TEST_CASE(
-    "Tests for segment replacement energy difference calculation",
-    "[getSegmentReplacementEnergyDifference()]"
-)
-{
-    boost::random::mt19937 rng(1234567890);
-    boost::random::uniform_01<> uniform_dist;
-    const double tol = 1e-8;
-
-    // Parse test 10-mer coordinates with angles chosen from a cosine potential
-    auto result = parseLammps<double>(
-        "configs/test_10mer_cosine.txt", Units::NANO, 300
-    ); 
-    PolymerConfiguration<double> config = std::get<0>(result); 
-    std::unordered_map<std::string, double> lj_params = std::get<1>(result); 
-    std::unordered_map<std::string, double> fene_params = std::get<2>(result); 
-    std::unordered_map<std::string, double> angle_params = std::get<4>(result); 
-    std::unordered_map<std::string, double> dihedral_params = std::get<5>(result);
-
-    // Randomly perturb the last 3 atoms in this configuration
-    int length = config.getLength(); 
-    Matrix<double, Dynamic, 3> coords = config.getSegment(0, length); 
-    Matrix<double, Dynamic, 3> coords2(coords); 
-    for (int i = 0; i < 3; ++i)
-    {
-        for (int j = 0; j < 3; ++j)
-        {
-            double r = -0.01 + 0.02 * uniform_dist(rng);  
-            coords2(length - i - 1, j) += r;
-        }
-    } 
-    PolymerConfiguration<double> config2(coords2, Units::NANO, 300);
-
-    // Calculate the segment replacement energy difference
-    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
-    double replace_energy_12 = config.getSegmentReplacementEnergyDifference(
-        coords2(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
-        angle_params, dihedral_params
-    );
-
-    // Calculate the reverse segment replacement energy difference
-    double replace_energy_21 = config2.getSegmentReplacementEnergyDifference(
-        coords(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
-        angle_params, dihedral_params
-    );
-    REQUIRE_THAT(replace_energy_12, Catch::Matchers::WithinAbs(-replace_energy_21, tol)); 
-
-    // Calculate the total energy of the two configurations 
-    double energy1_nonbonded = config.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy1_bond = config.getBondEnergy(fene_params); 
-    double energy1_angle = config.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
-    double energy1_dihedral = config.getDihedralAngleEnergy(dihedral_params); 
-    double energy2_nonbonded = config2.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy2_bond = config2.getBondEnergy(fene_params); 
-    double energy2_angle = config2.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
-    double energy2_dihedral = config2.getDihedralAngleEnergy(dihedral_params);
-    double energy1_total = energy1_nonbonded + energy1_bond + energy1_angle + energy1_dihedral;
-    double energy2_total = energy2_nonbonded + energy2_bond + energy2_angle + energy2_dihedral;
-
-    // Check that the segment replacement energy difference is equal to the
-    // energy difference between the two configurations 
-    REQUIRE_THAT(
-        replace_energy_12,
-        Catch::Matchers::WithinAbs(energy2_total - energy1_total, tol)
-    ); 
-
-    // Randomly perturb atoms 2, 3, 4, 5 in the original configuration 
-    Matrix<double, Dynamic, 3> coords3(coords); 
-    for (int i = 2; i < 6; ++i)
-    {
-        for (int j = 0; j < 3; ++j)
-        {
-            double r = -0.01 + 0.02 * uniform_dist(rng);  
-            coords3(i, j) += r; 
-        }
-    }
-    PolymerConfiguration<double> config3(coords3, Units::NANO, 300);
-
-    // Calculate the segment replacement energy difference
-    double replace_energy_13 = config.getSegmentReplacementEnergyDifference(
-        coords3(Eigen::seqN(2, 4), Eigen::all), 2, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
-        angle_params, dihedral_params
-    );
-
-    // Calculate the reverse segment replacement energy difference
-    double replace_energy_31 = config3.getSegmentReplacementEnergyDifference(
-        coords(Eigen::seqN(2, 4), Eigen::all), 2, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::COSINE, 
-        angle_params, dihedral_params
-    );
-    REQUIRE_THAT(replace_energy_13, Catch::Matchers::WithinAbs(-replace_energy_31, tol)); 
-
-    // Calculate the total energy of the two configurations 
-    double energy3_nonbonded = config3.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy3_bond = config3.getBondEnergy(fene_params); 
-    double energy3_angle = config3.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
-    double energy3_dihedral = config3.getDihedralAngleEnergy(dihedral_params);
-    double energy3_total = energy3_nonbonded + energy3_bond + energy3_angle + energy3_dihedral;
-
-    // Check that the segment replacement energy difference is equal to the
-    // energy difference between the two configurations 
-    REQUIRE_THAT(
-        replace_energy_13,
-        Catch::Matchers::WithinAbs(energy3_total - energy1_total, tol)
-    ); 
-
-    // Parse test 10-mer coordinates with angles chosen from a Gaussian potential
-    result = parseLammps<double>(
-        "configs/test_10mer_gaussian.txt", Units::NANO, 300
-    ); 
-    PolymerConfiguration<double> config4 = std::get<0>(result); 
-    lj_params = std::get<1>(result); 
-    fene_params = std::get<2>(result); 
-    angle_params = std::get<4>(result); 
-    dihedral_params = std::get<5>(result);
-
-    // Randomly perturb the last 3 atoms in this configuration
-    length = config.getLength(); 
-    Matrix<double, Dynamic, 3> coords4 = config4.getSegment(0, length); 
-    Matrix<double, Dynamic, 3> coords5(coords4); 
-    for (int i = 0; i < 3; ++i)
-    {
-        for (int j = 0; j < 3; ++j)
-        {
-            double r = -0.01 + 0.02 * uniform_dist(rng);  
-            coords5(length - i - 1, j) += r;
-        }
-    } 
-    PolymerConfiguration<double> config5(coords5, Units::NANO, 300);
-
-    // Calculate the segment replacement energy difference
-    neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
-    double replace_energy_45 = config4.getSegmentReplacementEnergyDifference(
-        coords5(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN, 
-        angle_params, dihedral_params
-    );
-
-    // Calculate the reverse segment replacement energy difference
-    double replace_energy_54 = config5.getSegmentReplacementEnergyDifference(
-        coords4(Eigen::seqN(length - 3, 3), Eigen::all), length - 3, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN, 
-        angle_params, dihedral_params
-    );
-    REQUIRE_THAT(replace_energy_45, Catch::Matchers::WithinAbs(-replace_energy_54, tol)); 
-
-    // Calculate the total energy of the two configurations 
-    double energy4_nonbonded = config4.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy4_bond = config4.getBondEnergy(fene_params); 
-    double energy4_angle = config4.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
-    double energy4_dihedral = config4.getDihedralAngleEnergy(dihedral_params); 
-    double energy5_nonbonded = config5.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy5_bond = config5.getBondEnergy(fene_params); 
-    double energy5_angle = config5.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
-    double energy5_dihedral = config5.getDihedralAngleEnergy(dihedral_params);
-    double energy4_total = energy4_nonbonded + energy4_bond + energy4_angle + energy4_dihedral;
-    double energy5_total = energy5_nonbonded + energy5_bond + energy5_angle + energy5_dihedral;
-
-    // Check that the segment replacement energy difference is equal to the
-    // energy difference between the two configurations 
-    REQUIRE_THAT(
-        replace_energy_45,
-        Catch::Matchers::WithinAbs(energy5_total - energy4_total, tol)
-    ); 
-
-    // Randomly perturb atoms 2, 3, 4, 5 in the original configuration 
-    Matrix<double, Dynamic, 3> coords6(coords4); 
-    for (int i = 2; i < 6; ++i)
-    {
-        for (int j = 0; j < 3; ++j)
-        {
-            double r = -0.01 + 0.02 * uniform_dist(rng);  
-            coords6(i, j) += r; 
-        }
-    }
-    PolymerConfiguration<double> config6(coords6, Units::NANO, 300);
-
-    // Calculate the segment replacement energy difference
-    double replace_energy_46 = config4.getSegmentReplacementEnergyDifference(
-        coords6(Eigen::seqN(2, 4), Eigen::all), 2, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN, 
-        angle_params, dihedral_params
-    );
-
-    // Calculate the reverse segment replacement energy difference
-    double replace_energy_64 = config6.getSegmentReplacementEnergyDifference(
-        coords4(Eigen::seqN(2, 4), Eigen::all), 2, 
-        lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN, 
-        angle_params, dihedral_params
-    );
-    REQUIRE_THAT(replace_energy_46, Catch::Matchers::WithinAbs(-replace_energy_64, tol)); 
-
-    // Calculate the total energy of the two configurations 
-    double energy6_nonbonded = config6.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy6_bond = config6.getBondEnergy(fene_params); 
-    double energy6_angle = config6.getBondAngleEnergy(AngleMode::GAUSSIAN, angle_params); 
-    double energy6_dihedral = config6.getDihedralAngleEnergy(dihedral_params);
-    double energy6_total = energy6_nonbonded + energy6_bond + energy6_angle + energy6_dihedral;
-
-    // Check that the segment replacement energy difference is equal to the
-    // energy difference between the two configurations 
-    REQUIRE_THAT(
-        replace_energy_46,
-        Catch::Matchers::WithinAbs(energy6_total - energy4_total, tol)
-    );  
-}
-
-/**
- * Tests for getReptationResidualEnergy() and getReptationEnergyDifference(). 
+ * Tests for getReptationResidualEnergy(). 
  */
 TEST_CASE(
     "Tests for reptation energy difference calculation",
@@ -1101,36 +888,11 @@ TEST_CASE(
     PolymerConfiguration<double> config2(config1); 
     config2.reptateTowardsTail(r_tail); 
 
-    // Calculate the reptation energy difference 
-    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
-    double reptate_energy_12 = config1.getReptationEnergyDifference(
-        ReptationDirection::TAIL, r_tail, lj_params, neighbor_threshold,
-        fene_params, AngleMode::COSINE, angle_params, dihedral_params
-    );
-
-    // Calculate the total energy of the two configurations 
-    double energy1_nonbonded = config1.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy1_bond = config1.getBondEnergy(fene_params); 
-    double energy1_angle = config1.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
-    double energy1_dihedral = config1.getDihedralAngleEnergy(dihedral_params); 
-    double energy2_nonbonded = config2.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy2_bond = config2.getBondEnergy(fene_params); 
-    double energy2_angle = config2.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
-    double energy2_dihedral = config2.getDihedralAngleEnergy(dihedral_params);
-    double energy1_total = energy1_nonbonded + energy1_bond + energy1_angle + energy1_dihedral;
-    double energy2_total = energy2_nonbonded + energy2_bond + energy2_angle + energy2_dihedral;
-    
-    // Check that the reptation energy difference is equal to the energy 
-    // difference between the two configurations
-    REQUIRE_THAT(
-        reptate_energy_12,
-        Catch::Matchers::WithinAbs(energy2_total - energy1_total, tol)
-    );
-
     // Check the residual energy due to reptation
     //
     // This should be the non-bonded energy between atoms 1, ..., 8 (0-indexed)
-    // in the original configuration and the new atom  
+    // in the original configuration and the new atom 
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
     double reptate_residual_energy_12 = config1.getReptationResidualEnergy(
         r_tail, lj_params, neighbor_threshold
     );
@@ -1145,14 +907,6 @@ TEST_CASE(
     // Generate the reverse reptated configuration 
     PolymerConfiguration<double> config3(config2); 
     config3.reptateTowardsHead(coords1.row(0));
-
-    // Calculate the reptation energy difference and check that it is the 
-    // negative of the previous reptation energy difference
-    double reptate_energy_23 = config2.getReptationEnergyDifference(
-        ReptationDirection::HEAD, coords1.row(0), lj_params, neighbor_threshold,
-        fene_params, AngleMode::COSINE, angle_params, dihedral_params
-    );
-    REQUIRE_THAT(reptate_energy_23, Catch::Matchers::WithinAbs(-reptate_energy_12, tol));
 
     // Check the residual energy due to reptation
     //
@@ -1198,26 +952,6 @@ TEST_CASE(
     PolymerConfiguration<double> config4(config1); 
     config4.reptateTowardsHead(r_head); 
 
-    // Calculate the reptation energy difference  
-    double reptate_energy_14 = config1.getReptationEnergyDifference(
-        ReptationDirection::HEAD, r_head, lj_params, neighbor_threshold,
-        fene_params, AngleMode::COSINE, angle_params, dihedral_params
-    );
-
-    // Calculate the total energy of the new configuration
-    double energy4_nonbonded = config4.getNonbondedEnergy(lj_params, neighbor_threshold); 
-    double energy4_bond = config4.getBondEnergy(fene_params); 
-    double energy4_angle = config4.getBondAngleEnergy(AngleMode::COSINE, angle_params); 
-    double energy4_dihedral = config4.getDihedralAngleEnergy(dihedral_params);
-    double energy4_total = energy4_nonbonded + energy4_bond + energy4_angle + energy4_dihedral;
-
-    // Check that the reptation energy difference is equal to the energy 
-    // difference between the two configurations
-    REQUIRE_THAT(
-        reptate_energy_14,
-        Catch::Matchers::WithinAbs(energy4_total - energy1_total, tol)
-    );
-
     // Check the residual energy due to reptation
     //
     // This should be the non-bonded energy between atoms 1, ..., 8 (0-indexed)
@@ -1236,15 +970,6 @@ TEST_CASE(
     // Generate the reverse reptated configuration 
     PolymerConfiguration<double> config5(config4); 
     config5.reptateTowardsTail(coords1.row(length - 1));
-
-    // Calculate the reptation energy difference and check that it is the 
-    // negative of the previous reptation energy difference
-    double reptate_energy_45 = config4.getReptationEnergyDifference(
-        ReptationDirection::TAIL, coords1.row(length - 1), lj_params,
-        neighbor_threshold, fene_params, AngleMode::COSINE, angle_params,
-        dihedral_params
-    );
-    REQUIRE_THAT(reptate_energy_45, Catch::Matchers::WithinAbs(-reptate_energy_14, tol));
 
     // Check the residual energy due to reptation
     //
@@ -1341,14 +1066,15 @@ TEST_CASE(
     // Generate a new reptated configuration 
     PolymerConfiguration<double> config2(config1); 
     config2.reptateTowardsTailMultimer(segment);
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"];
+    REQUIRE(config2.getNonbondedEnergy(lj_params, neighbor_threshold) > 0);
 
     // Calculate the reptation residual energy for each atom in the segment 
     //
     // This should be the non-bonded energy between each atom with index > 2
     // (0-indexed) in the original configuration and the new atom, minus the
     // adjacent atom  
-    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"];
-
+    //
     // Calculate residual energy for i = 0 
     double reptate_residual_energy_12_0 = config1.getMultimerReptationResidualEnergy(
         ReptationDirection::TAIL, 3, 0,
@@ -1494,13 +1220,14 @@ TEST_CASE(
     r3 << -scale + 2 * scale * uniform_dist(rng), 
           -scale + 2 * scale * uniform_dist(rng), 
           -scale + 2 * scale * uniform_dist(rng); 
-    segment.row(2) = coords1.row(1) + r1.transpose();
-    segment.row(1) = coords1.row(2) + r2.transpose(); 
-    segment.row(0) = coords1.row(3) + r3.transpose(); 
+    segment.row(2) = coords1.row(1) + r1.transpose();    // New atom 2
+    segment.row(1) = coords1.row(2) + r2.transpose();    // New atom 1
+    segment.row(0) = coords1.row(3) + r3.transpose();    // New atom 0
 
     // Generate a new reptated configuration (from the original) 
     PolymerConfiguration<double> config4(config1); 
     config4.reptateTowardsHeadMultimer(segment);
+    REQUIRE(config4.getNonbondedEnergy(lj_params, neighbor_threshold) > 0);
 
     // Calculate the reptation residual energy for each atom in the segment 
     //
@@ -1508,24 +1235,27 @@ TEST_CASE(
     // (0-indexed) in the original configuration and the new atom, minus the
     // adjacent atom 
     //
-    // Calculate residual energy for i = 0 
+    // Calculate residual energy for i = 0, which corresponds to atom 2 in
+    // the new segment
+    subsegment.resize(0, 3); 
     double reptate_residual_energy_14_0 = config1.getMultimerReptationResidualEnergy(
-        ReptationDirection::HEAD, 3, 0, 
-        segment(Eigen::seqN(0, 0), Eigen::all), segment.row(0), lj_params,
+        ReptationDirection::HEAD, 3, 0, subsegment, segment.row(2), lj_params,
         neighbor_threshold
     );
     sum = 0;
     for (int i = 1; i < 7; ++i)    // Omit the last three atoms and atom 0
     {
-        double dist = (segment.row(0) - coords1.row(i)).norm(); 
+        double dist = (segment.row(2) - coords1.row(i)).norm(); 
         sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
     }
     REQUIRE_THAT(reptate_residual_energy_14_0, Catch::Matchers::WithinAbs(sum, tol));
 
-    // Calculate residual energy for i = 1 
+    // Calculate residual energy for i = 1, which corresponds to atom 1 in
+    // the new segment
+    subsegment.resize(1, 3); 
+    subsegment.row(0) = segment.row(2); 
     double reptate_residual_energy_14_1 = config1.getMultimerReptationResidualEnergy(
-        ReptationDirection::HEAD, 3, 1, 
-        segment(Eigen::seqN(0, 1), Eigen::all), segment.row(1), lj_params,
+        ReptationDirection::HEAD, 3, 1, subsegment, segment.row(1), lj_params,
         neighbor_threshold
     );
     sum = 0;
@@ -1536,20 +1266,22 @@ TEST_CASE(
     }
     REQUIRE_THAT(reptate_residual_energy_14_1, Catch::Matchers::WithinAbs(sum, tol));
 
-    // Calculate residual energy for i = 2 
+    // Calculate residual energy for i = 2, which corresponds to atom 0 in
+    // the new segment
+    subsegment.conservativeResize(2, 3); 
+    subsegment.row(1) = segment.row(1); 
     double reptate_residual_energy_14_2 = config1.getMultimerReptationResidualEnergy(
-        ReptationDirection::HEAD, 3, 2, 
-        segment(Eigen::seqN(0, 2), Eigen::all), segment.row(2), lj_params,
+        ReptationDirection::HEAD, 3, 2, subsegment, segment.row(0), lj_params,
         neighbor_threshold
     );
     sum = 0;
     for (int i = 0; i < 7; ++i)    // Omit the last three atoms
     {
-        double dist = (segment.row(2) - coords1.row(i)).norm(); 
+        double dist = (segment.row(0) - coords1.row(i)).norm(); 
         sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
     }
-    sum += lj<double>(    // Add in atom 0 in the segment 
-        (segment.row(2) - segment.row(0)).norm(), 
+    sum += lj<double>(    // Add in atom 2 in the segment 
+        (segment.row(0) - segment.row(2)).norm(), 
         lj_params["eps"], lj_params["sigma"], true
     );
     REQUIRE_THAT(reptate_residual_energy_14_2, Catch::Matchers::WithinAbs(sum, tol));
@@ -1606,11 +1338,354 @@ TEST_CASE(
         double dist = (coords1.row(9) - coords4.row(i)).norm(); 
         sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
     }
-    sum += lj<double>(    // Add in atom 0 in the segment 
+    sum += lj<double>(    // Add in atom 0 in the segment (atom 7 in the original configuration) 
         (coords1.row(9) - coords1.row(7)).norm(), 
         lj_params["eps"], lj_params["sigma"], true
     );
     REQUIRE_THAT(reptate_residual_energy_45_2, Catch::Matchers::WithinAbs(sum, tol));
+}
+
+/**
+ * Tests for getTerminalSegmentReplacementResidualEnergy().
+ */
+TEST_CASE(
+    "Tests for terminal segment replacement residual energy calculation",
+    "[getTerminalSegmentReplacementResidualEnergy()]"
+)
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+    const double tol = 1e-3;
+
+    // Generate a 10-mer with randomly chosen angles and dihedrals 
+    //
+    // The bond lengths are chosen to be smaller than the Lennard-Jones 
+    // length scale, so that we have clearly nonzero non-bonded interaction 
+    // energies
+    const double kT = 1.380649e-2 * 300;
+    std::unordered_map<std::string, double> lj_params;
+    lj_params["eps"] = kT; 
+    lj_params["sigma"] = 0.9;
+    const double scale = 0.9 * lj_params["sigma"];
+    const int length = 10; 
+    Matrix<double, Dynamic, 3> coords1(length, 3);
+    coords1.row(0) = Matrix<double, 3, 1>::Zero();
+    coords1(1, 0) = scale; 
+    coords1(1, 1) = 0; 
+    coords1(1, 2) = 0;
+    for (int i = 2; i < length; ++i)
+    {
+        double angle = (
+            -boost::math::constants::third_pi<double>() +
+            boost::math::constants::two_thirds_pi<double>() * uniform_dist(rng)
+        );  
+        coords1.row(i) = generateNextAtom<double>(
+            coords1.row(i - 2), coords1.row(i - 1), scale, angle, rng,
+            uniform_dist
+        );
+    }
+    PolymerConfiguration<double> config1(coords1, Units::NANO, 300.0);  
+
+    // Introduce 3 new atoms at the tail
+    //
+    // Make them close to atoms 4, 5, 6 in the existing polymer, so that we
+    // have clearly nonzero non-bonded interaction energies 
+    Matrix<double, Dynamic, 3> segment(3, 3);
+    Matrix<double, 3, 1> r1, r2, r3;
+    r1 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    r2 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    r3 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    segment.row(0) = coords1.row(length - 4) + r1.transpose();
+    segment.row(1) = coords1.row(length - 5) + r2.transpose(); 
+    segment.row(2) = coords1.row(length - 6) + r3.transpose(); 
+
+    // Generate a new configuration with the terminal segment 
+    PolymerConfiguration<double> config2(config1); 
+    config2.replaceSegment(segment, length - 3);
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"];
+    REQUIRE(config2.getNonbondedEnergy(lj_params, neighbor_threshold) > 0);  
+
+    // Calculate the terminal segment replacement residual energy for each
+    // atom in the segment 
+    //
+    // This should be the non-bonded energy between each atom with index < 7
+    // (0-indexed) in the original configuration and the new atom, minus the
+    // adjacent atom  
+    //
+    // Calculate residual energy for i = 0 
+    double terminal_residual_energy_12_0 = config1.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::TAIL, 3, 0, 
+        segment(Eigen::seqN(0, 0), Eigen::all), segment.row(0), lj_params,
+        neighbor_threshold
+    );
+    double sum = 0; 
+    for (int i = 0; i < 6; ++i)    // Omit the last four atoms (since atom 6 is bonded to the new atom)
+    {
+        double dist = (segment.row(0) - coords1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_12_0, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 1
+    double terminal_residual_energy_12_1 = config1.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::TAIL, 3, 1,
+        segment(Eigen::seqN(0, 1), Eigen::all), segment.row(1), lj_params,
+        neighbor_threshold
+    );
+    sum = 0; 
+    for (int i = 0; i < 7; ++i)    // Omit the last three atoms
+    {
+        double dist = (segment.row(1) - coords1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_12_1, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 2
+    double terminal_residual_energy_12_2 = config1.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::TAIL, 3, 2, 
+        segment(Eigen::seqN(0, 2), Eigen::all), segment.row(2), lj_params,
+        neighbor_threshold
+    );
+    sum = 0; 
+    for (int i = 0; i < 7; ++i)    // Omit the last three atoms
+    {
+        double dist = (segment.row(2) - coords1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    sum += lj<double>(    // Add in atom 0 in the segment 
+        (segment.row(2) - segment.row(0)).norm(), 
+        lj_params["eps"], lj_params["sigma"], true
+    ); 
+    REQUIRE_THAT(terminal_residual_energy_12_2, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Generate the reverse configuration
+    PolymerConfiguration<double> config3(config2); 
+    config3.replaceSegment(coords1(Eigen::seqN(length - 3, 3), Eigen::all), length - 3);
+
+    // Calculate the terminal segment replacement residual energy for each
+    // atom in the original segment 
+    //
+    // This should again be the non-bonded energy between each atom with
+    // index < 7 (0-indexed) in the original configuration and the new atom,
+    // minus the adjacent atom  
+    //
+    // Calculate residual energy for i = 0
+    Matrix<double, Dynamic, 3> coords2 = config2.getSegment(0, 10);  
+    Matrix<double, Dynamic, 3> subsegment(0, 3);  
+    double terminal_residual_energy_23_0 = config2.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::TAIL, 3, 0, subsegment, coords1.row(7), lj_params,
+        neighbor_threshold
+    );
+    sum = 0; 
+    for (int i = 0; i < 6; ++i)    // Omit the last four atoms 
+    {
+        double dist = (coords1.row(7) - coords2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_23_0, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 1
+    subsegment.resize(1, 3); 
+    subsegment.row(0) = coords1.row(7);  
+    double terminal_residual_energy_23_1 = config2.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::TAIL, 3, 1, subsegment, coords1.row(8), lj_params,
+        neighbor_threshold
+    );
+    sum = 0; 
+    for (int i = 0; i < 7; ++i)    // Omit the last three atoms
+    {
+        double dist = (coords1.row(8) - coords2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_23_1, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 2
+    subsegment.conservativeResize(2, 3);
+    subsegment.row(1) = coords1.row(8);  
+    double terminal_residual_energy_23_2 = config2.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::TAIL, 3, 2, subsegment, coords1.row(9), lj_params,
+        neighbor_threshold
+    );
+    sum = 0; 
+    for (int i = 0; i < 7; ++i)    // Omit the last three atoms
+    {
+        double dist = (coords1.row(9) - coords2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    sum += lj<double>(    // Add in atom 0 in the segment (atom 7 in the original configuration) 
+        (coords1.row(9) - coords1.row(7)).norm(), 
+        lj_params["eps"], lj_params["sigma"], true
+    );
+    REQUIRE_THAT(terminal_residual_energy_23_2, Catch::Matchers::WithinAbs(sum, tol));
+
+    // The total terminal segment replacement residual energy (1 -> 2) minus 
+    // the reverse residual energy (2 -> 3 = 1) must be equal to the total
+    // nonbonded energy difference between 2 and 1
+    double energy1_nonbonded_nc = config1.getNonbondedEnergy(
+        lj_params, neighbor_threshold, true
+    );
+    double energy2_nonbonded_nc = config2.getNonbondedEnergy(
+        lj_params, neighbor_threshold, true
+    );
+    double energy_nonbonded_diff = energy2_nonbonded_nc - energy1_nonbonded_nc;
+    double total_residual_energy_12 = (
+        terminal_residual_energy_12_0 + terminal_residual_energy_12_1 +
+        terminal_residual_energy_12_2
+    ); 
+    double total_residual_energy_23 = (
+        terminal_residual_energy_23_0 + terminal_residual_energy_23_1 +
+        terminal_residual_energy_23_2
+    );  
+    REQUIRE_THAT(
+        total_residual_energy_12 - total_residual_energy_23,
+        Catch::Matchers::WithinAbs(energy_nonbonded_diff, tol)
+    ); 
+
+    // Introduce 3 new atoms at the head
+    //
+    // Again make them close to the existing polymer (here, atoms 3, 4, 5), so
+    // that we have clearly nonzero non-bonded interaction energies 
+    r1 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    r2 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    r3 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    segment.row(2) = coords1.row(3) + r1.transpose();    // New atom 2
+    segment.row(1) = coords1.row(4) + r2.transpose();    // New atom 1
+    segment.row(0) = coords1.row(5) + r3.transpose();    // New atom 0
+
+    // Generate a new configuration (from the original) 
+    PolymerConfiguration<double> config4(config1); 
+    config4.replaceSegment(segment, 0);
+    REQUIRE(config4.getNonbondedEnergy(lj_params, neighbor_threshold) > 0);  
+
+    // Calculate the terminal segment replacement residual energy for each atom
+    // in the segment 
+    //
+    // This should be the non-bonded energy between each atom with index > 2
+    // (0-indexed) in the original configuration and the new atom, minus the
+    // adjacent atom 
+    //
+    // Calculate residual energy for i = 0, which is atom 2 in the new segment
+    subsegment.resize(0, 3);
+    double terminal_residual_energy_14_0 = config1.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::HEAD, 3, 0, subsegment, segment.row(2), lj_params,
+        neighbor_threshold 
+    );
+    sum = 0;
+    for (int i = 4; i < 10; ++i)    // Omit the first four atoms (since atom 3 is bonded to atom 2) 
+    {
+        double dist = (segment.row(2) - coords1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_14_0, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 1, which is atom 1 in the new segment
+    subsegment.resize(1, 3); 
+    subsegment.row(0) = segment.row(2); 
+    double terminal_residual_energy_14_1 = config1.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::HEAD, 3, 1, subsegment, segment.row(1), lj_params,
+        neighbor_threshold
+    );
+    sum = 0;
+    for (int i = 3; i < 10; ++i)    // Omit the first three atoms
+    {
+        double dist = (segment.row(1) - coords1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_14_1, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 2, which is atom 0 in the new segment 
+    subsegment.conservativeResize(2, 3); 
+    subsegment.row(1) = segment.row(1); 
+    double terminal_residual_energy_14_2 = config1.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::HEAD, 3, 2, subsegment, segment.row(0), lj_params,
+        neighbor_threshold
+    );
+    sum = 0;
+    for (int i = 3; i < 10; ++i)    // Omit the first three atoms
+    {
+        double dist = (segment.row(0) - coords1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    sum += lj<double>(    // Add in atom 2 in the segment 
+        (segment.row(0) - segment.row(2)).norm(), 
+        lj_params["eps"], lj_params["sigma"], true
+    );
+    REQUIRE_THAT(terminal_residual_energy_14_2, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Generate the reverse reptated configuration 
+    PolymerConfiguration<double> config5(config4); 
+    config5.replaceSegment(coords1(Eigen::seqN(0, 3), Eigen::all), 0); 
+
+    // Calculate the terminal segment replacement residual energy for each
+    // atom in the original segment 
+    //
+    // This should again be the non-bonded energy between each atom with
+    // index > 2 (0-indexed) in the new configuration and the new atom, minus
+    // the adjacent atom 
+    //
+    // Calculate residual energy for i = 0, which is atom 2 in the original 
+    // configuration 
+    Matrix<double, Dynamic, 3> coords4 = config4.getSegment(0, 10);
+    subsegment.resize(0, 3);  
+    double terminal_residual_energy_45_0 = config4.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::HEAD, 3, 0, subsegment, coords1.row(2), lj_params,
+        neighbor_threshold
+    );
+    sum = 0; 
+    for (int i = 4; i < 10; ++i)    // Omit first four atoms (since atom 3 is bonded to atom 2)
+    {
+        double dist = (coords1.row(2) - coords4.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_45_0, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 1, which is atom 1 in the original 
+    // configuration
+    subsegment.resize(1, 3); 
+    subsegment.row(0) = coords1.row(2);  
+    double terminal_residual_energy_45_1 = config4.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::HEAD, 3, 1, subsegment, coords1.row(1), lj_params,
+        neighbor_threshold
+    );
+    sum = 0; 
+    for (int i = 3; i < 10; ++i)    // Omit the first three atoms
+    {
+        double dist = (coords1.row(1) - coords4.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_45_1, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 2, which is atom 0 in the original 
+    // configuration
+    subsegment.conservativeResize(2, 3); 
+    subsegment.row(1) = coords1.row(1);  
+    double terminal_residual_energy_45_2 = config4.getTerminalSegmentReplacementResidualEnergy(
+        TerminalSegmentEnd::HEAD, 3, 2, subsegment, coords1.row(0), lj_params,
+        neighbor_threshold
+    );
+    sum = 0; 
+    for (int i = 3; i < 10; ++i)    // Omit the first three atoms
+    {
+        double dist = (coords1.row(0) - coords4.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    sum += lj<double>(    // Add in atom 2 in the original configuration 
+        (coords1.row(0) - coords1.row(2)).norm(), 
+        lj_params["eps"], lj_params["sigma"], true
+    );
+    REQUIRE_THAT(terminal_residual_energy_45_2, Catch::Matchers::WithinAbs(sum, tol));
 }
 
 /**
