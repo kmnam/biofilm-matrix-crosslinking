@@ -1455,50 +1455,6 @@ class PolymerConfiguration
         }
 
         /**
-         * Get the energy difference between the current polymer configuration 
-         * and the configuration that would arise from replacing the current
-         * segment at the given index with the given segment. 
-         *
-         * @param segment Input segment. 
-         * @param idx Index demarcating the polymer atoms to consider. 
-         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
-         * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
-         * @param fene_params FENE parameters. 
-         * @param angle_mode Angle potential type.  
-         * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0) or
-         *                     the dual Gaussian mixture potential parameters
-         *                     (A1, A2, w1, w2, theta1, theta2). 
-         * @param dihedral_params Dihedral angle potential parameters. 
-         * @returns Energy difference due to segment replacement. 
-         */
-        T getSegmentReplacementEnergyDifference(const Ref<const Matrix<T, Dynamic, 3> >& segment,
-                                                const int idx,
-                                                std::unordered_map<std::string, T>& lj_params,  
-                                                const T neighbor_threshold, 
-                                                std::unordered_map<std::string, T>& fene_params,
-                                                const AngleMode angle_mode,  
-                                                std::unordered_map<std::string, T>& angle_params,
-                                                std::unordered_map<std::string, T>& dihedral_params) const
-        {
-            // Get the current segment 
-            const int n = segment.rows(); 
-            Matrix<T, Dynamic, 3> segment_curr = this->getSegment(idx, n);
-
-            // Get the energy difference 
-            T energy_curr = this->getSegmentInteractionEnergy(
-                segment_curr, idx, lj_params, neighbor_threshold, fene_params, 
-                angle_mode, angle_params, dihedral_params
-            ); 
-            T energy_new = this->getSegmentInteractionEnergy(
-                segment, idx, lj_params, neighbor_threshold, fene_params, 
-                angle_mode, angle_params, dihedral_params
-            );
-            return energy_new - energy_curr; 
-        }
-
-        /**
          * Get the Metropolis-Hastings acceptance probability of switching
          * in the given segment of atoms into the polymer at the given index.  
          *
