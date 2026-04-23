@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/22/2026
+ *     4/23/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -2935,6 +2935,92 @@ void writeMeltLammpstrj(std::vector<PolymerMeltConfiguration<T> >& ensemble,
                         << coords(k, 2) << std::endl;
                 atom_idx++;  
             }
+        }
+    }
+    outfile.close(); 
+}
+
+/**
+ * Write a new .lammpstrj file with the given polymer melt configurations.
+ *
+ * @param ensemble Ensemble of melt configurations.
+ * @param init_config Initial melt configuration. 
+ * @param energies_total Vector of total energies of the melt configurations. 
+ * @param energies_nonbonded Vector of nonbonded energies. 
+ * @param energies_bond Vector of bond energies. 
+ * @param energies_angle Vector of angle energies. 
+ * @param energies_dihedral Vector of dihedral energies.
+ * @param params Ensemble-level parameter values to be written to the header. 
+ * @param outfilename Output filename. 
+ */
+template <typename T>
+void writeMeltConfigFile(std::vector<PolymerMeltConfiguration<T> >& ensemble,
+                         PolymerMeltConfiguration<T>& init_config,  
+                         std::vector<T>& energies_total, 
+                         std::vector<T>& energies_nonbonded, 
+                         std::vector<T>& energies_bond, 
+                         std::vector<T>& energies_angle, 
+                         std::vector<T>& energies_dihedral, 
+                         std::unordered_map<std::string, T>& params, 
+                         const std::string& outfilename)
+{
+    std::ofstream outfile(outfilename);
+
+    // First write a header section 
+    for (const auto& pair : params)
+    {
+        std::string key = pair.first; 
+        bool is_int = (
+            (key == "n_chains") ||
+            (key == "multimer_reptation_length") ||
+            (key == "terminal_segment_length") ||
+            (key == "n_bins_fene_cdf") ||
+            (key == "max_iter") ||
+            (key == "mod_collect") ||
+            (key == "mod_write") || 
+            (key == "max_stall")
+        );
+        if (is_int)
+            outfile << "## " << key << " = " << static_cast<int>(pair.second) << std::endl;
+        else 
+            outfile << "## " << key << " = " << pair.second << std::endl;  
+    }
+
+    // Get number of chains and chain lengths 
+    const int n_chains = init_config.numChains(); 
+    std::vector<int> lengths; 
+    for (int i = 0; i < n_chains; ++i)
+        lengths.push_back(init_config.getLength(i)); 
+
+    // Write the initial configuration ...
+    outfile << "# CONFIG\tINIT\n"; 
+    for (int i = 0; i < n_chains; ++i)
+    {
+        Matrix<T, Dynamic, 3> coords = init_config.getSegment(i, 0, lengths[i]);
+        for (int j = 0; j < lengths[i]; ++j)
+        {
+            outfile << i << '\t' << j << '\t' << coords(j, 0) << '\t'
+                    << coords(j, 1) << '\t' << coords(j, 2) << std::endl; 
+        } 
+    }
+
+    // Write each configuration in the ensemble ... 
+    for (int i = 0; i < ensemble.size(); ++i)
+    {
+        outfile << "# CONFIG\t" << i << std::endl
+                << "# ENERGY_TOTAL\t" << energies_total[i] << std::endl
+                << "# ENERGY_NONBONDED\t" << energies_nonbonded[i] << std::endl
+                << "# ENERGY_BOND\t" << energies_bond[i] << std::endl 
+                << "# ENERGY_ANGLE\t" << energies_angle[i] << std::endl
+                << "# ENERGY_DIHEDRAL\t" << energies_dihedral[i] << std::endl; 
+        for (int j = 0; j < n_chains; ++j)
+        {
+            Matrix<T, Dynamic, 3> coords = ensemble[i].getSegment(j, 0, lengths[j]);
+            for (int k = 0; k < lengths[j]; ++k)
+            {
+                outfile << j << '\t' << k << '\t' << coords(k, 0) << '\t'
+                        << coords(k, 1) << '\t' << coords(k, 2) << std::endl; 
+            } 
         }
     }
     outfile.close(); 
