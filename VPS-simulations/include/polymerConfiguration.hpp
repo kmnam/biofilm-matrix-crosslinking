@@ -1036,52 +1036,6 @@ class PolymerConfiguration
         }
 
         /**
-         * Get the Metropolis-Hastings acceptance probability of switching
-         * in the given segment of atoms into the polymer at the given index.  
-         *
-         * @param segment Input segment. 
-         * @param idx Index demarcating the polymer atoms to consider. 
-         * @param lj_params Lennard-Jones/Weeks-Chandler-Andersen parameters. 
-         * @param neighbor_threshold Distance threshold for identifying
-         *                           neighboring (non-bonded) atoms. 
-         * @param fene_params FENE parameters. 
-         * @param angle_mode Angle potential type.  
-         * @param angle_params Angle potential parameters. Must include the 
-         *                     cosine potential parameters (K and theta0) or
-         *                     the dual Gaussian mixture potential parameters
-         *                     (A1, A2, w1, w2, theta1, theta2). 
-         * @param dihedral_params Dihedral angle potential parameters. 
-         * @returns Metropolis-Hastings acceptance probability of switching
-         *          in the given segment into the polymer.  
-         */
-        T getMetropolisAcceptanceProb(const Ref<const Matrix<T, Dynamic, 3> >& segment,
-                                      const int idx,
-                                      std::unordered_map<std::string, T>& lj_params,  
-                                      const T neighbor_threshold, 
-                                      std::unordered_map<std::string, T>& fene_params,
-                                      const AngleMode angle_mode, 
-                                      std::unordered_map<std::string, T>& angle_params,
-                                      std::unordered_map<std::string, T>& dihedral_params) const
-        {
-            // Get the energy of the current polymer configuration 
-            const int n = segment.rows(); 
-            Matrix<T, Dynamic, 3> segment_curr = this->r(Eigen::seqN(idx, n), Eigen::all);
-            const T energy_curr = this->getSegmentInteractionEnergy(
-                segment_curr, idx, lj_params, neighbor_threshold, fene_params, 
-                angle_mode, angle_params, dihedral_params
-            ); 
-
-            // Get the energy of the proposed polymer configuration 
-            const T energy_new = this->getSegmentInteractionEnergy(
-                segment, idx, lj_params, neighbor_threshold, fene_params, 
-                angle_mode, angle_params, dihedral_params
-            );
-
-            // Calculate the Metropolis acceptance probability
-            return min(1, exp(-(energy_new - energy_curr) / this->kT));  
-        }
-
-        /**
          * Write the polymer configuration to file in LAMMPS data format.
          *
          * The polymer coordinates are wrapped into the fundamental cell, 
