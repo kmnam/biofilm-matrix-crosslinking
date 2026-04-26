@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/23/2026
+ *     4/26/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -2965,6 +2965,7 @@ void writeMeltConfigFile(std::vector<PolymerMeltConfiguration<T> >& ensemble,
                          const std::string& outfilename)
 {
     std::ofstream outfile(outfilename);
+    outfile << std::setprecision(10); 
 
     // First write a header section 
     for (const auto& pair : params)
