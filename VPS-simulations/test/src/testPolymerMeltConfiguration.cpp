@@ -1362,9 +1362,10 @@ TEST_CASE(
 
     // Calculate the reptation residual energy
     //
-    // This should be the non-bonded energy between each atom with index > 0
-    // (0-indexed) in the original configuration and the new atom, minus the
-    // adjacent atom, together with all other atoms in all other chains
+    // This should be the non-bonded energy between: 
+    // - each atom with index > 0 (0-indexed) in the original configuration
+    //   and the new atom, minus the adjacent atom, and 
+    // - each atom in every other chain and the new atom  
     double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
     double reptate_residual_energy_12 = melt_configs.getReptationResidualEnergy(
         1, r_tail, lj_params, neighbor_threshold
@@ -1395,9 +1396,10 @@ TEST_CASE(
 
     // Calculate the reverse reptation residual energy 
     //
-    // This should be the non-bonded energy between each atom with index < 9
-    // (0-indexed) in the reptated configuration and the new atom, minus the
-    // adjacent atom, together with all other atoms in all other chains
+    // This should be the non-bonded energy between: 
+    // - each atom with index < 9 (0-indexed) in the reptated configuration
+    //   and the new atom, minus the adjacent atom, and
+    // - each atom in every other chain and the new atom  
     Matrix<double, Dynamic, 3> coords_chain0_2 = melt_configs2.getSegment(0, 0, 10); 
     Matrix<double, Dynamic, 3> coords_chain2_2 = melt_configs2.getSegment(2, 0, 10); 
     double reptate_residual_energy_23 = melt_configs2.getReptationResidualEnergy(
@@ -1483,9 +1485,10 @@ TEST_CASE(
 
     // Calculate the reptation residual energy for each atom in the segment 
     //
-    // This should be the non-bonded energy between each atom with index > 2
-    // (0-indexed) in the original configuration and the new atom, minus the
-    // adjacent atom, together with all other atoms in all other chains
+    // This should be the non-bonded energy between:
+    // - each atom with index > 2 (0-indexed) in the original configuration
+    //   and the new atom, minus the adjacent atom, and 
+    // - each atom in every other chain and the new atom 
     //
     // Calculate residual energy for i = 0
     double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
@@ -1569,9 +1572,10 @@ TEST_CASE(
     // Calculate the reverse reptation residual energy for each atom in the
     // original configuration 
     //
-    // This should be the non-bonded energy between each atom with index < 2
-    // (0-indexed) in the reptated configuration and the new atom, minus the
-    // adjacent atom, together with all other atoms in all other chains
+    // This should be the non-bonded energy between:
+    // - each atom with index < 2 (0-indexed) in the reptated configuration
+    //   and the new atom, minus the adjacent atom, and
+    // - each atom in every other chain and the new atom 
     //
     // Calculate residual energy for i = 0, which is atom 2 in the original 
     // configuration
@@ -1646,6 +1650,299 @@ TEST_CASE(
     REQUIRE_THAT(reptate_residual_energy_23_2, Catch::Matchers::WithinAbs(sum, tol));
 }
 
-// TODO TESTS FOR:
-// - getTerminalSegmentReplacementResidualEnergy() 
+/**
+ * Tests for getTerminalSegmentReplacementResidualEnergy(). 
+ */
+TEST_CASE(
+    "Tests for terminal segment replacement residual energy calculation",
+    "[getTerminalSegmentReplacementResidualEnergy()]"
+)
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+    const double tol = 1e-8;
+
+    // Parse the previously generated 10-mer melt 
+    auto result = parseMeltLammps<double>(
+        "configs/test_10mer_melt_cosine.txt", Units::NANO, 300.0
+    ); 
+    PolymerMeltConfiguration<double> melt_configs = std::get<0>(result);
+    std::unordered_map<std::string, double> lj_params = std::get<1>(result); 
+    std::unordered_map<std::string, double> fene_params = std::get<2>(result); 
+    AngleMode angle_mode = std::get<3>(result); 
+    std::unordered_map<std::string, double> angle_params = std::get<4>(result); 
+    std::unordered_map<std::string, double> dihedral_params = std::get<5>(result);
+
+    // Move the last four atoms in the third polymer
+    //
+    // Choose four new atoms that are close to atoms to atoms 5, 4, 3, 2 along
+    // the original configuration, so that we have some non-bonded interactions
+    int l0 = melt_configs.getLength(0); 
+    int l1 = melt_configs.getLength(1); 
+    int l2 = melt_configs.getLength(2);
+    REQUIRE(l0 == 10); 
+    REQUIRE(l1 == 10); 
+    REQUIRE(l2 == 10);
+    const double scale = 0.9 * lj_params["sigma"];
+    Matrix<double, Dynamic, 3> coords_chain0_1 = melt_configs.getSegment(0, 0, 10); 
+    Matrix<double, Dynamic, 3> coords_chain1_1 = melt_configs.getSegment(1, 0, 10);
+    Matrix<double, Dynamic, 3> coords_chain2_1 = melt_configs.getSegment(2, 0, 10); 
+    Matrix<double, Dynamic, 3> segment(4, 3);
+    Matrix<double, 3, 1> r1, r2, r3, r4;
+    r1 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    r2 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    r3 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng);
+    r4 << -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng), 
+          -scale + 2 * scale * uniform_dist(rng); 
+    segment.row(0) = coords_chain2_1.row(l2 - 5) + r1.transpose();
+    segment.row(1) = coords_chain2_1.row(l2 - 6) + r2.transpose(); 
+    segment.row(2) = coords_chain2_1.row(l2 - 7) + r3.transpose();
+    segment.row(3) = coords_chain2_1.row(l2 - 8) + r4.transpose();
+    PolymerMeltConfiguration<double> melt_configs2(melt_configs); 
+    melt_configs2.replaceSegment(2, segment, 6); 
+   
+    // Check that the coordinates are updated correctly  
+    Matrix<double, Dynamic, 3> coords_chain2_2 = melt_configs2.getSegment(2, 0, 10);
+    for (int i = 0; i < l2 - 4; ++i) 
+        REQUIRE((coords_chain2_2.row(i) - coords_chain2_1.row(i)).norm() < tol);
+    REQUIRE((coords_chain2_2.row(l2 - 4) - segment.row(0)).norm() < tol); 
+    REQUIRE((coords_chain2_2.row(l2 - 3) - segment.row(1)).norm() < tol); 
+    REQUIRE((coords_chain2_2.row(l2 - 2) - segment.row(2)).norm() < tol);
+    REQUIRE((coords_chain2_2.row(l2 - 1) - segment.row(3)).norm() < tol);
+
+    // Calculate the terminal segment replacement residual energy for each
+    // atom in the segment 
+    //
+    // This should be the non-bonded energy between:
+    // - each atom with index < 6 (0-indexed) in the original configuration
+    //   and the new atom, minus the adjacent atom, and
+    // - each atom in every other chain and the new atom 
+    //
+    // Calculate residual energy for i = 0
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    double terminal_residual_energy_12_0 = melt_configs.getTerminalSegmentReplacementResidualEnergy(
+        2, TerminalSegmentEnd::TAIL, 4, 0, 
+        segment(Eigen::seqN(0, 0), Eigen::all), segment.row(0), lj_params, 
+        neighbor_threshold
+    );
+    double sum = 0;
+    for (int i = 0; i < 5; ++i)    // Omit the last five atoms, since atom 5 is bonded to the new atom
+    {
+        double dist = (segment.row(0) - coords_chain2_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    for (int i = 0; i < 10; ++i)    // Run through atoms on other chains
+    {
+        double dist = (segment.row(0) - coords_chain0_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+        dist = (segment.row(0) - coords_chain1_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_12_0, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 1
+    double terminal_residual_energy_12_1 = melt_configs.getTerminalSegmentReplacementResidualEnergy(
+        2, TerminalSegmentEnd::TAIL, 4, 1,
+        segment(Eigen::seqN(0, 1), Eigen::all), segment.row(1), lj_params, 
+        neighbor_threshold
+    ); 
+    sum = 0; 
+    for (int i = 0; i < 6; ++i)    // Omit the last four atoms 
+    {
+        double dist = (segment.row(1) - coords_chain2_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    for (int i = 0; i < 10; ++i)    // Run through atoms on other chains
+    {
+        double dist = (segment.row(1) - coords_chain0_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+        dist = (segment.row(1) - coords_chain1_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_12_1, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 2
+    double terminal_residual_energy_12_2 = melt_configs.getTerminalSegmentReplacementResidualEnergy(
+        2, TerminalSegmentEnd::TAIL, 4, 2,
+        segment(Eigen::seqN(0, 2), Eigen::all), segment.row(2), lj_params, 
+        neighbor_threshold
+    );
+    sum = 0;
+    for (int i = 0; i < 6; ++i)    // Omit the last four atoms
+    {
+        double dist = (segment.row(2) - coords_chain2_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    sum += lj<double>(
+        (segment.row(2) - segment.row(0)).norm(),    // Add in atom 0 in the segment
+        lj_params["eps"], lj_params["sigma"], true
+    ); 
+    for (int i = 0; i < 10; ++i)    // Run through atoms on other chains
+    {
+        double dist = (segment.row(2) - coords_chain0_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+        dist = (segment.row(2) - coords_chain1_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_12_2, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 3
+    double terminal_residual_energy_12_3 = melt_configs.getTerminalSegmentReplacementResidualEnergy(
+        2, TerminalSegmentEnd::TAIL, 4, 3,
+        segment(Eigen::seqN(0, 3), Eigen::all), segment.row(3), lj_params, 
+        neighbor_threshold
+    );
+    sum = 0;
+    for (int i = 0; i < 6; ++i)    // Omit the last four atoms
+    {
+        double dist = (segment.row(3) - coords_chain2_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    sum += lj<double>(
+        (segment.row(3) - segment.row(0)).norm(),    // Add in atom 0 in the segment
+        lj_params["eps"], lj_params["sigma"], true
+    );
+    sum += lj<double>(
+        (segment.row(3) - segment.row(1)).norm(),    // Add in atom 1 in the segment 
+        lj_params["eps"], lj_params["sigma"], true
+    ); 
+    for (int i = 0; i < 10; ++i)    // Run through atoms on other chains
+    {
+        double dist = (segment.row(3) - coords_chain0_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+        dist = (segment.row(3) - coords_chain1_1.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_12_3, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Generate the reverse configuration 
+    PolymerMeltConfiguration<double> melt_configs3(melt_configs2); 
+    melt_configs3.replaceSegment(
+        2, coords_chain2_1(Eigen::seqN(6, 4), Eigen::all), 6
+    );
+
+    // Check that the coordinates are updated correctly  
+    Matrix<double, Dynamic, 3> coords_chain2_3 = melt_configs3.getSegment(2, 0, 10);
+    for (int i = 0; i < l2; ++i) 
+        REQUIRE((coords_chain2_3.row(i) - coords_chain2_1.row(i)).norm() < tol);
+
+    // Calculate the reverse residual energy for each atom in the original
+    // configuration 
+    //
+    // This should be the non-bonded energy between:
+    // - each atom with index > 6 (0-indexed) in the new configuration and
+    //   the new atom (in the original configuration), minus the adjacent atom,
+    //   and 
+    // - each atom in every other chain with the new atom (in the original 
+    //   configuration)  
+    //
+    // Calculate residual energy for i = 0, which is atom 6 in the original 
+    // configuration
+    Matrix<double, Dynamic, 3> coords_chain0_2 = melt_configs2.getSegment(0, 0, 10); 
+    Matrix<double, Dynamic, 3> coords_chain1_2 = melt_configs2.getSegment(1, 0, 10); 
+    Matrix<double, Dynamic, 3> subsegment(0, 3); 
+    double terminal_residual_energy_23_0 = melt_configs2.getTerminalSegmentReplacementResidualEnergy(
+        2, TerminalSegmentEnd::TAIL, 4, 0, subsegment, coords_chain2_1.row(6), 
+        lj_params, neighbor_threshold 
+    );
+    sum = 0;
+    for (int i = 0; i < 5; ++i)    // Omit the last five atoms, since atom 5 is bonded to the new atom
+    {
+        double dist = (coords_chain2_1.row(6) - coords_chain2_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    for (int i = 0; i < 10; ++i)    // Run through atoms on other chains
+    {
+        double dist = (coords_chain2_1.row(6) - coords_chain0_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+        dist = (coords_chain2_1.row(6) - coords_chain1_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_23_0, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 1
+    subsegment.resize(1, 3); 
+    subsegment.row(0) = coords_chain2_1.row(6); 
+    double terminal_residual_energy_23_1 = melt_configs2.getTerminalSegmentReplacementResidualEnergy(
+        2, TerminalSegmentEnd::TAIL, 4, 1, subsegment, coords_chain2_1.row(7), 
+        lj_params, neighbor_threshold
+    ); 
+    sum = 0; 
+    for (int i = 0; i < 6; ++i)    // Omit the last four atoms 
+    {
+        double dist = (coords_chain2_1.row(7) - coords_chain2_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    for (int i = 0; i < 10; ++i)    // Run through atoms on other chains
+    {
+        double dist = (coords_chain2_1.row(7) - coords_chain0_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+        dist = (coords_chain2_1.row(7) - coords_chain1_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_23_1, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 2
+    subsegment.conservativeResize(2, 3); 
+    subsegment.row(1) = coords_chain2_1.row(7); 
+    double terminal_residual_energy_23_2 = melt_configs2.getTerminalSegmentReplacementResidualEnergy(
+        2, TerminalSegmentEnd::TAIL, 4, 2, subsegment, coords_chain2_1.row(8),
+        lj_params, neighbor_threshold
+    );
+    sum = 0;
+    for (int i = 0; i < 6; ++i)    // Omit the last four atoms 
+    {
+        double dist = (coords_chain2_1.row(8) - coords_chain2_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    sum += lj<double>(
+        (coords_chain2_1.row(8) - coords_chain2_1.row(6)).norm(),   // Add in atom 6 in the original configuration 
+        lj_params["eps"], lj_params["sigma"], true
+    ); 
+    for (int i = 0; i < 10; ++i)    // Run through atoms on other chains
+    {
+        double dist = (coords_chain2_1.row(8) - coords_chain0_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+        dist = (coords_chain2_1.row(8) - coords_chain1_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_23_2, Catch::Matchers::WithinAbs(sum, tol));
+
+    // Calculate residual energy for i = 3
+    subsegment.conservativeResize(3, 3); 
+    subsegment.row(2) = coords_chain2_1.row(8); 
+    double terminal_residual_energy_23_3 = melt_configs2.getTerminalSegmentReplacementResidualEnergy(
+        2, TerminalSegmentEnd::TAIL, 4, 3, subsegment, coords_chain2_1.row(9),
+        lj_params, neighbor_threshold
+    );
+    sum = 0;
+    for (int i = 0; i < 6; ++i)    // Omit the last four atoms 
+    {
+        double dist = (coords_chain2_1.row(9) - coords_chain2_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    sum += lj<double>(
+        (coords_chain2_1.row(9) - coords_chain2_1.row(6)).norm(),   // Add in atom 6 in the original configuration 
+        lj_params["eps"], lj_params["sigma"], true
+    );
+    sum += lj<double>(
+        (coords_chain2_1.row(9) - coords_chain2_1.row(7)).norm(),   // Add in atom 7 in the original configuration 
+        lj_params["eps"], lj_params["sigma"], true
+    ); 
+    for (int i = 0; i < 10; ++i)    // Run through atoms on other chains
+    {
+        double dist = (coords_chain2_1.row(9) - coords_chain0_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+        dist = (coords_chain2_1.row(9) - coords_chain1_2.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(terminal_residual_energy_23_3, Catch::Matchers::WithinAbs(sum, tol));
+}
 
