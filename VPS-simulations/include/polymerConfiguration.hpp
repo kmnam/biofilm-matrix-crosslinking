@@ -185,7 +185,7 @@ class PolymerConfiguration
                 u /= u.norm(); 
                 Matrix<T, 3, 1> v = this->r.row(i + 2) - this->r.row(i + 1); 
                 v /= v.norm(); 
-                bond_angles(i) = u.dot(-v);  
+                bond_angles(i) = acosSafe<T>(u.dot(v));  
             }
 
             return bond_angles; 
