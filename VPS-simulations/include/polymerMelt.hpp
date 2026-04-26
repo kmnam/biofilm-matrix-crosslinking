@@ -2677,7 +2677,7 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
                 )
             ); 
         }
-    } 
+    }
 
     return std::pair(ensemble, times); 
 }
@@ -2815,13 +2815,7 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
                 melt_coords_next.push_back(Matrix<T, Dynamic, 3>::Zero(length, 3));
             melt_coords_i = melt_coords_next; 
         }
-        // If we reach an ensemble-level output line at the end of
-        // the file, stop parsing
-        else if (line.find("##" ) == 0)
-        {
-            break; 
-        }
-        // If we reach a configuration-level output line, keep parsing
+        // If we reach a configuration-level annotation, keep parsing 
         else if (line.find("# ") == 0)
         {
             // Do nothing
