@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/23/2026
+ *     4/26/2026
  */
 #include <iostream>
 #include <filesystem>
@@ -140,6 +140,7 @@ int main(int argc, char** argv)
                         energies_dihedral; 
     for (int i = 0; i < melt_configs0.size(); ++i)
     {
+        std::cout << "... recomputing energy of configuration " << i << std::endl; 
         double energy_nonbonded = melt_configs0[i].getTotalNonbondedEnergy(
             lj_params, neighbor_threshold, true
         );
@@ -164,6 +165,8 @@ int main(int argc, char** argv)
     for (int i = 1; i < melt_configs1.size(); ++i)
     {
         melt_configs0.push_back(melt_configs1[i]);
+        std::cout << "... recomputing energy of configuration " << i
+                  << " in run1" << std::endl; 
         double energy_nonbonded = melt_configs1[i].getTotalNonbondedEnergy(
             lj_params, neighbor_threshold, true
         );
@@ -181,6 +184,18 @@ int main(int argc, char** argv)
         energies_bond.push_back(energy_bond); 
         energies_angle.push_back(energy_angle); 
         energies_dihedral.push_back(energy_dihedral);  
+    }
+
+    // Only retain the desired number of files 
+    if (argc > 3)
+    {
+        const int n_configs = argv[3];
+        melt_configs0.resize(n_configs); 
+        energies_total.resize(n_configs); 
+        energies_nonbonded.resize(n_configs); 
+        energies_bond.resize(n_configs);
+        energies_angle.resize(n_configs); 
+        energies_dihedral.resize(n_configs);  
     }
 
     // Write to file
