@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/26/2026
+ *     4/27/2026
  */
 #include <iostream>
 #include <filesystem>
@@ -202,7 +202,10 @@ int main(int argc, char** argv)
     std::cout << "... writing to file: " << outfilename << std::endl;  
     writeMeltConfigFile<double>(
         melt_configs0, init_config, energies_total, energies_nonbonded,
-        energies_bond, energies_angle, energies_dihedral, params, outfilename 
+        energies_bond, energies_angle, energies_dihedral, params,
+        params["domain_xmin"], params["domain_xmax"], params["domain_ymin"],
+        params["domain_ymax"], params["domain_zmin"], params["domain_zmax"],
+        outfilename 
     );  
 
     return 0; 
