@@ -2752,6 +2752,12 @@ std::pair<std::vector<PolymerMeltConfiguration<T> >,
             break; 
         }
     }
+    params["domain_xmin"] = xmin; 
+    params["domain_xmax"] = xmax; 
+    params["domain_ymin"] = ymin; 
+    params["domain_ymax"] = ymax; 
+    params["domain_zmin"] = zmin; 
+    params["domain_zmax"] = zmax; 
 
     // Now parse the first configuration, to get the polymer lengths
     std::vector<int> lengths;
