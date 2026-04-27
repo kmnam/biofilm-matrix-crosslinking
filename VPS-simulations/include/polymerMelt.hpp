@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/26/2026
+ *     4/27/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -2955,37 +2955,49 @@ void writeMeltConfigFile(std::vector<PolymerMeltConfiguration<T> >& ensemble,
                          std::vector<T>& energies_bond, 
                          std::vector<T>& energies_angle, 
                          std::vector<T>& energies_dihedral, 
-                         std::unordered_map<std::string, T>& params, 
-                         const std::string& outfilename)
+                         std::unordered_map<std::string, T>& params,
+                         const T xmin, const T xmax, const T ymin, const T ymax, 
+                         const T zmin, const T zmax, const std::string& outfilename)
 {
     std::ofstream outfile(outfilename);
     outfile << std::setprecision(10); 
-
-    // First write a header section 
-    for (const auto& pair : params)
-    {
-        std::string key = pair.first; 
-        bool is_int = (
-            (key == "n_chains") ||
-            (key == "multimer_reptation_length") ||
-            (key == "terminal_segment_length") ||
-            (key == "n_bins_fene_cdf") ||
-            (key == "max_iter") ||
-            (key == "mod_collect") ||
-            (key == "mod_write") || 
-            (key == "max_stall")
-        );
-        if (is_int)
-            outfile << "## " << key << " = " << static_cast<int>(pair.second) << std::endl;
-        else 
-            outfile << "## " << key << " = " << pair.second << std::endl;  
-    }
-
+    
     // Get number of chains and chain lengths 
     const int n_chains = init_config.numChains(); 
     std::vector<int> lengths; 
     for (int i = 0; i < n_chains; ++i)
         lengths.push_back(init_config.getLength(i)); 
+
+    // First write a header section
+    outfile << "## n_chains = " << n_chains << std::endl
+            << "## domain_xmin = " << xmin << std::endl
+            << "## domain_xmax = " << xmax << std::endl 
+            << "## domain_ymin = " << ymin << std::endl 
+            << "## domain_ymax = " << ymax << std::endl 
+            << "## domain_zmin = " << zmin << std::endl
+            << "## domain_zmax = " << zmax << std::endl
+            << "## n_candidates = " << static_cast<int>(params["n_candidates"]) 
+            << std::endl
+            << "## move_prob_reptation = " << params["move_prob_reptation"]
+            << std::endl
+            << "## move_prob_multimer_reptation = "
+            << params["move_prob_multimer_reptation"] << std::endl
+            << "## move_prob_terminal_segment = "
+            << params["move_prob_terminal_segment"] << std::endl
+            << "## multimer_reptation_length = "
+            << static_cast<int>(params["multimer_reptation_length"]) << std::endl
+            << "## terminal_segment_length = "
+            << static_cast<int>(params["terminal_segment_length"]) << std::endl
+            << "## n_bins_fene_cdf = " 
+            << static_cast<int>(params["n_bins_fene_cdf"]) << std::endl 
+            << "## max_iter = " << static_cast<int>(params["max_iter"])
+            << std::endl
+            << "## mod_collect = " << static_cast<int>(params["mod_collect"])
+            << std::endl 
+            << "## mod_write = " << static_cast<int>(params["mod_write"])
+            << std::endl
+            << "## max_stall = " << static_cast<int>(params["max_stall"])
+            << std::endl;  
 
     // Write the initial configuration ...
     outfile << "# CONFIG\tINIT\n"; 
