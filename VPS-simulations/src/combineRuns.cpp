@@ -189,7 +189,7 @@ int main(int argc, char** argv)
     // Only retain the desired number of files 
     if (argc > 3)
     {
-        const int n_configs = argv[3];
+        const int n_configs = std::stoi(argv[3]);
         melt_configs0.resize(n_configs); 
         energies_total.resize(n_configs); 
         energies_nonbonded.resize(n_configs); 
