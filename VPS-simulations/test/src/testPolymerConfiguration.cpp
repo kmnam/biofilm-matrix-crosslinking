@@ -827,8 +827,7 @@ TEST_CASE(
  * Tests for getReptationResidualEnergy(). 
  */
 TEST_CASE(
-    "Tests for reptation energy difference calculation",
-    "[getReptationResidualEnergy(), getReptationEnergyDifference()]"
+    "Tests for reptation energy difference calculation", "[getReptationResidualEnergy()]"
 )
 {
     boost::random::mt19937 rng(1234567890);
@@ -1004,7 +1003,7 @@ TEST_CASE(
 }
 
 /**
- * Tests for getMultimerReptationNonbondedEnergyDifference(). 
+ * Tests for getMultimerReptationResidualEnergy(). 
  */
 TEST_CASE(
     "Tests for multimer reptation residual energy calculation",
