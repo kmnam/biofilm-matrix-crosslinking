@@ -985,6 +985,49 @@ T sampleDihedralHarmonic(const T K, const T kT, boost::random::mt19937& rng,
 }
 
 /**
+ * Sample a dihedral angle according to the single-component Fourier potential. 
+ *
+ * The multiplicity parameter, n, is set to 1 (so that the potential has a
+ * unique minimum). 
+ *
+ * @param K Energy parameter.
+ * @param kT Boltzmann's constant times temperature (in the appropriate units).
+ * @param delta Offset angle. 
+ * @param rng Random number generator.
+ * @param uniform_dist Pre-defined instance of standard uniform distribution.
+ * @returns Sampled dihedral angle. 
+ */
+template <typename T>
+T sampleDihedralFourierSingleComponent(const T K, const T kT, const T delta, 
+                                       boost::random::mt19937& rng,
+                                       boost::random::uniform_01<>& uniform_dist)
+{
+    // Note that the Boltzmann distribution is proportional to 
+    //
+    // e^{-U / kT} = e^{-(K(1 + \cos{(\phi - \delta)})) / kT}
+    // = e^{(-K - K \cos{(\phi - \delta)}) / kT}
+    // \propto e^{-K \cos{(\phi - \delta)} / kT}
+    // = e^{K \cos{(\phi - \delta - \pi)} / kT},
+    //
+    // which is proportional to the von Mises probability with mean (\pi + \delta) 
+    // and concentration K / kT
+    //
+    // If K is zero, then simply return a uniformly distributed value between
+    // -\pi and \pi
+    if (K == 0)
+    {
+        return -boost::math::constants::pi<T>() + boost::math::constants::two_pi<T>() * uniform_dist(rng); 
+    }
+    else 
+    {
+        T kappa = K / kT;
+        return vonMises<T>(
+            boost::math::constants::pi<T>() + delta, kappa, rng, uniform_dist
+        );
+    } 
+}
+
+/**
  * Given an array of atomic coordinates and a distance threshold, return all
  * pairs of atoms that are within that distance. 
  *
