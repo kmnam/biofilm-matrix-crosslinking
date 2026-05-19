@@ -86,7 +86,7 @@ TEST_CASE(
         double phi = dihedrals(i - 3); 
         coords.row(i) = generateNextAtomDihedral<double>(
             coords.row(i - 3), coords.row(i - 2), coords.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
+            theta, phi, rng, uniform_dist
         );
     }
 
@@ -114,7 +114,7 @@ TEST_CASE(
         double dihedral = getDihedral<double>(
             coords.row(i), coords.row(i + 1), coords.row(i + 2), coords.row(i + 3)
         );
-        REQUIRE_THAT(abs(dihedral), Catch::Matchers::WithinAbs(abs(dihedrals(i)), tol));  
+        REQUIRE_THAT(dihedral, Catch::Matchers::WithinAbs(dihedrals(i), tol)); 
     }
 }
 
