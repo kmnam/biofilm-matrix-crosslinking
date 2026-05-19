@@ -384,9 +384,6 @@ Matrix<T, 3, 1> generateNextAtom(const Ref<const Matrix<T, 3, 1> >& r1,
  * @param dihedral Dihedral angle along the entire 4-atom segment. 
  * @param rng Random number generator. 
  * @param uniform_dist Pre-defined instance of standard uniform distribution.
- * @param sign If positive, assume a positive dihedral angle; if negative, 
- *             assume a negative dihedral angle; if zero, choose one or the 
- *             other randomly. 
  * @returns Position of the fourth atom. 
  */
 template <typename T>
@@ -397,8 +394,7 @@ Matrix<T, 3, 1> generateNextAtomDihedral(const Ref<const Matrix<T, 3, 1> >& r1,
                                          const T angle,
                                          const T dihedral,  
                                          boost::random::mt19937& rng,
-                                         boost::random::uniform_01<>& uniform_dist,
-                                         int sign = 0)
+                                         boost::random::uniform_01<>& uniform_dist)
 {
     // If the bond angle at atom 3 is \pi, then the position of atom 4 is fixed
     // and the dihedral angle should be ignored
