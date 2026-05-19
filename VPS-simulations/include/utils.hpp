@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/5/2026
+ *     5/19/2026
  */
 
 #ifndef POLYMER_UTILS_HPP 
@@ -426,15 +426,9 @@ Matrix<T, 3, 1> generateNextAtomDihedral(const Ref<const Matrix<T, 3, 1> >& r1,
     Matrix<T, 3, 1> z = x.cross(y); 
 
     // Get the position of the next atom
-    if (sign == 0)
-        sign = (uniform_dist(rng) < 0.5 ? 1 : -1);
-    else if (sign > 0)
-        sign = 1; 
-    else 
-        sign = -1; 
     Matrix<T, 3, 1> w = (
-        cos(angle) * x + sin(angle) * (cos(dihedral) * z + sign * sin(dihedral) * y)
-    );  
+        cos(angle) * x + sin(angle) * (cos(dihedral) * z + sin(dihedral) * y)
+    ); 
     return r3 + length * w; 
 }
 
@@ -542,6 +536,22 @@ template <typename T>
 T dihedralHarmonic(const T phi, const T K, const int d, const int n)
 {
     return K * (1 + d * cos(n * phi)); 
+}
+
+/**
+ * Return the single-component Fourier potential for the given dihedral angle.
+ *
+ * @param phi Input angle. 
+ * @param K Energy parameter.
+ * @param delta Offset angle, which determines the equilibrium angle.  
+ * @param n Multiplicity parameter, which determines the frequency of the 
+ *          potential. 
+ * @returns Potential value. 
+ */
+template <typename T>
+T dihedralFourierSingleComponent(const T phi, const T K, const T delta, const int n)
+{
+    return K * (1 + cos(n * phi - delta)); 
 }
 
 /**
