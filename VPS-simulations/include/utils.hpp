@@ -256,6 +256,33 @@ T vonMises(const T mu, const T kappa, boost::random::mt19937& rng,
 }
 
 /**
+ * Get the empirical circular mean from the given angles. 
+ *
+ * @param angles Input array of angles. 
+ * @returns Circular mean. 
+ */
+template <typename T>
+T getCircularMean(const Ref<const Matrix<T, Dynamic, 1> >& angles)
+{
+    return atan2(angles.array().sin().mean(), angles.array().cos().mean()); 
+}
+
+/**
+ * Get the empirical circular variance from the given angles. 
+ *
+ * @param angles Input array of angles. 
+ * @returns Circular variance. 
+ */
+template <typename T>
+T getCircularVariance(const Ref<const Matrix<T, Dynamic, 1> >& angles)
+{
+    T c = angles.array().cos().mean(); 
+    T s = angles.array().sin().mean(); 
+    T mrl = sqrt(c * c + s * s); 
+    return 1 - mrl;  
+}
+
+/**
  * Generate an orthonormal basis of R^3 that contains the given vector `u`. 
  *
  * @param u Input vector. 
