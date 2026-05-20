@@ -3,18 +3,123 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/18/2026
+ *     5/20/2026
  */
 
 #include <iostream>
 #include <Eigen/Dense>
 #include <boost/math/constants/constants.hpp>
+#include <boost/math/special_functions/bessel.hpp>
 #include <boost/random.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "../../include/utils.hpp"
 
 using namespace Eigen;
+
+/**
+ * Construct an empirical PDF of the form, 
+ *
+ * \sin{\theta} * P(\theta), 
+ *
+ * where P is a von Mises distribution of the given mean and concentration. 
+ */
+Matrix<double, Dynamic, 2> vonMisesTransformedPDF(const double mu,
+                                                  const double kappa, 
+                                                  const int n_mesh)
+{
+    Matrix<double, Dynamic, 2> pdf = Matrix<double, Dynamic, 2>::Zero(n_mesh, 2); 
+    pdf.col(0) = Matrix<double, Dynamic, 1>::LinSpaced(
+        n_mesh, -boost::math::constants::pi<double>(),
+        boost::math::constants::pi<double>()
+    );  
+    for (int i = 0; i < n_mesh; ++i)
+    {
+        // No need to calculate the denominator, as we will normalize anyway
+        pdf(i, 1) = sin(pdf(i, 0)) * exp(kappa * cos(pdf(i, 0) - mu)); 
+    }
+
+    // Now integrate over the mesh, using the midpoint rule
+    double integral = 0;
+    double dx = pdf(1, 0) - pdf(0, 0);    // Mesh is uniform  
+    for (int i = 1; i < n_mesh; ++i)
+        integral += dx * (pdf(i - 1, 1) + pdf(i, 1)) / 2; 
+
+    // Normalize by the integral and return 
+    pdf.col(1) /= integral;
+
+    return pdf;  
+}
+
+/**
+ * Construct an empirical PDF of the form, 
+ *
+ * \sin{\theta} * (A1 * P1(\theta) + A2 * P2(\theta)), 
+ *
+ * where P1 and P2 are von Mises distributions with the given means and
+ * concentrations, and A1 and A2 are weights. 
+ */
+Matrix<double, Dynamic, 2> dualVonMisesMixtureTransformedPDF(const double mu1,
+                                                             const double kappa1,
+                                                             const double A1, 
+                                                             const double mu2, 
+                                                             const double kappa2, 
+                                                             const double A2,  
+                                                             const int n_mesh)
+{
+    Matrix<double, Dynamic, 2> pdf = Matrix<double, Dynamic, 2>::Zero(n_mesh, 2); 
+    pdf.col(0) = Matrix<double, Dynamic, 1>::LinSpaced(
+        n_mesh, -boost::math::constants::pi<double>(),
+        boost::math::constants::pi<double>()
+    );  
+    for (int i = 0; i < n_mesh; ++i)
+    {
+        // No need to calculate the denominator, as we will normalize anyway
+        pdf(i, 1) = sin(pdf(i, 0)) * (
+            A1 * exp(kappa1 * cos(pdf(i, 0) - mu1)) +
+            A2 * exp(kappa2 * cos(pdf(i, 0) - mu2))
+        );
+    }
+
+    // Now integrate over the mesh, using the midpoint rule
+    double integral = 0;
+    double dx = pdf(1, 0) - pdf(0, 0);    // Mesh is uniform  
+    for (int i = 1; i < n_mesh; ++i)
+        integral += dx * (pdf(i - 1, 1) + pdf(i, 1)) / 2; 
+
+    // Normalize by the integral and return 
+    pdf.col(1) /= integral;
+
+    return pdf;  
+}
+
+/**
+ * Calculate the circular mean of an empirical circular distribution.
+ *
+ * The mesh over which the empirical distribution is defined is assumed to be
+ * uniform.  
+ */
+double getCircularMeanFromPDF(const Ref<const Matrix<double, Dynamic, 2> >& pdf)
+{
+    double dx = pdf(1, 0) - pdf(0, 0); 
+    double c = (pdf.col(0).array().cos() * pdf.col(1).array()).sum() * dx;
+    double s = (pdf.col(0).array().sin() * pdf.col(1).array()).sum() * dx; 
+    return atan2(s, c);  
+}
+
+/**
+ * Calculate the circular variance of an empirical circular distribution.
+ *
+ * The mesh over which the empirical distribution is defined is assumed to be
+ * uniform.  
+ */
+double getCircularVarianceFromPDF(const Ref<const Matrix<double, Dynamic, 2> >& pdf)
+{
+    double dx = pdf(1, 0) - pdf(0, 0);
+    double c = (pdf.col(0).array().cos() * pdf.col(1).array()).sum() * dx;
+    double s = (pdf.col(0).array().sin() * pdf.col(1).array()).sum() * dx; 
+    return 1.0 - sqrt(c * c + s * s); 
+}
 
 /**
  * Tests for getDihedral(), generateNextAtom(), and generateNextAtomDihedral().  
@@ -120,33 +225,53 @@ TEST_CASE(
 
 /**
  * Tests for sampleFene(), sampleAngleCosine(), sampleAngleDualGaussianMixture(),
- * and sampleDihedralHarmonic(). 
+ * sampleDihedralHarmonic(), and sampleDihedralFourierSingleComponent().  
  *
  * These tests involve a mix of assertions and statistical comparisons between 
  * empirical and theoretically expected values.  
  */
 TEST_CASE(
     "Tests for bond length, bond angle, and dihedral angle sampling", 
-    "[sampleFene(), sampleAngleCosine(), sampleAngleDualGaussianMixture(), sampleDihedralHarmonic()]"
+    "[sampleFene(), sampleAngleCosine(), sampleAngleDualGaussianMixture(), sampleDihedralHarmonic(), sampleDihedralFourierSingleComponent()]"
 )
 {
-    // Sample bond lengths ... 
     boost::random::mt19937 rng(1234567890);
     boost::random::uniform_01<> uniform_dist;
     const int n = 1000000; 
-    const double kT = 1.380649e-2 * 300; 
+
+    // ----------------------------------------------------------------- //
+    // Tests for sampleFene()
+    // ----------------------------------------------------------------- //
+    // Sample bond lengths ...
+    const double kT = 1.380649e-2 * 300;     // Use nano units 
     const double eps = kT;
     const double sigma = 0.9;  
     const double R0 = 1.5;
-    const double K = 10.0 * kT; 
+    const double K = 10.0 * kT;
+    Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
+        eps, sigma, K, R0, kT, 10000, 1e-6
+    ); 
     Array<double, Dynamic, 1> sample_lengths(n); 
     for (int i = 0; i < n; ++i) 
-        sample_lengths(i) = sampleFene<double>(eps, sigma, K, R0, kT, rng, uniform_dist, 50);
+        sample_lengths(i) = sampleFene<double>(rng, uniform_dist, bond_length_cdf);
 
     // Check that the bond lengths are within (0, R0)
     REQUIRE((sample_lengths > 0).all());
-    REQUIRE((sample_lengths < R0).all()); 
+    REQUIRE((sample_lengths < R0).all());
 
+    // Compare against the FENE CDF
+    double fene_mean_theoretical = 0;  
+    for (int i = 0; i < bond_length_cdf.rows() - 1; ++i)
+    {
+        double dx = bond_length_cdf(i + 1, 0) - bond_length_cdf(i, 0); 
+        fene_mean_theoretical += dx * (1 - bond_length_cdf(i, 1)); 
+    }
+    std::cout << "Empirical vs. theoretical means from angles (FENE potential): "
+              << sample_lengths.mean() << ", " << fene_mean_theoretical << std::endl; 
+
+    // ----------------------------------------------------------------- //
+    // Tests for sampleAngleCosine()
+    // ----------------------------------------------------------------- //
     // Sample bond angles according to the cosine potential ... 
     const double K_angle = 20 * kT;  
     const double theta0 = 140 * boost::math::constants::pi<double>() / 180;
@@ -160,54 +285,38 @@ TEST_CASE(
     REQUIRE((sample_angles_cosine >= 0).all()); 
     REQUIRE((sample_angles_cosine < boost::math::constants::pi<double>()).all()); 
 
-    // Estimate the mean of the underlying von Mises distribution
-    double mean_vonmises = 0; 
-    double denom = 0; 
-    for (int i = 0; i < sample_angles_cosine.size(); ++i)
-    {
-        // All angles should be in [0, \pi), so sin(theta) is positive
-        double theta = sample_angles_cosine(i);
-        mean_vonmises += theta / sin(theta); 
-        denom += 1.0 / sin(theta); 
-    }
-    mean_vonmises /= denom; 
+    // Estimate the empirical circular mean of the bond angles 
+    double mean_cosine_empirical = getCircularMean<double>(sample_angles_cosine);
+
+    // Get the theoretical circular mean by first defining the underlying 
+    // distribution
+    Matrix<double, Dynamic, 2> cosine_pdf = vonMisesTransformedPDF(
+        theta0, K_angle / kT, 10000
+    );
+    double mean_cosine_theoretical = getCircularMeanFromPDF(cosine_pdf);  
     std::cout << "Empirical vs. theoretical means from angles (cosine potential): "
-              << mean_vonmises << ", " << theta0 << std::endl;
+              << mean_cosine_empirical << ", " << mean_cosine_theoretical
+              << std::endl; 
 
-    // Estimate the variance of the underlying von Mises distribution
-    // (= 1 / concentration)
-    //
-    // First calculate sin(theta) for each angle theta
-    Matrix<double, Dynamic, 1> weights(sample_angles_cosine.size()); 
-    for (int i = 0; i < sample_angles_cosine.size(); ++i)
-    {
-        // All angles should be in [0, \pi), so sin(theta) is positive
-        double theta = sample_angles_cosine(i);
-        weights(i) = 1.0 / sin(theta); 
-    }
+    // Estimate the empirical circular variance of the bond angles
+    double var_cosine_empirical = getCircularVariance<double>(sample_angles_cosine);
 
-    // Normalize the weights and calculate the effective sample size 
-    double total_weight = weights.sum();
-    weights /= total_weight; 
-    double effective_size = 1.0 / weights.dot(weights);
-
-    // Then estimate the variance 
-    double var_vonmises = 0;  
-    for (int i = 0; i < sample_angles_cosine.size(); ++i)
-    {
-        double theta = sample_angles_cosine(i);
-        double diff = theta - mean_vonmises; 
-        var_vonmises += weights(i) * diff * diff; 
-    }
-    var_vonmises *= (effective_size / (effective_size - 1));
+    // Get the theoretical circular variance 
+    double var_cosine_theoretical = getCircularVarianceFromPDF(cosine_pdf); 
     std::cout << "Empirical vs. theoretical variances from angles (cosine potential): "
-              << var_vonmises << ", " << kT / K_angle << std::endl;  
+              << var_cosine_empirical << ", " << var_cosine_theoretical << std::endl; 
 
-    // Sample bond angles according to the dual Gaussian mixture potential ... 
-    double A1 = 0.7; 
-    double A2 = 0.3; 
-    double w1 = 2 * sqrt(1.0 / 10.0);
-    double w2 = 2 * sqrt(1.0 / 8.0);
+    // ----------------------------------------------------------------- //
+    // Tests for sampleAngleDualGaussianMixture()
+    // ----------------------------------------------------------------- //
+    // Sample bond angles according to the dual Gaussian mixture potential ...
+    //
+    // Here, use a calibrated set of weights and concentrations, to account 
+    // for the geometric prefactor in the sampling distribution 
+    double w1 = 2 / sqrt(20);     // Concentration = 20 ==> standard deviation = sqrt(1/20)
+    double w2 = 2 / sqrt(20);  
+    double A1 = 0.962103305;      // This should ideally yield a 90%/10% mixture
+    double A2 = 1 - A1; 
     const double theta1 = 160 * boost::math::constants::pi<double>() / 180;
     const double theta2 = boost::math::constants::half_pi<double>(); 
     Array<double, Dynamic, 1> sample_angles_gaussian(n); 
@@ -218,7 +327,27 @@ TEST_CASE(
 
     // Check that the bond angles are within [0, \pi)
     REQUIRE((sample_angles_gaussian >= 0).all()); 
-    REQUIRE((sample_angles_gaussian < boost::math::constants::pi<double>()).all()); 
+    REQUIRE((sample_angles_gaussian < boost::math::constants::pi<double>()).all());
+
+    // Estimate the empirical circular mean of the bond angles 
+    double mean_gaussian_empirical = getCircularMean<double>(sample_angles_gaussian);
+
+    // Compare this against the theoretical circular mean
+    Matrix<double, Dynamic, 2> gaussian_pdf = dualVonMisesMixtureTransformedPDF(
+        theta1, 4 / (w1 * w1), A1, theta2, 4 / (w2 * w2), A2, 10000
+    );
+    double mean_gaussian_theoretical = getCircularMeanFromPDF(gaussian_pdf); 
+    std::cout << "Empirical vs. theoretical means from angles (Gaussian potential): "
+              << mean_gaussian_empirical << ", " << mean_gaussian_theoretical
+              << std::endl;
+
+    // Estimate the empirical circular variance of the bond angles
+    double var_gaussian_empirical = getCircularVariance<double>(sample_angles_gaussian);
+
+    // Get the theoretical circular variance 
+    double var_gaussian_theoretical = getCircularVarianceFromPDF(gaussian_pdf); 
+    std::cout << "Empirical vs. theoretical variances from angles (Gaussian potential): "
+              << var_gaussian_empirical << ", " << var_gaussian_theoretical << std::endl; 
 
     // Sample from just one Gaussian component (mean = theta2 = \pi/2)
     A1 = 0.0; 
@@ -228,49 +357,35 @@ TEST_CASE(
             A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist
         );
 
-    // Divide each sampled angle by sin(theta) and check the mean 
-    double mean_gaussian = 0;
-    denom = 0; 
-    for (int i = 0; i < sample_angles_gaussian.size(); ++i)
-    {
-        double theta = sample_angles_gaussian(i); 
-        mean_gaussian += theta / sin(theta); 
-        denom += 1.0 / sin(theta); 
-    }
-    mean_gaussian /= denom; 
-    std::cout << "Empirical vs. theoretical means from angles (Gaussian potential): "
-              << mean_gaussian << ", " << theta2 << std::endl;
+    // Check that the bond angles are within [0, \pi)
+    REQUIRE((sample_angles_gaussian >= 0).all()); 
+    REQUIRE((sample_angles_gaussian < boost::math::constants::pi<double>()).all());
 
-    // Estimate the variance of the underlying von Mises distribution
-    // (= 1 / concentration)
-    //
-    // First calculate sin(theta) for each angle theta
-    for (int i = 0; i < sample_angles_gaussian.size(); ++i)
-    {
-        // All angles should be in [0, \pi), so sin(theta) is positive
-        double theta = sample_angles_gaussian(i);
-        weights(i) = 1.0 / sin(theta); 
-    }
+    // Estimate the empirical circular mean of the bond angles 
+    mean_gaussian_empirical = getCircularMean<double>(sample_angles_gaussian);
 
-    // Normalize the weights and calculate the effective sample size 
-    total_weight = weights.sum();
-    weights /= total_weight; 
-    effective_size = 1.0 / weights.dot(weights);
+    // Compare this against the theoretical circular mean
+    gaussian_pdf = dualVonMisesMixtureTransformedPDF(
+        theta1, 4 / (w1 * w1), A1, theta2, 4 / (w2 * w2), A2, 10000
+    );
+    mean_gaussian_theoretical = getCircularMeanFromPDF(gaussian_pdf); 
+    std::cout << "Empirical vs. theoretical means from angles (Gaussian potential with 1 component): "
+              << mean_gaussian_empirical << ", " << mean_gaussian_theoretical
+              << std::endl;
 
-    // Then estimate the variance
-    double var_gaussian = 0;  
-    for (int i = 0; i < sample_angles_gaussian.size(); ++i)
-    {
-        double theta = sample_angles_gaussian(i);
-        double diff = theta - mean_gaussian; 
-        var_gaussian += weights(i) * diff * diff; 
-    }
-    var_gaussian *= (effective_size / (effective_size - 1));
-    std::cout << "Empirical vs. theoretical variances from angles (Gaussian potential): "
-              << var_gaussian << ", " << w2 * w2 / 4 << std::endl; 
-   
+    // Estimate the empirical circular variance of the bond angles
+    var_gaussian_empirical = getCircularVariance<double>(sample_angles_gaussian);
+
+    // Get the theoretical circular variance 
+    var_gaussian_theoretical = getCircularVarianceFromPDF(gaussian_pdf); 
+    std::cout << "Empirical vs. theoretical variances from angles (Gaussian potential with 1 component): "
+              << var_gaussian_empirical << ", " << var_gaussian_theoretical << std::endl; 
+ 
+    // ----------------------------------------------------------------- //
+    // Tests for sampleDihedralHarmonic()
+    // ----------------------------------------------------------------- //
     // Sample dihedral angles ... 
-    const double K_dihedral = 10 * kT; 
+    const double K_dihedral = 0.7 * kT; 
     Array<double, Dynamic, 1> sample_dihedrals(n); 
     for (int i = 0; i < n; ++i) 
         sample_dihedrals(i) = sampleDihedralHarmonic<double>(
@@ -281,62 +396,58 @@ TEST_CASE(
     REQUIRE((sample_dihedrals >= -boost::math::constants::pi<double>()).all()); 
     REQUIRE((sample_dihedrals <= boost::math::constants::pi<double>()).all()); 
 
-    // Estimate the mean of the underlying von Mises distribution
-    double mean_dihedral = 0; 
-    for (int i = 0; i < sample_dihedrals.size(); ++i)
-    {
-        // If the angle is between -\pi and 0, add 2*\pi plus the angle
-        if (sample_dihedrals(i) < 0)
-            mean_dihedral += boost::math::constants::two_pi<double>() + sample_dihedrals(i); 
-        else 
-            mean_dihedral += sample_dihedrals(i); 
-    }
-    mean_dihedral /= sample_dihedrals.size(); 
-    std::cout << "Empirical vs. theoretical means from dihedrals: " 
-              << mean_dihedral << ", " << boost::math::constants::pi<double>() << std::endl;
+    // Estimate the empirical circular mean of the dihedral angles 
+    double mean_dihedral_empirical = getCircularMean<double>(sample_dihedrals); 
 
-    // Estimate the variance of the underlying von Mises distribution
-    // (= 1 / concentration)
-    double var_dihedral = 0; 
-    for (int i = 0; i < sample_dihedrals.size(); ++i)
-    {
-        // If the angle is between -\pi and 0, add 2*\pi plus the angle
-        double theta; 
-        if (sample_dihedrals(i) < 0)
-            theta = boost::math::constants::two_pi<double>() + sample_dihedrals(i); 
-        else 
-            theta = sample_dihedrals(i);
-        double diff = theta - mean_dihedral; 
-        var_dihedral += (diff * diff);  
-    }
-    var_dihedral /= (sample_dihedrals.size() - 1); 
-    std::cout << "Empirical vs. theoretical variances from dihedrals: "
-              << var_dihedral << ", " << kT / K_dihedral << std::endl; 
+    // Compare this against the theoretical circular mean
+    std::cout << "Empirical vs. theoretical means from dihedrals (harmonic potential): "
+              << mean_dihedral_empirical << ", " << boost::math::constants::pi<double>()
+              << std::endl;
 
-    // Sample from a dual mixture with calibrated weights 
-    w1 = 2 / sqrt(20);     // Concentration = 20 ==> standard deviation = sqrt(1/20)
-    w2 = 2 / sqrt(20);  
-    A1 = 0.962103305;      // This should ideally yield a 90%/10% mixture
-    A2 = 1 - A1; 
-    for (int i = 0; i < n; ++i)
-        sample_angles_gaussian(i) = sampleAngleDualGaussianMixture<double>(
-            A1, A2, w1, w2, theta1, theta2, kT, rng, uniform_dist
+    // Estimate the empirical circular variance of the dihedral angles 
+    double var_dihedral_empirical = getCircularVariance<double>(sample_dihedrals); 
+
+    // Compare this against the theoretical circular variance
+    double i1k = boost::math::cyl_bessel_i(1, K_dihedral / kT);
+    double i0k = boost::math::cyl_bessel_i(0, K_dihedral / kT);  
+    double var_dihedral_theoretical = 1 - i1k / i0k; 
+    std::cout << "Empirical vs. theoretical variances from dihedrals (harmonic potential): "
+              << var_dihedral_empirical << ", " << var_dihedral_theoretical
+              << std::endl;  
+
+    // ----------------------------------------------------------------- //
+    // Tests for sampleDihedralFourierSingleComponent()
+    // ----------------------------------------------------------------- //
+    // Sample dihedral angles with an equilibrium value of 150 degrees ... 
+    sample_dihedrals = Array<double, Dynamic, 1>::Zero(n); 
+    for (int i = 0; i < n; ++i) 
+        sample_dihedrals(i) = sampleDihedralFourierSingleComponent<double>(
+            K_dihedral, kT, -30 * boost::math::constants::pi<double>() / 180.0,
+            rng, uniform_dist 
         );
 
-    // Check that there are roughly two types of angles 
-    int n1 = 0;     // Corresponding to larger component (theta1) 
-    int n2 = 0;     // Corresponding to smaller component (theta2)
-    double avg_theta = (theta1 + theta2) / 2; 
-    for (int i = 0; i < n; ++i)
-    {
-        if (sample_angles_gaussian(i) > avg_theta)
-            n1++; 
-        else 
-            n2++; 
-    }
-    double p1 = 1.0 * n1 / n; 
-    double p2 = 1.0 * n2 / n;
-    std::cout << "Empirical fractions from Gaussian mixture: " << p1 << ", " << p2
-              << " (theoretical values = 0.9, 0.1)\n";  
+    // Check that the dihedral angles are within [-\pi, \pi)
+    REQUIRE((sample_dihedrals >= -boost::math::constants::pi<double>()).all()); 
+    REQUIRE((sample_dihedrals <= boost::math::constants::pi<double>()).all()); 
+
+    // Estimate the empirical circular mean of the dihedral angles 
+    mean_dihedral_empirical = getCircularMean<double>(sample_dihedrals);
+
+    // Compare this against the theoretical circular mean
+    std::cout << "Empirical vs. theoretical means from dihedrals (Fourier potential): "
+              << mean_dihedral_empirical << ", "
+              << 150 * boost::math::constants::pi<double>() / 180.0
+              << std::endl;
+
+    // Estimate the empirical circular variance of the dihedral angles 
+    var_dihedral_empirical = getCircularVariance<double>(sample_dihedrals); 
+
+    // Compare this against the theoretical circular variance
+    i1k = boost::math::cyl_bessel_i(1, K_dihedral / kT);
+    i0k = boost::math::cyl_bessel_i(0, K_dihedral / kT);  
+    var_dihedral_theoretical = 1 - i1k / i0k; 
+    std::cout << "Empirical vs. theoretical variances from dihedrals (harmonic potential): "
+              << var_dihedral_empirical << ", " << var_dihedral_theoretical
+              << std::endl;  
 }
 
