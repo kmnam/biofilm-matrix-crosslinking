@@ -18,8 +18,6 @@
 
 using namespace Eigen;
 
-using std::min; 
-
 /**
  * Tests for PolymerCBMCSampler::generateReptationMoves(). 
  */
@@ -41,35 +39,47 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
     double kT = 1.380649e-2 * 300;
     lj_params["eps"] = kT; 
     lj_params["sigma"] = 0.9;
-    fene_params["K"] = 30 * kT; 
+    fene_params["K"] = 9 * kT; 
     fene_params["R0"] = 1.5;
-    random_params["K"] = 0; 
+
+    // Define a null cosine potential (to mimic random coils with excluded 
+    // volume interactions)
+    random_params["K"] = 0.0; 
     random_params["theta0"] = boost::math::constants::pi<double>();
-    cosine_params["K"] = 20 * kT;
+
+    // Make cosine potential soft to allow for reptation candidates that are
+    // close to the original configuration  
+    cosine_params["K"] = 0.5 * kT;
     cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
+
+    // Similarly make Gaussian potential soft to allow for reptation candidates
+    // that are close to the original configuration 
     gaussian_params["A1"] = 0.9; 
     gaussian_params["A2"] = 0.1;
-    gaussian_params["w1"] = 0.2236067977;    // = 1/sqrt(20) 
-    gaussian_params["w2"] = 0.2236067977; 
+    gaussian_params["w1"] = 2.0;     // Standard deviations of 1 for each component
+    gaussian_params["w2"] = 2.0;
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
     gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180;
+
+    // Define dihedral potential parameters 
     nodihedral_params["K"] = 0;  
     dihedral_params["K"] = 0.5 * kT;
-    const double collision_threshold = 0.1;
+
+    // Define additional parameters for initialization and sampling
+    const double collision_threshold = 0.9;    // Slightly less than 2^(1/6) * sigma ~ 1.01 
     const int max_tries_per_atom = 50;
     const int max_n_backtracks = 50;  
     Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
         lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
         kT, 10000
-    ); 
+    );
 
     // --------------------------------------------------------------- //
-    // Reptation moves on 10-mer with a cosine angle potential and no 
-    // dihedral potential 
+    // Reptation moves on 10-mer with no angle and dihedral potentials 
     // --------------------------------------------------------------- //
     const int length = 10; 
     PolymerConfiguration<double> config = generateKMer<double>(
-        length, lj_params, fene_params, AngleMode::COSINE, cosine_params,
+        length, lj_params, fene_params, AngleMode::COSINE, random_params, 
         nodihedral_params, r0, collision_threshold, max_tries_per_atom,
         max_n_backtracks, rng, uniform_dist, bond_length_cdf
     );
@@ -79,39 +89,144 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
 
     // Initialize sampler instance
     double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    PolymerCBMCSampler<double> sampler_random(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        random_params, nodihedral_params, rng
+    );  
+
+    // Try generating 50 reptation moves at the head
+    const int n_candidates = 50;  
+    auto result = sampler_random.generateReptationMoves(
+        ReptationDirection::HEAD, n_candidates
+    );
+    Matrix<double, Dynamic, Dynamic> r_new = result.first; 
+    Matrix<double, Dynamic, 1> residuals = result.second; 
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 3);  
+    REQUIRE(residuals.size() == n_candidates); 
+
+    // Check that each new atom has a valid distance to the 0-th atom
+    for (int i = 0; i < n_candidates; ++i) 
+        REQUIRE((r_new.row(i) - coords.row(0)).norm() < fene_params["R0"]); 
+
+    // Check the residual energy of each proposed move 
+    //
+    // This residual energy is the total non-bonded interaction energy between
+    // the new atom and every atom that survives the reptation move
+    for (int i = 0; i < n_candidates; ++i)
+    {
+        PolymerConfiguration<double> config_reptated(config);
+        config_reptated.reptateTowardsHead(r_new.row(i)); 
+
+        // Re-calculate this residual energy 
+        //
+        // If we are reptating towards the head, this is the non-bonded 
+        // interaction energy between the new atom and atoms 2, ..., 9 in the
+        // reptated configuration (the new atom is atom 0)
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        double residual = 0;  
+        for (int j = 2; j < length; ++j)
+        {
+            double r = (r_new.row(i) - coords_reptated.row(j)).norm();  
+            residual += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        REQUIRE_THAT(residuals(i), Catch::Matchers::WithinRel(residual, tol));  
+    }
+
+    // Try generating 50 reptation moves at the tail 
+    result = sampler_random.generateReptationMoves(
+        ReptationDirection::TAIL, n_candidates
+    );
+    r_new = result.first; 
+    residuals = result.second;
+    REQUIRE(r_new.rows() == n_candidates);
+    REQUIRE(r_new.cols() == 3);  
+    REQUIRE(residuals.size() == n_candidates); 
+
+    // Check that the new atom has a valid distance to the 0-th atom
+    int tail_idx = length - 1; 
+    for (int i = 0; i < n_candidates; ++i)
+        REQUIRE((r_new.row(i) - coords.row(tail_idx)).norm() < fene_params["R0"]); 
+
+    // Check the residual energy of each proposed move 
+    //
+    // This residual energy is the total non-bonded interaction energy between
+    // the new atom and every atom that survives the reptation move
+    for (int i = 0; i < n_candidates; ++i)
+    {
+        PolymerConfiguration<double> config_reptated(config);
+        config_reptated.reptateTowardsTail(r_new.row(i)); 
+
+        // Re-calculate this residual energy 
+        //
+        // If we are reptating towards the tail, this is the non-bonded 
+        // interaction energy between the new atom and atoms 0, ..., 7 in the
+        // reptated configuration (the new atom is atom 9)
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        double residual = 0;  
+        for (int j = 0; j < length - 2; ++j)
+        {
+            double r = (r_new.row(i) - coords_reptated.row(j)).norm();  
+            residual += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        REQUIRE_THAT(residuals(i), Catch::Matchers::WithinRel(residual, tol));  
+    }
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a cosine angle potential and no 
+    // dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, cosine_params,
+        nodihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
+
+    // Initialize sampler instance
     PolymerCBMCSampler<double> sampler_cosine(
         config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
         cosine_params, nodihedral_params, rng
     );  
 
     // Try generating 50 reptation moves at the head
-    const int n_candidates = 50;  
-    auto result = sampler_cosine.generateReptationMoves(
+    result = sampler_cosine.generateReptationMoves(
         ReptationDirection::HEAD, n_candidates
     );
-    Matrix<double, Dynamic, Dynamic> r_new = result.first; 
-    Matrix<double, Dynamic, 1> energy_diffs = result.second;
+    r_new = result.first; 
+    residuals = result.second; 
     REQUIRE(r_new.rows() == n_candidates);
     REQUIRE(r_new.cols() == 3);  
-    REQUIRE(energy_diffs.size() == n_candidates); 
+    REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
     for (int i = 0; i < n_candidates; ++i) 
         REQUIRE((r_new.row(i) - coords.row(0)).norm() < fene_params["R0"]); 
 
-    // Check the reptation non-bonded energy difference
-    double nonbonded_energy_orig = config.getNonbondedEnergy(lj_params, neighbor_threshold, true); 
+    // Check the residual energy of each proposed move 
+    //
+    // This residual energy is the total non-bonded interaction energy between
+    // the new atom and every atom that survives the reptation move
     for (int i = 0; i < n_candidates; ++i)
     {
         PolymerConfiguration<double> config_reptated(config);
         config_reptated.reptateTowardsHead(r_new.row(i)); 
-        double nonbonded_energy_new = config_reptated.getNonbondedEnergy(
-            lj_params, neighbor_threshold, true
-        ); 
-        REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(nonbonded_energy_new - nonbonded_energy_orig, tol)
-        ); 
+
+        // Re-calculate this residual energy 
+        //
+        // If we are reptating towards the head, this is the non-bonded 
+        // interaction energy between the new atom and atoms 2, ..., 9 in the
+        // reptated configuration (the new atom is atom 0)
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        double residual = 0;  
+        for (int j = 2; j < length; ++j)
+        {
+            double r = (r_new.row(i) - coords_reptated.row(j)).norm();  
+            residual += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        REQUIRE_THAT(residuals(i), Catch::Matchers::WithinRel(residual, tol));  
     }
 
     // Try generating 50 reptation moves at the tail 
@@ -119,28 +234,38 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
         ReptationDirection::TAIL, n_candidates
     );
     r_new = result.first; 
-    energy_diffs = result.second;
+    residuals = result.second; 
     REQUIRE(r_new.rows() == n_candidates);
     REQUIRE(r_new.cols() == 3);  
-    REQUIRE(energy_diffs.size() == n_candidates); 
+    REQUIRE(residuals.size() == n_candidates); 
 
     // Check that the new atom has a valid distance to the 0-th atom
-    int tail_idx = length - 1; 
+    tail_idx = length - 1; 
     for (int i = 0; i < n_candidates; ++i)
         REQUIRE((r_new.row(i) - coords.row(tail_idx)).norm() < fene_params["R0"]); 
 
-    // Check the reptation non-bonded energy difference
+    // Check the residual energy of each proposed move 
+    //
+    // This residual energy is the total non-bonded interaction energy between
+    // the new atom and every atom that survives the reptation move
     for (int i = 0; i < n_candidates; ++i)
     {
         PolymerConfiguration<double> config_reptated(config);
         config_reptated.reptateTowardsTail(r_new.row(i)); 
-        double nonbonded_energy_new = config_reptated.getNonbondedEnergy(
-            lj_params, neighbor_threshold, true
-        ); 
-        REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(nonbonded_energy_new - nonbonded_energy_orig, tol)
-        ); 
+
+        // Re-calculate this residual energy 
+        //
+        // If we are reptating towards the tail, this is the non-bonded 
+        // interaction energy between the new atom and atoms 0, ..., 7 in the
+        // reptated configuration (the new atom is atom 9)
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        double residual = 0;  
+        for (int j = 0; j < length - 2; ++j)
+        {
+            double r = (r_new.row(i) - coords_reptated.row(j)).norm();  
+            residual += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        REQUIRE_THAT(residuals(i), Catch::Matchers::WithinRel(residual, tol));  
     }
 
     // --------------------------------------------------------------- //
@@ -167,28 +292,37 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
         ReptationDirection::HEAD, n_candidates
     );
     r_new = result.first; 
-    energy_diffs = result.second;
+    residuals = result.second;
     REQUIRE(r_new.rows() == n_candidates);
     REQUIRE(r_new.cols() == 3);  
-    REQUIRE(energy_diffs.size() == n_candidates); 
+    REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
     for (int i = 0; i < n_candidates; ++i) 
         REQUIRE((r_new.row(i) - coords.row(0)).norm() < fene_params["R0"]); 
 
-    // Check the reptation non-bonded energy difference
-    nonbonded_energy_orig = config.getNonbondedEnergy(lj_params, neighbor_threshold, true); 
+    // Check the residual energy of each proposed move 
+    //
+    // This residual energy is the total non-bonded interaction energy between
+    // the new atom and every atom that survives the reptation move
     for (int i = 0; i < n_candidates; ++i)
     {
         PolymerConfiguration<double> config_reptated(config);
         config_reptated.reptateTowardsHead(r_new.row(i)); 
-        double nonbonded_energy_new = config_reptated.getNonbondedEnergy(
-            lj_params, neighbor_threshold, true
-        ); 
-        REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(nonbonded_energy_new - nonbonded_energy_orig, tol)
-        ); 
+
+        // Re-calculate this residual energy 
+        //
+        // If we are reptating towards the head, this is the non-bonded 
+        // interaction energy between the new atom and atoms 2, ..., 9 in the
+        // reptated configuration (the new atom is atom 0)
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        double residual = 0;  
+        for (int j = 2; j < length; ++j)
+        {
+            double r = (r_new.row(i) - coords_reptated.row(j)).norm();  
+            residual += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        REQUIRE_THAT(residuals(i), Catch::Matchers::WithinRel(residual, tol));  
     }
 
     // Try generating 50 reptation moves at the tail 
@@ -196,30 +330,40 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
         ReptationDirection::TAIL, n_candidates
     );
     r_new = result.first; 
-    energy_diffs = result.second;
+    residuals = result.second;
     REQUIRE(r_new.rows() == n_candidates);
     REQUIRE(r_new.cols() == 3);  
-    REQUIRE(energy_diffs.size() == n_candidates); 
+    REQUIRE(residuals.size() == n_candidates); 
 
     // Check that the new atom has a valid distance to the 0-th atom
     tail_idx = length - 1; 
     for (int i = 0; i < n_candidates; ++i)
         REQUIRE((r_new.row(i) - coords.row(tail_idx)).norm() < fene_params["R0"]); 
 
-    // Check the reptation non-bonded energy difference
+    // Check the residual energy of each proposed move 
+    //
+    // This residual energy is the total non-bonded interaction energy between
+    // the new atom and every atom that survives the reptation move
     for (int i = 0; i < n_candidates; ++i)
     {
         PolymerConfiguration<double> config_reptated(config);
         config_reptated.reptateTowardsTail(r_new.row(i)); 
-        double nonbonded_energy_new = config_reptated.getNonbondedEnergy(
-            lj_params, neighbor_threshold, true
-        ); 
-        REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(nonbonded_energy_new - nonbonded_energy_orig, tol)
-        ); 
-    }
 
+        // Re-calculate this residual energy 
+        //
+        // If we are reptating towards the tail, this is the non-bonded 
+        // interaction energy between the new atom and atoms 0, ..., 7 in the
+        // reptated configuration (the new atom is atom 9)
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        double residual = 0;  
+        for (int j = 0; j < length - 2; ++j)
+        {
+            double r = (r_new.row(i) - coords_reptated.row(j)).norm();  
+            residual += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        REQUIRE_THAT(residuals(i), Catch::Matchers::WithinRel(residual, tol));  
+    }
+    
     // --------------------------------------------------------------- //
     // Reptation moves on 10-mer with a Gaussian angle potential and a 
     // harmonic dihedral potential 
@@ -244,28 +388,37 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
         ReptationDirection::HEAD, n_candidates
     );
     r_new = result.first; 
-    energy_diffs = result.second;
+    residuals = result.second;
     REQUIRE(r_new.rows() == n_candidates);
     REQUIRE(r_new.cols() == 3); 
-    REQUIRE(energy_diffs.size() == n_candidates); 
+    REQUIRE(residuals.size() == n_candidates); 
 
     // Check that the new atom has a valid distance to the 0-th atom
     for (int i = 0; i < n_candidates; ++i)
         REQUIRE((r_new.row(i) - coords.row(0)).norm() < fene_params["R0"]); 
 
-    // Check the reptation non-bonded energy difference
-    nonbonded_energy_orig = config.getNonbondedEnergy(lj_params, neighbor_threshold, true); 
+    // Check the residual energy of each proposed move 
+    //
+    // This residual energy is the total non-bonded interaction energy between
+    // the new atom and every atom that survives the reptation move
     for (int i = 0; i < n_candidates; ++i)
     {
         PolymerConfiguration<double> config_reptated(config);
         config_reptated.reptateTowardsHead(r_new.row(i)); 
-        double nonbonded_energy_new = config_reptated.getNonbondedEnergy(
-            lj_params, neighbor_threshold, true
-        ); 
-        REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(nonbonded_energy_new - nonbonded_energy_orig, tol)
-        ); 
+
+        // Re-calculate this residual energy 
+        //
+        // If we are reptating towards the head, this is the non-bonded 
+        // interaction energy between the new atom and atoms 2, ..., 9 in the
+        // reptated configuration (the new atom is atom 0)
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        double residual = 0;  
+        for (int j = 2; j < length; ++j)
+        {
+            double r = (r_new.row(i) - coords_reptated.row(j)).norm();  
+            residual += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        REQUIRE_THAT(residuals(i), Catch::Matchers::WithinRel(residual, tol));  
     }
 
     // Try generating 50 reptation moves at the tail
@@ -273,28 +426,38 @@ TEST_CASE("Tests for reptation move generation", "[generateReptationMoves()]")
         ReptationDirection::TAIL, n_candidates
     );
     r_new = result.first; 
-    energy_diffs = result.second;
+    residuals = result.second;
     REQUIRE(r_new.rows() == n_candidates);
     REQUIRE(r_new.cols() == 3);  
-    REQUIRE(energy_diffs.size() == n_candidates); 
+    REQUIRE(residuals.size() == n_candidates); 
 
     // Check that the new atom has a valid distance to the last atom
     tail_idx = length - 1;  
     for (int i = 0; i < n_candidates; ++i)
         REQUIRE((r_new.row(i) - coords.row(tail_idx)).norm() < fene_params["R0"]); 
 
-    // Check the reptation non-bonded energy difference
+    // Check the residual energy of each proposed move 
+    //
+    // This residual energy is the total non-bonded interaction energy between
+    // the new atom and every atom that survives the reptation move
     for (int i = 0; i < n_candidates; ++i)
     {
         PolymerConfiguration<double> config_reptated(config);
-        config_reptated.reptateTowardsHead(r_new.row(i)); 
-        double nonbonded_energy_new = config_reptated.getNonbondedEnergy(
-            lj_params, neighbor_threshold, true
-        ); 
-        REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(nonbonded_energy_new - nonbonded_energy_orig, tol)
-        ); 
+        config_reptated.reptateTowardsTail(r_new.row(i)); 
+
+        // Re-calculate this residual energy 
+        //
+        // If we are reptating towards the tail, this is the non-bonded 
+        // interaction energy between the new atom and atoms 0, ..., 7 in the
+        // reptated configuration (the new atom is atom 9)
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        double residual = 0;  
+        for (int j = 0; j < length - 2; ++j)
+        {
+            double r = (r_new.row(i) - coords_reptated.row(j)).norm();  
+            residual += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        REQUIRE_THAT(residuals(i), Catch::Matchers::WithinRel(residual, tol));  
     }
 }
 
