@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/6/2026
+ *     5/20/2026
  */
 
 #include <iostream>
@@ -27,11 +27,15 @@ int main(int argc, char** argv)
                                             angle_params, 
                                             dihedral_params;
     const double kT = 1.380649e-2 * 300;    // Use "nano" units 
-    const int length = json_data["length"].as_int64(); 
+    const int length = json_data["length"].as_int64();
+
+    // Parse Lennard-Jones and FENE potential parameters 
     lj_params["eps"] = json_data["lj_eps"].as_double() * kT; 
     lj_params["sigma"] = json_data["lj_sigma"].as_double(); 
     fene_params["K"] = json_data["fene_K"].as_double() * kT;
     fene_params["R0"] = json_data["fene_R0"].as_double();
+
+    // Parse angle potential parameters
     AngleMode angle_mode = (
         json_data["angle_mode"].as_int64() == 0 ? AngleMode::COSINE : AngleMode::GAUSSIAN
     ); 
@@ -54,10 +58,21 @@ int main(int argc, char** argv)
         angle_params["theta2"] = (
             json_data["gaussian_theta2"].as_double() * boost::math::constants::pi<double>() / 180
         );
-    } 
+    }
+
+    // Parse dihedral potential parameters
     dihedral_params["K"] = json_data["dihedral_K"].as_double() * kT;
     dihedral_params["d"] = 1; 
     dihedral_params["n"] = 1;
+    try
+    {
+        dihedral_params["delta"] = (
+            json_data["dihedral_delta"].as_double() * boost::math::constants::pi<double>() / 180
+        ); 
+    }
+    catch (boost::wrapexcept<boost::system::system_error>& e) { }
+
+    // Parse additional CBMC parameters 
     const double collision_threshold = json_data["init_collision_threshold"].as_double(); 
     const int max_tries_per_atom = json_data["init_max_tries_per_atom"].as_int64();
     const int max_n_backtracks = json_data["init_max_n_backtracks"].as_int64();
