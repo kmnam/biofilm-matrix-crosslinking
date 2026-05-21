@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     2/16/2026
+ *     5/20/2026
  */
 
 #include <iostream>
@@ -19,11 +19,11 @@
 using namespace Eigen;
 
 /**
- * Tests for PolymerCBMCSampler::generateMultimerReptationMoves(). 
+ * Tests for PolymerCBMCSampler::generateForwardMultimerReptationMove(). 
  */
 TEST_CASE(
     "Tests for multimer reptation move generation",
-    "[generateMultimerReptationMoves()]"
+    "[generateForwardMultimerReptationMove()]"
 )
 {
     boost::random::mt19937 rng(1234567890);
@@ -34,198 +34,2486 @@ TEST_CASE(
     Matrix<double, 3, 1> r0 = Matrix<double, 3, 1>::Zero();
     std::unordered_map<std::string, double> lj_params, 
                                             fene_params, 
+                                            random_params, 
                                             cosine_params,
                                             gaussian_params,
+                                            nodihedral_params, 
                                             dihedral_params;
     double kT = 1.380649e-2 * 300;
     lj_params["eps"] = kT; 
     lj_params["sigma"] = 0.9;
-    fene_params["K"] = 30 * kT; 
+    fene_params["K"] = 9 * kT; 
     fene_params["R0"] = 1.5;
-    cosine_params["K"] = 20 * kT;
+
+    // Define a null cosine potential (to mimic random coils with excluded 
+    // volume interactions)
+    random_params["K"] = 0.0; 
+    random_params["theta0"] = boost::math::constants::pi<double>();
+
+    // Make cosine potential soft to allow for reptation candidates that are
+    // close to the original configuration  
+    cosine_params["K"] = 0.5 * kT;
     cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
+
+    // Similarly make Gaussian potential soft to allow for reptation candidates
+    // that are close to the original configuration 
     gaussian_params["A1"] = 0.9; 
     gaussian_params["A2"] = 0.1;
-    gaussian_params["w1"] = 0.2236067977;    // = 1/sqrt(20) 
-    gaussian_params["w2"] = 0.2236067977; 
+    gaussian_params["w1"] = 2.0;     // Standard deviations of 1 for each component
+    gaussian_params["w2"] = 2.0;
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
-    gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
-    dihedral_params["K"] = 10 * kT;
-    const double collision_threshold = 0.1;
+    gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180;
+
+    // Define dihedral potential parameters 
+    nodihedral_params["K"] = 0;  
+    dihedral_params["K"] = 0.5 * kT;
+
+    // Define additional parameters for initialization and sampling
+    const double collision_threshold = 0.9;    // Slightly less than 2^(1/6) * sigma ~ 1.01 
     const int max_tries_per_atom = 50;
     const int max_n_backtracks = 50;  
-
-    // Generate a 10-mer with a cosine angle potential
-    PolymerConfiguration<double> config = generateKMer<double, 10>(
-        lj_params, fene_params, AngleMode::COSINE, cosine_params, dihedral_params,
-        r0, collision_threshold, max_tries_per_atom, max_n_backtracks, rng, 
-        uniform_dist
+    Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
+        lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
+        kT, 10000
     );
-    Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10);  
-    REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10);
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with no angle or dihedral potentials 
+    // --------------------------------------------------------------- //
+    const int length = 10; 
+    PolymerConfiguration<double> config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, random_params,
+        nodihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
 
     // Initialize sampler instance
     double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    PolymerCBMCSampler<double> sampler_random(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        random_params, nodihedral_params, rng
+    ); 
+
+    // Try generating a collection of 3-mer reptation moves at the head
+    const int n_moves = 50; 
+    const int n_candidates = 50;
+    int n_reptate = 3; 
+    for (int i = 0; i < n_moves; ++i)
+    {
+        auto result = sampler_random.generateForwardMultimerReptationMove(
+            ReptationDirection::HEAD, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = std::get<0>(result); 
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);  
+        double log_forward_rosenbluth = std::get<2>(result);
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);  
+        REQUIRE(r_new.rows() == n_reptate);
+
+        // Check that the chosen 3-mer reptation move indeed features among
+        // the proposed atom positions
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            bool found_r_new_j = false;
+            Matrix<double, 3, 1> r_new_j = r_new.row(j);  
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                if ((r_new_j.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm() < tol)
+                {
+                    found_r_new_j = true; 
+                    break; 
+                }
+            }
+            REQUIRE(found_r_new_j); 
+        }
+        
+        // Check that the bonds have valid lengths
+        //
+        // The first atom should be bonded to the 0-th atom in the original
+        // configuration 
+        REQUIRE((r_new.row(0) - coords.row(0)).norm() < fene_params["R0"]); 
+
+        // Each subsequent pair of atoms should also be separated by valid 
+        // bond lengths 
+        for (int j = 1; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new.row(j - 1); 
+            Matrix<double, 3, 1> r2 = r_new.row(j); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor; 
+            if (j == 0)
+                predecessor = coords.row(0); 
+            else 
+                predecessor = r_new.row(j - 1);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the Rosenbluth factor of the proposed move ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_forward_rosenbluth_ = 0;  
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the head, run through all
+                // atoms 0, ... 6 in the original configuration, which are the
+                // atoms that survive the reptation move
+                //
+                // Omit atom 0 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = 1; m < length - n_reptate; ++m)
+                {
+                    double r = (r_curr - coords.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords.row(0).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the segment (except for the immediately preceding atom)
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - r_new.row(m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_forward_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_forward_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_forward_rosenbluth_, tol)
+        );
+    }
+
+    // Try generating a collection of 3-mer reptation moves at the tail
+    for (int i = 0; i < n_moves; ++i)
+    {
+        auto result = sampler_random.generateForwardMultimerReptationMove(
+            ReptationDirection::TAIL, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = std::get<0>(result); 
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);  
+        double log_forward_rosenbluth = std::get<2>(result);
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);  
+        REQUIRE(r_new.rows() == n_reptate);
+
+        // Check that the chosen 3-mer reptation move indeed features among
+        // the proposed atom positions
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            bool found_r_new_j = false;
+            Matrix<double, 3, 1> r_new_j = r_new.row(j);  
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                if ((r_new_j.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm() < tol)
+                {
+                    found_r_new_j = true; 
+                    break; 
+                }
+            }
+            REQUIRE(found_r_new_j); 
+        }
+        
+        // Check that the bonds have valid lengths
+        //
+        // The first atom should be bonded to the 9-th atom in the original
+        // configuration
+        int tail_idx = length - 1;  
+        REQUIRE((r_new.row(0) - coords.row(tail_idx)).norm() < fene_params["R0"]); 
+
+        // Each subsequent pair of atoms should also be separated by valid 
+        // bond lengths 
+        for (int j = 1; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new.row(j - 1); 
+            Matrix<double, 3, 1> r2 = r_new.row(j); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor; 
+            if (j == 0)
+                predecessor = coords.row(tail_idx); 
+            else 
+                predecessor = r_new.row(j - 1);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the Rosenbluth factor of the proposed move ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_forward_rosenbluth_ = 0;  
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the tail, run through all
+                // atoms 3, ..., 9 in the original configuration, which are
+                // the atoms that survive the reptation move
+                //
+                // Omit atom 9 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = n_reptate; m < length - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords.row(tail_idx).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the segment (except for the immediately preceding atom)
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - r_new.row(m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_forward_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_forward_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_forward_rosenbluth_, tol)
+        );
+    }
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a cosine angle potential and no 
+    // dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, cosine_params, 
+        nodihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
+
+    // Initialize sampler instance
     PolymerCBMCSampler<double> sampler_cosine(
         config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
-        cosine_params, dihedral_params, rng
-    );  
+        cosine_params, nodihedral_params, rng
+    ); 
 
-    // Try generating 50 3-mer reptation moves at the head
-    int n_candidates = 50; 
-    int n_reptate = 3;  
-    auto result = sampler_cosine.generateMultimerReptationMoves(
-        ReptationDirection::HEAD, n_reptate, n_candidates
-    );
-    Matrix<double, Dynamic, Dynamic> r_new = result.first; 
-    Matrix<double, Dynamic, 1> energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates);
-    REQUIRE(r_new.cols() == 3 * n_reptate);  
-    REQUIRE(energy_diffs.size() == n_candidates); 
-
-    // Check that the last atom in each new segment has a valid distance 
-    // to the 0-th atom 
-    for (int i = 0; i < n_candidates; ++i) 
-        REQUIRE((r_new(i, Eigen::seqN(6, 3)) - coords.row(0)).norm() < fene_params["R0"]); 
-
-    // Check the reptation non-bonded energy difference
-    for (int i = 0; i < n_candidates; ++i)
+    // Try generating a collection of 3-mer reptation moves at the head
+    for (int i = 0; i < n_moves; ++i)
     {
-        Matrix<double, Dynamic, 3> segment_i(n_reptate, 3); 
+        auto result = sampler_cosine.generateForwardMultimerReptationMove(
+            ReptationDirection::HEAD, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = std::get<0>(result); 
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);  
+        double log_forward_rosenbluth = std::get<2>(result);
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);  
+        REQUIRE(r_new.rows() == n_reptate);
+
+        // Check that the chosen 3-mer reptation move indeed features among
+        // the proposed atom positions
         for (int j = 0; j < n_reptate; ++j)
-            segment_i.row(j) = r_new(i, Eigen::seqN(3 * j, 3)); 
+        {
+            bool found_r_new_j = false;
+            Matrix<double, 3, 1> r_new_j = r_new.row(j);  
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                if ((r_new_j.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm() < tol)
+                {
+                    found_r_new_j = true; 
+                    break; 
+                }
+            }
+            REQUIRE(found_r_new_j); 
+        }
+        
+        // Check that the bonds have valid lengths
+        //
+        // The first atom should be bonded to the 0-th atom in the original
+        // configuration 
+        REQUIRE((r_new.row(0) - coords.row(0)).norm() < fene_params["R0"]); 
+
+        // Each subsequent pair of atoms should also be separated by valid 
+        // bond lengths 
+        for (int j = 1; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new.row(j - 1); 
+            Matrix<double, 3, 1> r2 = r_new.row(j); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor; 
+            if (j == 0)
+                predecessor = coords.row(0); 
+            else 
+                predecessor = r_new.row(j - 1);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the Rosenbluth factor of the proposed move ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_forward_rosenbluth_ = 0;  
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the head, run through all
+                // atoms 0, ... 6 in the original configuration, which are
+                // the atoms that survive the reptation move
+                //
+                // Omit atom 0 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = 1; m < length - n_reptate; ++m)
+                {
+                    double r = (r_curr - coords.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords.row(0).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the segment (except for the immediately preceding atom)
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - r_new.row(m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_forward_rosenbluth_ += log(rosenbluth_j); 
+        }
         REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(
-                config.getMultimerReptationNonbondedEnergyDifference(
-                    ReptationDirection::HEAD, segment_i, lj_params,
-                    neighbor_threshold
-                ), 
-                tol
-            )  
+            log_forward_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_forward_rosenbluth_, tol)
         );
     }
 
-    // Try generating 50 3-mer reptation moves at the tail 
-    result = sampler_cosine.generateMultimerReptationMoves(
-        ReptationDirection::TAIL, n_reptate, n_candidates
-    );
-    r_new = result.first; 
-    energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates);
-    REQUIRE(r_new.cols() == 3 * n_reptate);  
-    REQUIRE(energy_diffs.size() == n_candidates); 
-
-    // Check that the 0-th atom in each new segment has a valid distance to 
-    // the final atom 
-    for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_new(i, Eigen::seqN(0, 3)) - coords.row(9)).norm() < fene_params["R0"]); 
-
-    // Check the reptation non-bonded energy difference
-    for (int i = 0; i < n_candidates; ++i)
+    // Try generating a collection of 3-mer reptation moves at the tail
+    for (int i = 0; i < n_moves; ++i)
     {
-        Matrix<double, Dynamic, 3> segment_i(n_reptate, 3); 
+        auto result = sampler_cosine.generateForwardMultimerReptationMove(
+            ReptationDirection::TAIL, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = std::get<0>(result); 
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);  
+        double log_forward_rosenbluth = std::get<2>(result);
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);  
+        REQUIRE(r_new.rows() == n_reptate);
+
+        // Check that the chosen 3-mer reptation move indeed features among
+        // the proposed atom positions
         for (int j = 0; j < n_reptate; ++j)
-            segment_i.row(j) = r_new(i, Eigen::seqN(3 * j, 3)); 
+        {
+            bool found_r_new_j = false;
+            Matrix<double, 3, 1> r_new_j = r_new.row(j);  
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                if ((r_new_j.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm() < tol)
+                {
+                    found_r_new_j = true; 
+                    break; 
+                }
+            }
+            REQUIRE(found_r_new_j); 
+        }
+        
+        // Check that the bonds have valid lengths
+        //
+        // The first atom should be bonded to the 9-th atom in the original
+        // configuration
+        int tail_idx = length - 1;  
+        REQUIRE((r_new.row(0) - coords.row(tail_idx)).norm() < fene_params["R0"]); 
+
+        // Each subsequent pair of atoms should also be separated by valid 
+        // bond lengths 
+        for (int j = 1; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new.row(j - 1); 
+            Matrix<double, 3, 1> r2 = r_new.row(j); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor; 
+            if (j == 0)
+                predecessor = coords.row(tail_idx); 
+            else 
+                predecessor = r_new.row(j - 1);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the Rosenbluth factor of the proposed move ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_forward_rosenbluth_ = 0;  
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the tail, run through all
+                // atoms 3, ..., 9 in the original configuration, which are
+                // the atoms that survive the reptation move
+                //
+                // Omit atom 9 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = n_reptate; m < length - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords.row(tail_idx).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the segment (except for the immediately preceding atom)
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - r_new.row(m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_forward_rosenbluth_ += log(rosenbluth_j); 
+        }
         REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(
-                config.getMultimerReptationNonbondedEnergyDifference(
-                    ReptationDirection::TAIL, segment_i, lj_params,
-                    neighbor_threshold
-                ), 
-                tol
-            )  
+            log_forward_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_forward_rosenbluth_, tol)
         );
     }
 
-    // Generate a 10-mer with a dual Gaussian mixture angle potential
-    config = generateKMer<double, 10>(
-        lj_params, fene_params, AngleMode::GAUSSIAN, gaussian_params,
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a cosine angle potential and a
+    // harmonic dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, cosine_params, 
         dihedral_params, r0, collision_threshold, max_tries_per_atom,
-        max_n_backtracks, rng, uniform_dist
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
     );
-    coords = config.getSegment(0, 10);  
-    REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10); 
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
+
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_cosine_dihedral(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, dihedral_params, rng
+    ); 
+
+    // Try generating a collection of 3-mer reptation moves at the head
+    for (int i = 0; i < n_moves; ++i)
+    {
+        auto result = sampler_cosine_dihedral.generateForwardMultimerReptationMove(
+            ReptationDirection::HEAD, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = std::get<0>(result); 
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);  
+        double log_forward_rosenbluth = std::get<2>(result);
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);  
+        REQUIRE(r_new.rows() == n_reptate);
+
+        // Check that the chosen 3-mer reptation move indeed features among
+        // the proposed atom positions
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            bool found_r_new_j = false;
+            Matrix<double, 3, 1> r_new_j = r_new.row(j);  
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                if ((r_new_j.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm() < tol)
+                {
+                    found_r_new_j = true; 
+                    break; 
+                }
+            }
+            REQUIRE(found_r_new_j); 
+        }
+        
+        // Check that the bonds have valid lengths
+        //
+        // The first atom should be bonded to the 0-th atom in the original
+        // configuration 
+        REQUIRE((r_new.row(0) - coords.row(0)).norm() < fene_params["R0"]); 
+
+        // Each subsequent pair of atoms should also be separated by valid 
+        // bond lengths 
+        for (int j = 1; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new.row(j - 1); 
+            Matrix<double, 3, 1> r2 = r_new.row(j); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor; 
+            if (j == 0)
+                predecessor = coords.row(0); 
+            else 
+                predecessor = r_new.row(j - 1);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the Rosenbluth factor of the proposed move ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_forward_rosenbluth_ = 0;  
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the head, run through all
+                // atoms 0, ... 6 in the original configuration, which are
+                // the atoms that survive the reptation move
+                //
+                // Omit atom 0 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = 1; m < length - n_reptate; ++m)
+                {
+                    double r = (r_curr - coords.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords.row(0).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the segment (except for the immediately preceding atom)
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - r_new.row(m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_forward_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_forward_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_forward_rosenbluth_, tol)
+        );
+    }
+
+    // Try generating a collection of 3-mer reptation moves at the tail
+    for (int i = 0; i < n_moves; ++i)
+    {
+        auto result = sampler_cosine_dihedral.generateForwardMultimerReptationMove(
+            ReptationDirection::TAIL, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = std::get<0>(result); 
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);  
+        double log_forward_rosenbluth = std::get<2>(result);
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);  
+        REQUIRE(r_new.rows() == n_reptate);
+
+        // Check that the chosen 3-mer reptation move indeed features among
+        // the proposed atom positions
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            bool found_r_new_j = false;
+            Matrix<double, 3, 1> r_new_j = r_new.row(j);  
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                if ((r_new_j.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm() < tol)
+                {
+                    found_r_new_j = true; 
+                    break; 
+                }
+            }
+            REQUIRE(found_r_new_j); 
+        }
+        
+        // Check that the bonds have valid lengths
+        //
+        // The first atom should be bonded to the 9-th atom in the original
+        // configuration
+        int tail_idx = length - 1;  
+        REQUIRE((r_new.row(0) - coords.row(tail_idx)).norm() < fene_params["R0"]); 
+
+        // Each subsequent pair of atoms should also be separated by valid 
+        // bond lengths 
+        for (int j = 1; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new.row(j - 1); 
+            Matrix<double, 3, 1> r2 = r_new.row(j); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor; 
+            if (j == 0)
+                predecessor = coords.row(tail_idx); 
+            else 
+                predecessor = r_new.row(j - 1);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the Rosenbluth factor of the proposed move ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_forward_rosenbluth_ = 0;  
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the tail, run through all
+                // atoms 3, ..., 9 in the original configuration, which are
+                // the atoms that survive the reptation move
+                //
+                // Omit atom 9 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = n_reptate; m < length - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords.row(tail_idx).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the segment (except for the immediately preceding atom)
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - r_new.row(m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_forward_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_forward_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_forward_rosenbluth_, tol)
+        );
+    }
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a Gaussian angle potential and a
+    // harmonic dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::GAUSSIAN, gaussian_params,
+        dihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
 
     // Initialize sampler instance
     PolymerCBMCSampler<double> sampler_gaussian(
         config, lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
         gaussian_params, dihedral_params, rng
-    );  
+    ); 
 
-    // Try generating 50 4-mer reptation moves at the head
-    n_reptate = 4; 
-    result = sampler_gaussian.generateMultimerReptationMoves(
-        ReptationDirection::HEAD, n_reptate, n_candidates
-    );
-    r_new = result.first; 
-    energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates);
-    REQUIRE(r_new.cols() == 3 * n_reptate); 
-    REQUIRE(energy_diffs.size() == n_candidates); 
-
-    // Check that the last atom in each new segment has a valid distance 
-    // to the 0-th atom 
-    for (int i = 0; i < n_candidates; ++i) 
-        REQUIRE((r_new(i, Eigen::seqN(9, 3)) - coords.row(0)).norm() < fene_params["R0"]);
-
-    // Check the reptation non-bonded energy difference
-    for (int i = 0; i < n_candidates; ++i)
+    // Try generating a collection of 3-mer reptation moves at the head
+    for (int i = 0; i < n_moves; ++i)
     {
-        Matrix<double, Dynamic, 3> segment_i(n_reptate, 3); 
+        auto result = sampler_gaussian.generateForwardMultimerReptationMove(
+            ReptationDirection::HEAD, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = std::get<0>(result); 
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);  
+        double log_forward_rosenbluth = std::get<2>(result);
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);  
+        REQUIRE(r_new.rows() == n_reptate);
+
+        // Check that the chosen 3-mer reptation move indeed features among
+        // the proposed atom positions
         for (int j = 0; j < n_reptate; ++j)
-            segment_i.row(j) = r_new(i, Eigen::seqN(3 * j, 3)); 
+        {
+            bool found_r_new_j = false;
+            Matrix<double, 3, 1> r_new_j = r_new.row(j);  
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                if ((r_new_j.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm() < tol)
+                {
+                    found_r_new_j = true; 
+                    break; 
+                }
+            }
+            REQUIRE(found_r_new_j); 
+        }
+        
+        // Check that the bonds have valid lengths
+        //
+        // The first atom should be bonded to the 0-th atom in the original
+        // configuration 
+        REQUIRE((r_new.row(0) - coords.row(0)).norm() < fene_params["R0"]); 
+
+        // Each subsequent pair of atoms should also be separated by valid 
+        // bond lengths 
+        for (int j = 1; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new.row(j - 1); 
+            Matrix<double, 3, 1> r2 = r_new.row(j); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor; 
+            if (j == 0)
+                predecessor = coords.row(0); 
+            else 
+                predecessor = r_new.row(j - 1);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the Rosenbluth factor of the proposed move ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_forward_rosenbluth_ = 0;  
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the head, run through all
+                // atoms 0, ... 6 in the original configuration, which are
+                // the atoms that survive the reptation move
+                //
+                // Omit atom 0 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = 1; m < length - n_reptate; ++m)
+                {
+                    double r = (r_curr - coords.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords.row(0).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the segment (except for the immediately preceding atom)
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - r_new.row(m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_forward_rosenbluth_ += log(rosenbluth_j); 
+        }
         REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(
-                config.getMultimerReptationNonbondedEnergyDifference(
-                    ReptationDirection::HEAD, segment_i, lj_params,
-                    neighbor_threshold
-                ), 
-                tol
-            )  
+            log_forward_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_forward_rosenbluth_, tol)
         );
     }
 
-    // Try generating 50 4-mer reptation moves at the tail
-    result = sampler_gaussian.generateMultimerReptationMoves(
-        ReptationDirection::TAIL, n_reptate, n_candidates
-    );
-    r_new = result.first; 
-    energy_diffs = result.second;
-    REQUIRE(r_new.rows() == n_candidates);
-    REQUIRE(r_new.cols() == 3 * n_reptate);  
-    REQUIRE(energy_diffs.size() == n_candidates); 
-
-    // Check that the 0-th atom in each new segment has a valid distance to 
-    // the final atom 
-    for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_new(i, Eigen::seqN(0, 3)) - coords.row(9)).norm() < fene_params["R0"]); 
-
-    // Check the reptation non-bonded energy difference
-    for (int i = 0; i < n_candidates; ++i)
+    // Try generating a collection of 3-mer reptation moves at the tail
+    for (int i = 0; i < n_moves; ++i)
     {
-        Matrix<double, Dynamic, 3> segment_i(n_reptate, 3); 
+        auto result = sampler_gaussian.generateForwardMultimerReptationMove(
+            ReptationDirection::TAIL, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = std::get<0>(result); 
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);  
+        double log_forward_rosenbluth = std::get<2>(result);
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);  
+        REQUIRE(r_new.rows() == n_reptate);
+
+        // Check that the chosen 3-mer reptation move indeed features among
+        // the proposed atom positions
         for (int j = 0; j < n_reptate; ++j)
-            segment_i.row(j) = r_new(i, Eigen::seqN(3 * j, 3)); 
+        {
+            bool found_r_new_j = false;
+            Matrix<double, 3, 1> r_new_j = r_new.row(j);  
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                if ((r_new_j.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm() < tol)
+                {
+                    found_r_new_j = true; 
+                    break; 
+                }
+            }
+            REQUIRE(found_r_new_j); 
+        }
+        
+        // Check that the bonds have valid lengths
+        //
+        // The first atom should be bonded to the 9-th atom in the original
+        // configuration
+        int tail_idx = length - 1;  
+        REQUIRE((r_new.row(0) - coords.row(tail_idx)).norm() < fene_params["R0"]); 
+
+        // Each subsequent pair of atoms should also be separated by valid 
+        // bond lengths 
+        for (int j = 1; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> r1 = r_new.row(j - 1); 
+            Matrix<double, 3, 1> r2 = r_new.row(j); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor; 
+            if (j == 0)
+                predecessor = coords.row(tail_idx); 
+            else 
+                predecessor = r_new.row(j - 1);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the Rosenbluth factor of the proposed move ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_forward_rosenbluth_ = 0;  
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the tail, run through all
+                // atoms 3, ..., 9 in the original configuration, which are
+                // the atoms that survive the reptation move
+                //
+                // Omit atom 9 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = n_reptate; m < length - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords.row(tail_idx).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the segment (except for the immediately preceding atom)
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - r_new.row(m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_forward_rosenbluth_ += log(rosenbluth_j); 
+        }
         REQUIRE_THAT(
-            energy_diffs(i),
-            Catch::Matchers::WithinAbs(
-                config.getMultimerReptationNonbondedEnergyDifference(
-                    ReptationDirection::TAIL, segment_i, lj_params,
-                    neighbor_threshold
-                ), 
-                tol
-            )  
+            log_forward_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_forward_rosenbluth_, tol)
         );
     }
 }
 
 /**
- * Tests for multimer reptation in the PolymerCBMCSampler class via moveOnce(). 
+ * Tests for PolymerCBMCSampler::getBackwardMultimerReptationRosenbluthWeight(). 
+ */
+TEST_CASE(
+    "Tests for backward Rosenbluth factor calculation for multimer reptation", 
+    "[getBackwardMultimerReptationRosenbluthWeight()]"
+)
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+    const double tol = 1e-8;  
+
+    // Set up potential and sampling parameters
+    Matrix<double, 3, 1> r0 = Matrix<double, 3, 1>::Zero();
+    std::unordered_map<std::string, double> lj_params, 
+                                            fene_params, 
+                                            random_params, 
+                                            cosine_params,
+                                            gaussian_params,
+                                            nodihedral_params, 
+                                            dihedral_params;
+    double kT = 1.380649e-2 * 300;
+    lj_params["eps"] = kT; 
+    lj_params["sigma"] = 0.9;
+    fene_params["K"] = 9 * kT; 
+    fene_params["R0"] = 1.5;
+
+    // Define a null cosine potential (to mimic random coils with excluded 
+    // volume interactions)
+    random_params["K"] = 0.0; 
+    random_params["theta0"] = boost::math::constants::pi<double>();
+
+    // Make cosine potential soft to allow for reptation candidates that are
+    // close to the original configuration  
+    cosine_params["K"] = 0.5 * kT;
+    cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
+
+    // Similarly make Gaussian potential soft to allow for reptation candidates
+    // that are close to the original configuration 
+    gaussian_params["A1"] = 0.9; 
+    gaussian_params["A2"] = 0.1;
+    gaussian_params["w1"] = 2.0;     // Standard deviations of 1 for each component
+    gaussian_params["w2"] = 2.0;
+    gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
+    gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180;
+
+    // Define dihedral potential parameters 
+    nodihedral_params["K"] = 0;  
+    dihedral_params["K"] = 0.5 * kT;
+
+    // Define additional parameters for initialization and sampling
+    const double collision_threshold = 0.9;    // Slightly less than 2^(1/6) * sigma ~ 1.01 
+    const int max_tries_per_atom = 50;
+    const int max_n_backtracks = 50;  
+    Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
+        lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
+        kT, 10000
+    );
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with no angle or dihedral potentials 
+    // --------------------------------------------------------------- //
+    const int length = 10; 
+    PolymerConfiguration<double> config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, random_params,
+        nodihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
+
+    // Initialize sampler instance
+    double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    PolymerCBMCSampler<double> sampler_random(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        random_params, nodihedral_params, rng
+    ); 
+
+    // Try generating a collection of 3-mer reptation moves at the head
+    const int n_moves = 50; 
+    const int n_candidates = 50;
+    int n_reptate = 3; 
+    for (int i = 0; i < n_moves; ++i)
+    {
+        // First apply the reptation move to generate a new configuration 
+        auto result = sampler_random.generateForwardMultimerReptationMove(
+            ReptationDirection::HEAD, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);
+        PolymerConfiguration<double> config_reptated(config); 
+        config_reptated.reptateTowardsHeadMultimer(r_new.colwise().reverse());
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);
+
+        // Check the coordinates of the reptated configuration 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - r_new.row(n_reptate - 1 - j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        }
+        for (int j = n_reptate; j < length; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - coords.row(j - n_reptate)).norm(),
+                Catch::Matchers::WithinAbs(0, tol)
+            );  
+        }
+
+        // Now calculate the backward Rosenbluth weights
+        auto result2 = sampler_random.getBackwardMultimerReptationRosenbluthWeight(
+            ReptationDirection::TAIL, n_reptate, n_candidates, coords_reptated
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = result2.first; 
+        double log_reverse_rosenbluth = result2.second;
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);
+
+        // Check that the 0-th candidate for each position is reversion to 
+        // the original configuration
+        //
+        // This involves comparing candidate atom 0 at each position (0, 1, 2)
+        // with atoms 7, 8, 9 in the original configuration 
+        for (int j = 0; j < n_reptate; ++j)
+        { 
+            REQUIRE_THAT(
+                (candidates(0, Eigen::seqN(3 * j, 3)) - coords.row(length - n_reptate + j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        } 
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor;
+
+            // If j == 0, then the predecessor is the last atom in the 
+            // reptated configuration, which is the 6th atom in the original
+            // configuration 
+            //
+            // If j > 0, then the predecessor is the 7th or 8th atom in the
+            // original configuration 
+            predecessor = coords.row(length - 1 - n_reptate + j);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the backward Rosenbluth factor ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_reverse_rosenbluth_ = 0; 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the tail (in reverse), run
+                // through all atoms 3, ... 9 in the reptated configuration, 
+                // which are the atoms that survive the reverse reptation move
+                //
+                // Omit atom 9 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = n_reptate; m < length - 1; ++m)
+                {
+                    double r = (r_curr - coords_reptated.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords_reptated.row(length - 1).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the reversion segment (except for the immediately preceding
+                // atom)
+                //
+                // Since we are only reptating by 3 monomers, this means that,
+                // for j = 2, we add in interactions with atom 7 in the original
+                // configuration 
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(length - n_reptate + m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_reverse_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_reverse_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_reverse_rosenbluth_, tol)
+        );
+    }
+
+    // Try generating a collection of 3-mer reptation moves at the tail 
+    for (int i = 0; i < n_moves; ++i)
+    {
+        // First apply the reptation move to generate a new configuration 
+        auto result = sampler_random.generateForwardMultimerReptationMove(
+            ReptationDirection::TAIL, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);
+        PolymerConfiguration<double> config_reptated(config); 
+        config_reptated.reptateTowardsTailMultimer(r_new); 
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);
+
+        // Check the coordinates of the reptated configuration 
+        for (int j = 0; j < length - n_reptate; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - coords.row(j + n_reptate)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        }
+        for (int j = length - n_reptate; j < length; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - r_new.row(j - (length - n_reptate))).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            );  
+        }
+
+        // Now calculate the backward Rosenbluth weights
+        auto result2 = sampler_random.getBackwardMultimerReptationRosenbluthWeight(
+            ReptationDirection::HEAD, n_reptate, n_candidates, coords_reptated
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = result2.first; 
+        double log_reverse_rosenbluth = result2.second;
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);
+
+        // Check that the 0-th candidate for each position is reversion to 
+        // the original configuration
+        //
+        // This involves comparing candidate atom 0 at each position (0, 1, 2)
+        // with atoms 2, 1, 0 in the original configuration
+        //
+        // Note that the indices are mirrored because reversion requires 
+        // reptation towards the head  
+        for (int j = 0; j < n_reptate; ++j)
+        { 
+            REQUIRE_THAT(
+                (candidates(0, Eigen::seqN(3 * j, 3)) - coords.row(n_reptate - 1 - j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        } 
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor;
+
+            // If j == 0, then the predecessor is the 0th atom in the 
+            // reptated configuration, which is the 3rd atom in the original
+            // configuration 
+            //
+            // If j > 0, then the predecessor is the 2nd or 1st atom in the 
+            // original configuration 
+            predecessor = coords.row(n_reptate - j); 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the backward Rosenbluth factor ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_reverse_rosenbluth_ = 0; 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the head (in reverse), run
+                // through all atoms 0, ..., 6 in the reptated configuration, 
+                // which are the atoms that survive the reverse reptation move
+                //
+                // Omit atom 0 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = 1; m < length - n_reptate; ++m)
+                {
+                    double r = (r_curr - coords_reptated.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords_reptated.row(0).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the reversion segment (except for the immediately preceding
+                // atom)
+                //
+                // Since we are only reptating by 3 monomers, this means that,
+                // for j = 2, we add in interactions with atom 2 in the original
+                // configuration 
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(n_reptate - 1 - m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_reverse_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_reverse_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_reverse_rosenbluth_, tol)
+        );
+    }
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a cosine angle potential and no 
+    // dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, cosine_params,
+        nodihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
+
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_cosine(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, nodihedral_params, rng
+    ); 
+
+    // Try generating a collection of 3-mer reptation moves at the head
+    for (int i = 0; i < n_moves; ++i)
+    {
+        // First apply the reptation move to generate a new configuration 
+        auto result = sampler_cosine.generateForwardMultimerReptationMove(
+            ReptationDirection::HEAD, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);
+        PolymerConfiguration<double> config_reptated(config); 
+        config_reptated.reptateTowardsHeadMultimer(r_new.colwise().reverse());
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);
+
+        // Check the coordinates of the reptated configuration 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - r_new.row(n_reptate - 1 - j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        }
+        for (int j = n_reptate; j < length; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - coords.row(j - n_reptate)).norm(),
+                Catch::Matchers::WithinAbs(0, tol)
+            );  
+        }
+
+        // Now calculate the backward Rosenbluth weights
+        auto result2 = sampler_cosine.getBackwardMultimerReptationRosenbluthWeight(
+            ReptationDirection::TAIL, n_reptate, n_candidates, coords_reptated
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = result2.first; 
+        double log_reverse_rosenbluth = result2.second;
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);
+
+        // Check that the 0-th candidate for each position is reversion to 
+        // the original configuration
+        //
+        // This involves comparing candidate atom 0 at each position (0, 1, 2)
+        // with atoms 7, 8, 9 in the original configuration 
+        for (int j = 0; j < n_reptate; ++j)
+        { 
+            REQUIRE_THAT(
+                (candidates(0, Eigen::seqN(3 * j, 3)) - coords.row(length - n_reptate + j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        } 
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor;
+
+            // If j == 0, then the predecessor is the last atom in the 
+            // reptated configuration, which is the 6th atom in the original
+            // configuration 
+            //
+            // If j > 0, then the predecessor is the 7th or 8th atom in the
+            // original configuration 
+            predecessor = coords.row(length - 1 - n_reptate + j);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the backward Rosenbluth factor ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_reverse_rosenbluth_ = 0; 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the tail (in reverse), run
+                // through all atoms 3, ... 9 in the reptated configuration, 
+                // which are the atoms that survive the reverse reptation move
+                //
+                // Omit atom 9 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = n_reptate; m < length - 1; ++m)
+                {
+                    double r = (r_curr - coords_reptated.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords_reptated.row(length - 1).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the reversion segment (except for the immediately preceding
+                // atom)
+                //
+                // Since we are only reptating by 3 monomers, this means that,
+                // for j = 2, we add in interactions with atom 7 in the original
+                // configuration 
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(length - n_reptate + m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_reverse_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_reverse_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_reverse_rosenbluth_, tol)
+        );
+    }
+
+    // Try generating a collection of 3-mer reptation moves at the tail 
+    for (int i = 0; i < n_moves; ++i)
+    {
+        // First apply the reptation move to generate a new configuration 
+        auto result = sampler_cosine.generateForwardMultimerReptationMove(
+            ReptationDirection::TAIL, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);
+        PolymerConfiguration<double> config_reptated(config); 
+        config_reptated.reptateTowardsTailMultimer(r_new); 
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);
+
+        // Check the coordinates of the reptated configuration 
+        for (int j = 0; j < length - n_reptate; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - coords.row(j + n_reptate)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        }
+        for (int j = length - n_reptate; j < length; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - r_new.row(j - (length - n_reptate))).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            );  
+        }
+
+        // Now calculate the backward Rosenbluth weights
+        auto result2 = sampler_cosine.getBackwardMultimerReptationRosenbluthWeight(
+            ReptationDirection::HEAD, n_reptate, n_candidates, coords_reptated
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = result2.first; 
+        double log_reverse_rosenbluth = result2.second;
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);
+
+        // Check that the 0-th candidate for each position is reversion to 
+        // the original configuration
+        //
+        // This involves comparing candidate atom 0 at each position (0, 1, 2)
+        // with atoms 2, 1, 0 in the original configuration
+        //
+        // Note that the indices are mirrored because reversion requires 
+        // reptation towards the head  
+        for (int j = 0; j < n_reptate; ++j)
+        { 
+            REQUIRE_THAT(
+                (candidates(0, Eigen::seqN(3 * j, 3)) - coords.row(n_reptate - 1 - j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        } 
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor;
+
+            // If j == 0, then the predecessor is the 0th atom in the 
+            // reptated configuration, which is the 3rd atom in the original
+            // configuration 
+            //
+            // If j > 0, then the predecessor is the 2nd or 1st atom in the 
+            // original configuration 
+            predecessor = coords.row(n_reptate - j); 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the backward Rosenbluth factor ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_reverse_rosenbluth_ = 0; 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the head (in reverse), run
+                // through all atoms 0, ..., 6 in the reptated configuration, 
+                // which are the atoms that survive the reverse reptation move
+                //
+                // Omit atom 0 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = 1; m < length - n_reptate; ++m)
+                {
+                    double r = (r_curr - coords_reptated.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords_reptated.row(0).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the reversion segment (except for the immediately preceding
+                // atom)
+                //
+                // Since we are only reptating by 3 monomers, this means that,
+                // for j = 2, we add in interactions with atom 2 in the original
+                // configuration 
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(n_reptate - 1 - m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_reverse_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_reverse_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_reverse_rosenbluth_, tol)
+        );
+    }
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a cosine angle potential and a
+    // harmonic dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, cosine_params,
+        dihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
+
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_cosine_dihedral(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, dihedral_params, rng
+    ); 
+
+    // Try generating a collection of 3-mer reptation moves at the head
+    for (int i = 0; i < n_moves; ++i)
+    {
+        // First apply the reptation move to generate a new configuration 
+        auto result = sampler_cosine_dihedral.generateForwardMultimerReptationMove(
+            ReptationDirection::HEAD, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);
+        PolymerConfiguration<double> config_reptated(config); 
+        config_reptated.reptateTowardsHeadMultimer(r_new.colwise().reverse());
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);
+
+        // Check the coordinates of the reptated configuration 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - r_new.row(n_reptate - 1 - j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        }
+        for (int j = n_reptate; j < length; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - coords.row(j - n_reptate)).norm(),
+                Catch::Matchers::WithinAbs(0, tol)
+            );  
+        }
+
+        // Now calculate the backward Rosenbluth weights
+        auto result2 = sampler_cosine_dihedral.getBackwardMultimerReptationRosenbluthWeight(
+            ReptationDirection::TAIL, n_reptate, n_candidates, coords_reptated
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = result2.first; 
+        double log_reverse_rosenbluth = result2.second;
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);
+
+        // Check that the 0-th candidate for each position is reversion to 
+        // the original configuration
+        //
+        // This involves comparing candidate atom 0 at each position (0, 1, 2)
+        // with atoms 7, 8, 9 in the original configuration 
+        for (int j = 0; j < n_reptate; ++j)
+        { 
+            REQUIRE_THAT(
+                (candidates(0, Eigen::seqN(3 * j, 3)) - coords.row(length - n_reptate + j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        } 
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor;
+
+            // If j == 0, then the predecessor is the last atom in the 
+            // reptated configuration, which is the 6th atom in the original
+            // configuration 
+            //
+            // If j > 0, then the predecessor is the 7th or 8th atom in the
+            // original configuration 
+            predecessor = coords.row(length - 1 - n_reptate + j);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the backward Rosenbluth factor ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_reverse_rosenbluth_ = 0; 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the tail (in reverse), run
+                // through all atoms 3, ... 9 in the reptated configuration, 
+                // which are the atoms that survive the reverse reptation move
+                //
+                // Omit atom 9 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = n_reptate; m < length - 1; ++m)
+                {
+                    double r = (r_curr - coords_reptated.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords_reptated.row(length - 1).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the reversion segment (except for the immediately preceding
+                // atom)
+                //
+                // Since we are only reptating by 3 monomers, this means that,
+                // for j = 2, we add in interactions with atom 7 in the original
+                // configuration 
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(length - n_reptate + m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_reverse_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_reverse_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_reverse_rosenbluth_, tol)
+        );
+    }
+
+    // Try generating a collection of 3-mer reptation moves at the tail 
+    for (int i = 0; i < n_moves; ++i)
+    {
+        // First apply the reptation move to generate a new configuration 
+        auto result = sampler_cosine_dihedral.generateForwardMultimerReptationMove(
+            ReptationDirection::TAIL, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);
+        PolymerConfiguration<double> config_reptated(config); 
+        config_reptated.reptateTowardsTailMultimer(r_new); 
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);
+
+        // Check the coordinates of the reptated configuration 
+        for (int j = 0; j < length - n_reptate; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - coords.row(j + n_reptate)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        }
+        for (int j = length - n_reptate; j < length; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - r_new.row(j - (length - n_reptate))).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            );  
+        }
+
+        // Now calculate the backward Rosenbluth weights
+        auto result2 = sampler_cosine_dihedral.getBackwardMultimerReptationRosenbluthWeight(
+            ReptationDirection::HEAD, n_reptate, n_candidates, coords_reptated
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = result2.first; 
+        double log_reverse_rosenbluth = result2.second;
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);
+
+        // Check that the 0-th candidate for each position is reversion to 
+        // the original configuration
+        //
+        // This involves comparing candidate atom 0 at each position (0, 1, 2)
+        // with atoms 2, 1, 0 in the original configuration
+        //
+        // Note that the indices are mirrored because reversion requires 
+        // reptation towards the head  
+        for (int j = 0; j < n_reptate; ++j)
+        { 
+            REQUIRE_THAT(
+                (candidates(0, Eigen::seqN(3 * j, 3)) - coords.row(n_reptate - 1 - j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        } 
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor;
+
+            // If j == 0, then the predecessor is the 0th atom in the 
+            // reptated configuration, which is the 3rd atom in the original
+            // configuration 
+            //
+            // If j > 0, then the predecessor is the 2nd or 1st atom in the 
+            // original configuration 
+            predecessor = coords.row(n_reptate - j); 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the backward Rosenbluth factor ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_reverse_rosenbluth_ = 0; 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the head (in reverse), run
+                // through all atoms 0, ..., 6 in the reptated configuration, 
+                // which are the atoms that survive the reverse reptation move
+                //
+                // Omit atom 0 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = 1; m < length - n_reptate; ++m)
+                {
+                    double r = (r_curr - coords_reptated.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords_reptated.row(0).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the reversion segment (except for the immediately preceding
+                // atom)
+                //
+                // Since we are only reptating by 3 monomers, this means that,
+                // for j = 2, we add in interactions with atom 2 in the original
+                // configuration 
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(n_reptate - 1 - m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_reverse_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_reverse_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_reverse_rosenbluth_, tol)
+        );
+    }
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a Gaussian angle potential and a
+    // harmonic dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::GAUSSIAN, gaussian_params,
+        dihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
+
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_gaussian(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, dihedral_params, rng
+    ); 
+
+    // Try generating a collection of 3-mer reptation moves at the head
+    for (int i = 0; i < n_moves; ++i)
+    {
+        // First apply the reptation move to generate a new configuration 
+        auto result = sampler_gaussian.generateForwardMultimerReptationMove(
+            ReptationDirection::HEAD, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);
+        PolymerConfiguration<double> config_reptated(config); 
+        config_reptated.reptateTowardsHeadMultimer(r_new.colwise().reverse());
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);
+
+        // Check the coordinates of the reptated configuration 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - r_new.row(n_reptate - 1 - j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        }
+        for (int j = n_reptate; j < length; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - coords.row(j - n_reptate)).norm(),
+                Catch::Matchers::WithinAbs(0, tol)
+            );  
+        }
+
+        // Now calculate the backward Rosenbluth weights
+        auto result2 = sampler_gaussian.getBackwardMultimerReptationRosenbluthWeight(
+            ReptationDirection::TAIL, n_reptate, n_candidates, coords_reptated
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = result2.first; 
+        double log_reverse_rosenbluth = result2.second;
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);
+
+        // Check that the 0-th candidate for each position is reversion to 
+        // the original configuration
+        //
+        // This involves comparing candidate atom 0 at each position (0, 1, 2)
+        // with atoms 7, 8, 9 in the original configuration 
+        for (int j = 0; j < n_reptate; ++j)
+        { 
+            REQUIRE_THAT(
+                (candidates(0, Eigen::seqN(3 * j, 3)) - coords.row(length - n_reptate + j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        } 
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor;
+
+            // If j == 0, then the predecessor is the last atom in the 
+            // reptated configuration, which is the 6th atom in the original
+            // configuration 
+            //
+            // If j > 0, then the predecessor is the 7th or 8th atom in the
+            // original configuration 
+            predecessor = coords.row(length - 1 - n_reptate + j);
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the backward Rosenbluth factor ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_reverse_rosenbluth_ = 0; 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the tail (in reverse), run
+                // through all atoms 3, ... 9 in the reptated configuration, 
+                // which are the atoms that survive the reverse reptation move
+                //
+                // Omit atom 9 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = n_reptate; m < length - 1; ++m)
+                {
+                    double r = (r_curr - coords_reptated.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords_reptated.row(length - 1).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the reversion segment (except for the immediately preceding
+                // atom)
+                //
+                // Since we are only reptating by 3 monomers, this means that,
+                // for j = 2, we add in interactions with atom 7 in the original
+                // configuration 
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(length - n_reptate + m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_reverse_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_reverse_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_reverse_rosenbluth_, tol)
+        );
+    }
+
+    // Try generating a collection of 3-mer reptation moves at the tail 
+    for (int i = 0; i < n_moves; ++i)
+    {
+        // First apply the reptation move to generate a new configuration 
+        auto result = sampler_gaussian.generateForwardMultimerReptationMove(
+            ReptationDirection::TAIL, n_reptate, n_candidates
+        );
+        Matrix<double, Dynamic, 3> r_new = std::get<1>(result);
+        PolymerConfiguration<double> config_reptated(config); 
+        config_reptated.reptateTowardsTailMultimer(r_new); 
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);
+
+        // Check the coordinates of the reptated configuration 
+        for (int j = 0; j < length - n_reptate; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - coords.row(j + n_reptate)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        }
+        for (int j = length - n_reptate; j < length; ++j)
+        {
+            REQUIRE_THAT(
+                (coords_reptated.row(j) - r_new.row(j - (length - n_reptate))).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            );  
+        }
+
+        // Now calculate the backward Rosenbluth weights
+        auto result2 = sampler_gaussian.getBackwardMultimerReptationRosenbluthWeight(
+            ReptationDirection::HEAD, n_reptate, n_candidates, coords_reptated
+        );
+        Matrix<double, Dynamic, Dynamic> candidates = result2.first; 
+        double log_reverse_rosenbluth = result2.second;
+        REQUIRE(candidates.rows() == n_candidates); 
+        REQUIRE(candidates.cols() == 3 * n_reptate);
+
+        // Check that the 0-th candidate for each position is reversion to 
+        // the original configuration
+        //
+        // This involves comparing candidate atom 0 at each position (0, 1, 2)
+        // with atoms 2, 1, 0 in the original configuration
+        //
+        // Note that the indices are mirrored because reversion requires 
+        // reptation towards the head  
+        for (int j = 0; j < n_reptate; ++j)
+        { 
+            REQUIRE_THAT(
+                (candidates(0, Eigen::seqN(3 * j, 3)) - coords.row(n_reptate - 1 - j)).norm(), 
+                Catch::Matchers::WithinAbs(0, tol)
+            ); 
+        } 
+
+        // Check that, for each position j along the segment, the atoms
+        // proposed for position j + 1 have valid distances to the j-th atom
+        // in the segment
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            Matrix<double, 3, 1> predecessor;
+
+            // If j == 0, then the predecessor is the 0th atom in the 
+            // reptated configuration, which is the 3rd atom in the original
+            // configuration 
+            //
+            // If j > 0, then the predecessor is the 2nd or 1st atom in the 
+            // original configuration 
+            predecessor = coords.row(n_reptate - j); 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                double r = (predecessor.transpose() - candidates(k, Eigen::seqN(3 * j, 3))).norm();
+                REQUIRE(r < fene_params["R0"]); 
+            } 
+        }
+
+        // Check the backward Rosenbluth factor ... 
+        //
+        // For each proposed atom at each position, get the total non-bonded 
+        // interaction energy between that atom and:
+        // 1) every atom in the original configuration that survives the
+        //    reptation move
+        // 2) the previous atoms along the segment
+        //
+        // Then sum up the corresponding Boltzmann weights to get the 
+        // Rosenbluth weight for that position; multiply the Rosenbluth
+        // weights to get the total forward Rosenbluth factor
+        double log_reverse_rosenbluth_ = 0; 
+        for (int j = 0; j < n_reptate; ++j)
+        {
+            // Get the Rosenbluth weight for the j-th position
+            double rosenbluth_j = 0;
+
+            // For each candidate atom for the j-th position ... 
+            for (int k = 0; k < n_candidates; ++k)
+            {
+                Matrix<double, 3, 1> r_curr = candidates(k, Eigen::seqN(3 * j, 3)); 
+
+                // Since we are reptating towards the head (in reverse), run
+                // through all atoms 0, ..., 6 in the reptated configuration, 
+                // which are the atoms that survive the reverse reptation move
+                //
+                // Omit atom 0 if we are looking at the first atom in the new
+                // segment 
+                double residual_ijk = 0; 
+                for (int m = 1; m < length - n_reptate; ++m)
+                {
+                    double r = (r_curr - coords_reptated.row(m).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+                if (j > 0)
+                {
+                    double r = (r_curr - coords_reptated.row(0).transpose()).norm();  
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Add in non-bonded interactions with all preceding atoms in
+                // the reversion segment (except for the immediately preceding
+                // atom)
+                //
+                // Since we are only reptating by 3 monomers, this means that,
+                // for j = 2, we add in interactions with atom 2 in the original
+                // configuration 
+                for (int m = 0; m < j - 1; ++m)
+                {
+                    double r = (r_curr - coords.row(n_reptate - 1 - m).transpose()).norm(); 
+                    residual_ijk += lj<double>(
+                        r, lj_params["eps"], lj_params["sigma"], true
+                    ); 
+                }
+
+                // Get the Boltzmann weight and increment the Rosenbluth weight 
+                double boltzmann = exp(-residual_ijk / kT);
+                rosenbluth_j += boltzmann; 
+            }
+
+            // Multiply the Rosenbluth weights to get the Rosenbluth factor 
+            log_reverse_rosenbluth_ += log(rosenbluth_j); 
+        }
+        REQUIRE_THAT(
+            log_reverse_rosenbluth, 
+            Catch::Matchers::WithinAbs(log_reverse_rosenbluth_, tol)
+        );
+    }
+}
+
+/**
+ * Tests for multimer reptation in the PolymerCBMCSampler class via moveOnce().
+ *
+ * Note that, because the key thermodynamic information regarding the move 
+ * generation (Boltzmann weights, Rosenbluth weights/factors, etc.) are lost 
+ * in calling the multimer reptation move generation methods, the correctness
+ * of these quantities is not tested here, but rather in the above two test 
+ * modules. 
  */
 TEST_CASE("Tests for multimer reptation", "[moveOnce()]")
 {
@@ -237,370 +2525,437 @@ TEST_CASE("Tests for multimer reptation", "[moveOnce()]")
     Matrix<double, 3, 1> r0 = Matrix<double, 3, 1>::Zero();
     std::unordered_map<std::string, double> lj_params, 
                                             fene_params, 
+                                            random_params, 
                                             cosine_params,
                                             gaussian_params,
+                                            nodihedral_params, 
                                             dihedral_params;
     double kT = 1.380649e-2 * 300;
     lj_params["eps"] = kT; 
     lj_params["sigma"] = 0.9;
-    fene_params["K"] = 30 * kT; 
+    fene_params["K"] = 9 * kT; 
     fene_params["R0"] = 1.5;
-    cosine_params["K"] = 20 * kT;
+
+    // Define a null cosine potential (to mimic random coils with excluded 
+    // volume interactions)
+    random_params["K"] = 0.0; 
+    random_params["theta0"] = boost::math::constants::pi<double>();
+
+    // Make cosine potential soft to allow for reptation candidates that are
+    // close to the original configuration  
+    cosine_params["K"] = 0.5 * kT;
     cosine_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
+
+    // Similarly make Gaussian potential soft to allow for reptation candidates
+    // that are close to the original configuration 
     gaussian_params["A1"] = 0.9; 
     gaussian_params["A2"] = 0.1;
-    gaussian_params["w1"] = 0.2236067977;    // = 1/sqrt(20) 
-    gaussian_params["w2"] = 0.2236067977; 
+    gaussian_params["w1"] = 2.0;     // Standard deviations of 1 for each component
+    gaussian_params["w2"] = 2.0;
     gaussian_params["theta1"] = 160 * boost::math::constants::pi<double>() / 180; 
-    gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180; 
-    dihedral_params["K"] = 10 * kT;
-    const double collision_threshold = 0.1;
+    gaussian_params["theta2"] = 90 * boost::math::constants::pi<double>() / 180;
+
+    // Define dihedral potential parameters 
+    nodihedral_params["K"] = 0;  
+    dihedral_params["K"] = 0.5 * kT;
+
+    // Define additional parameters for initialization and sampling
+    const double collision_threshold = 0.9;    // Slightly less than 2^(1/6) * sigma ~ 1.01 
     const int max_tries_per_atom = 50;
     const int max_n_backtracks = 50;  
-
-    // Generate a 10-mer with a cosine angle potential
-    PolymerConfiguration<double> config = generateKMer<double, 10>(
-        lj_params, fene_params, AngleMode::COSINE, cosine_params, dihedral_params,
-        r0, collision_threshold, max_tries_per_atom, max_n_backtracks, rng, 
-        uniform_dist
+    Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
+        lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
+        kT, 10000
     );
-    Matrix<double, Dynamic, 3> coords = config.getSegment(0, 10);  
-    REQUIRE(config.getLength() == 10);
-    REQUIRE(coords.rows() == 10); 
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with no angle or dihedral potentials 
+    // --------------------------------------------------------------- //
+    const int length = 10; 
+    PolymerConfiguration<double> config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, random_params, 
+        nodihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length); 
 
     // Initialize sampler instance
     double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    PolymerCBMCSampler<double> sampler_random(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        random_params, nodihedral_params, rng
+    );  
+
+    // Try generating 50 reptation moves ...
+    const int n_moves = 50; 
+    for (int i = 0; i < n_moves; ++i)
+    { 
+        // Try reptating by choosing from 10000 3-mer reptation candidate moves ...
+        //
+        // First generate the move 
+        const int n_candidates = 10000;
+        int n_reptate = 3;  
+        auto result = sampler_random.moveOnce(
+            n_candidates, CBMCMoveType::MULTIMER_REPTATION, n_reptate
+        ); 
+        Matrix<double, Dynamic, Dynamic> forward_moves = std::get<0>(result); 
+        Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result);   // Ill-defined 
+        int move_idx = std::get<2>(result); 
+        double prob_accept = std::get<3>(result); 
+        CBMCMoveResult accepted_move = std::get<4>(result);
+        ReptationDirection direction = static_cast<ReptationDirection>(
+            std::get<5>(result).at("direction")
+        );
+
+        // Check that the output is correctly specified 
+        REQUIRE(forward_moves.rows() == n_reptate); 
+        REQUIRE(forward_moves.cols() == 3); 
+        REQUIRE(move_idx == 0); 
+        REQUIRE((prob_accept >= 0 && prob_accept <= 1));
+
+        // Generate the reptated configuration
+        //
+        // Note that rows must be reversed if reptating towards the head 
+        PolymerConfiguration<double> config_reptated(config);  
+        if (direction == ReptationDirection::HEAD)
+            config_reptated.reptateTowardsHeadMultimer(forward_moves.colwise().reverse());
+        else 
+            config_reptated.reptateTowardsTailMultimer(forward_moves);
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, 10); 
+
+        // Check that the reptated configuration only contains valid bond lengths 
+        for (int j = 0; j < length - 1; ++j)
+        {
+            Matrix<double, 3, 1> r1 = coords_reptated.row(j); 
+            Matrix<double, 3, 1> r2 = coords_reptated.row(j + 1); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+        
+        // Check that, if the acceptance probability is 1, the chosen move was taken 
+        if (prob_accept == 1)
+            REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
+
+        // Check that, if the chosen move was taken, the resulting configuration is
+        // as expected
+        Matrix<double, Dynamic, 3> coords_result = sampler_random.getCoords();  
+        if (accepted_move == CBMCMoveResult::ACCEPT)
+        {
+            // Move was taken 
+            for (int j = 0; j < length; ++j)
+            {
+                REQUIRE_THAT(
+                    (coords_result.row(j) - coords_reptated.row(j)).norm(),
+                    Catch::Matchers::WithinAbs(0, tol)
+                ); 
+            } 
+        }
+        else 
+        {
+            // Move was not taken 
+            for (int j = 0; j < length; ++j)
+            {
+                REQUIRE_THAT(
+                    (coords_result.row(j) - coords.row(j)).norm(),
+                    Catch::Matchers::WithinAbs(0, tol)
+                ); 
+            } 
+        }
+
+        // Reset the coordinates in the sampler 
+        sampler_random.setCoords(coords); 
+    }
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a cosine angle potential and no 
+    // dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, cosine_params, 
+        nodihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length); 
+
+    // Initialize sampler instance
     PolymerCBMCSampler<double> sampler_cosine(
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
+        cosine_params, nodihedral_params, rng
+    );  
+
+    // Try generating 50 reptation moves ...
+    for (int i = 0; i < n_moves; ++i)
+    { 
+        // Try reptating by choosing from 10000 3-mer reptation candidate moves ...
+        //
+        // First generate the move
+        const int n_candidates = 10000;
+        int n_reptate = 3;  
+        PolymerConfiguration<double> config_reptated(config);  
+        auto result = sampler_cosine.moveOnce(
+            n_candidates, CBMCMoveType::MULTIMER_REPTATION, n_reptate
+        ); 
+        Matrix<double, Dynamic, Dynamic> forward_moves = std::get<0>(result); 
+        Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result);   // Ill-defined 
+        int move_idx = std::get<2>(result); 
+        double prob_accept = std::get<3>(result); 
+        CBMCMoveResult accepted_move = std::get<4>(result);
+        ReptationDirection direction = static_cast<ReptationDirection>(
+            std::get<5>(result).at("direction")
+        );
+
+        // Check that the output is correctly specified 
+        REQUIRE(forward_moves.rows() == n_reptate); 
+        REQUIRE(forward_moves.cols() == 3); 
+        REQUIRE(move_idx == 0); 
+        REQUIRE((prob_accept >= 0 && prob_accept <= 1));
+
+        // Generate the reptated configuration
+        //
+        // Note that rows must be reversed if reptating towards the head  
+        if (direction == ReptationDirection::HEAD)
+            config_reptated.reptateTowardsHeadMultimer(forward_moves.colwise().reverse()); 
+        else 
+            config_reptated.reptateTowardsTailMultimer(forward_moves);
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, 10); 
+
+        // Check that the reptated configuration only contains valid bond lengths 
+        for (int i = 0; i < length - 1; ++i)
+        {
+            Matrix<double, 3, 1> r1 = coords_reptated.row(i); 
+            Matrix<double, 3, 1> r2 = coords_reptated.row(i + 1); 
+            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+        
+        // Check that, if the acceptance probability is 1, the chosen move was taken 
+        if (prob_accept == 1)
+            REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
+
+        // Check that, if the chosen move was taken, the resulting configuration is
+        // as expected
+        Matrix<double, Dynamic, 3> coords_result = sampler_cosine.getCoords();  
+        if (accepted_move == CBMCMoveResult::ACCEPT)
+        {
+            // Move was taken 
+            for (int i = 0; i < length; ++i)
+            {
+                REQUIRE_THAT(
+                    (coords_result.row(i) - coords_reptated.row(i)).norm(),
+                    Catch::Matchers::WithinAbs(0, tol)
+                ); 
+            } 
+        }
+        else 
+        {
+            // Move was not taken 
+            for (int i = 0; i < length; ++i)
+            {
+                REQUIRE_THAT(
+                    (coords_result.row(i) - coords.row(i)).norm(),
+                    Catch::Matchers::WithinAbs(0, tol)
+                ); 
+            } 
+        }
+
+        // Reset the coordinates in the sampler 
+        sampler_cosine.setCoords(coords); 
+    } 
+
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a cosine angle potential and a
+    // harmonic dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, cosine_params, 
+        dihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length); 
+
+    // Initialize sampler instance
+    PolymerCBMCSampler<double> sampler_cosine_dihedral(
         config, lj_params, neighbor_threshold, fene_params, AngleMode::COSINE,
         cosine_params, dihedral_params, rng
     );  
 
-    // Try reptating by choosing from 50 3-mer reptation candidate moves 
-    int n_candidates = 50;
-    int n_reptate = 3;  
-    PolymerConfiguration<double> config_reptated(config);  
-    auto result = sampler_cosine.moveOnce(
-        n_candidates, CBMCMoveType::MULTIMER_REPTATION, n_reptate, {}
-    ); 
-    Matrix<double, Dynamic, Dynamic> forward_moves = std::get<0>(result); 
-    Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result); 
-    int move_idx = std::get<2>(result); 
-    double prob_accept = std::get<3>(result); 
-    CBMCMoveResult accepted_move = std::get<4>(result);
-    ReptationDirection direction = static_cast<ReptationDirection>(
-        std::get<5>(result).at("direction")
-    );
-    REQUIRE(forward_moves.rows() == n_candidates);
-    REQUIRE(forward_moves.cols() == 3 * n_reptate);  
-    REQUIRE(reverse_moves.rows() == n_candidates);
-    REQUIRE(reverse_moves.cols() == 3 * n_reptate);
-    REQUIRE((move_idx >= 0 && move_idx < n_candidates));
-    REQUIRE((prob_accept >= 0 && prob_accept <= 1));
-    REQUIRE(accepted_move != CBMCMoveResult::NONE); 
+    // Try generating 50 reptation moves ...
+    for (int i = 0; i < n_moves; ++i)
+    { 
+        // Try reptating by choosing from 10000 3-mer reptation candidate moves ...
+        //
+        // First generate the move
+        const int n_candidates = 10000;
+        int n_reptate = 3;  
+        PolymerConfiguration<double> config_reptated(config);  
+        auto result = sampler_cosine_dihedral.moveOnce(
+            n_candidates, CBMCMoveType::MULTIMER_REPTATION, n_reptate
+        ); 
+        Matrix<double, Dynamic, Dynamic> forward_moves = std::get<0>(result); 
+        Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result);   // Ill-defined 
+        int move_idx = std::get<2>(result); 
+        double prob_accept = std::get<3>(result); 
+        CBMCMoveResult accepted_move = std::get<4>(result);
+        ReptationDirection direction = static_cast<ReptationDirection>(
+            std::get<5>(result).at("direction")
+        );
 
-    // Generate the reptated configuration (in case the reptation move was not 
-    // accepted) 
-    Matrix<double, Dynamic, 3> chosen_segment(n_reptate, 3); 
-    for (int i = 0; i < n_reptate; ++i)
-        chosen_segment.row(i) = forward_moves(move_idx, Eigen::seqN(3 * i, 3)); 
-    if (direction == ReptationDirection::HEAD)
-        config_reptated.reptateTowardsHeadMultimer(chosen_segment); 
-    else 
-        config_reptated.reptateTowardsTailMultimer(chosen_segment); 
+        // Check that the output is correctly specified 
+        REQUIRE(forward_moves.rows() == n_reptate); 
+        REQUIRE(forward_moves.cols() == 3); 
+        REQUIRE(move_idx == 0); 
+        REQUIRE((prob_accept >= 0 && prob_accept <= 1));
 
-    // Check that the terminal atom at the appropriate end of each segment 
-    // has a valid distance to the corresponding terminal atom in the original
-    // configuration
-    for (int i = 0; i < n_candidates; ++i)
-    {
+        // Generate the reptated configuration
+        //
+        // Note that rows must be reversed if reptating towards the head  
         if (direction == ReptationDirection::HEAD)
+            config_reptated.reptateTowardsHeadMultimer(forward_moves.colwise().reverse()); 
+        else 
+            config_reptated.reptateTowardsTailMultimer(forward_moves);
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, 10); 
+
+        // Check that the reptated configuration only contains valid bond lengths 
+        for (int i = 0; i < length - 1; ++i)
         {
-            int term_idx1 = n_reptate - 1;
-            int term_idx2 = 0;
-            Matrix<double, 3, 1> r1 = forward_moves(i, Eigen::seqN(3 * term_idx1, 3)); 
-            Matrix<double, 3, 1> r2 = coords.row(term_idx2); 
+            Matrix<double, 3, 1> r1 = coords_reptated.row(i); 
+            Matrix<double, 3, 1> r2 = coords_reptated.row(i + 1); 
             REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+        
+        // Check that, if the acceptance probability is 1, the chosen move was taken 
+        if (prob_accept == 1)
+            REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
+
+        // Check that, if the chosen move was taken, the resulting configuration is
+        // as expected
+        Matrix<double, Dynamic, 3> coords_result = sampler_cosine_dihedral.getCoords();  
+        if (accepted_move == CBMCMoveResult::ACCEPT)
+        {
+            // Move was taken 
+            for (int i = 0; i < length; ++i)
+            {
+                REQUIRE_THAT(
+                    (coords_result.row(i) - coords_reptated.row(i)).norm(),
+                    Catch::Matchers::WithinAbs(0, tol)
+                ); 
+            } 
         }
         else 
         {
-            int term_idx1 = 0;
-            int term_idx2 = 9;
-            Matrix<double, 3, 1> r1 = forward_moves(i, Eigen::seqN(3 * term_idx1, 3)); 
-            Matrix<double, 3, 1> r2 = coords.row(term_idx2); 
-            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+            // Move was not taken 
+            for (int i = 0; i < length; ++i)
+            {
+                REQUIRE_THAT(
+                    (coords_result.row(i) - coords.row(i)).norm(),
+                    Catch::Matchers::WithinAbs(0, tol)
+                ); 
+            } 
         }
-    }
 
-    // Do the same for the reverse moves 
-    for (int i = 0; i < n_candidates; ++i)
-    {
-        if (direction == ReptationDirection::HEAD)   // Reverse moves are at the tail
-        {
-            int term_idx1 = 0; 
-            int term_idx2 = 9 - n_reptate;    // New terminal index after reptation towards the head
-            Matrix<double, 3, 1> r1 = reverse_moves(i, Eigen::seqN(3 * term_idx1, 3)); 
-            Matrix<double, 3, 1> r2 = coords.row(term_idx2); 
-            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
-        }
-        else                                         // Reverse moves are at the head  
-        {
-            int term_idx1 = n_reptate - 1;
-            int term_idx2 = n_reptate;        // New terminal index after reptation towards the tail
-            Matrix<double, 3, 1> r1 = reverse_moves(i, Eigen::seqN(3 * term_idx1, 3)); 
-            Matrix<double, 3, 1> r2 = coords.row(term_idx2); 
-            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
-        }
-    }
-    
-    // Check that the reverse move corresponding to the chosen move is
-    // reversion to the original configuration
-    Matrix<double, Dynamic, 3> segment_reversion(n_reptate, 3);
-    for (int i = 0; i < n_reptate; ++i)
-        segment_reversion.row(i) = reverse_moves(0, Eigen::seqN(3 * i, 3));  
-    if (direction == ReptationDirection::HEAD)
-        REQUIRE_THAT(
-            (segment_reversion - coords(Eigen::seqN(9 - n_reptate, n_reptate), Eigen::all)).norm(), 
-            Catch::Matchers::WithinAbs(0, tol)
-        );
-    else
-        REQUIRE_THAT(
-            (segment_reversion - coords(Eigen::seqN(0, n_reptate), Eigen::all)).norm(), 
-            Catch::Matchers::WithinAbs(0, tol)
-        );
-
-    // Re-calculate the Rosenbluth weights ...
-    ReptationDirection reverse_direction = (
-        direction == ReptationDirection::HEAD ? ReptationDirection::TAIL
-        : ReptationDirection::HEAD
-    ); 
-    Matrix<double, Dynamic, 1> weights_forward(n_candidates),
-                               weights_reverse(n_candidates);  
-    for (int i = 0; i < n_candidates; ++i)
-    {
-        Matrix<double, Dynamic, 3> segment_forward(n_reptate, 3), 
-                                   segment_reverse(n_reptate, 3); 
-        for (int j = 0; j < n_reptate; ++j)
-        {
-            segment_forward.row(j) = forward_moves(i, Eigen::seqN(3 * j, 3)); 
-            segment_reverse.row(j) = reverse_moves(i, Eigen::seqN(3 * j, 3)); 
-        }
-        double diff1 = config.getMultimerReptationNonbondedEnergyDifference(
-            direction, segment_forward, lj_params, neighbor_threshold
-        );
-        double diff2 = config_reptated.getMultimerReptationNonbondedEnergyDifference(
-            reverse_direction, segment_reverse, lj_params, neighbor_threshold
-        );
-        weights_forward(i) = exp(-diff1 / kT);
-        weights_reverse(i) = exp(-diff2 / kT);
-    }
-    double forward_rosenbluth = weights_forward.sum(); 
-    double reverse_rosenbluth = weights_reverse.sum();
-
-    // Check that the ratio of Rosenbluth factors is equal to the acceptance 
-    // probability  
-    REQUIRE_THAT(
-        forward_rosenbluth / reverse_rosenbluth,
-        Catch::Matchers::WithinAbs(prob_accept, tol)
-    );
-
-    // Check that, if the acceptance probability is 1, the chosen move was taken 
-    if (prob_accept == 1)
-        REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
-
-    // Check that, if the chosen move was taken, the resulting configuration is
-    // as expected
-    Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, 10); 
-    Matrix<double, Dynamic, 3> coords_result = sampler_cosine.getCoords();  
-    if (accepted_move == CBMCMoveResult::ACCEPT)
-    {
-        // Move was taken 
-        for (int i = 0; i < 10; ++i)
-        {
-            REQUIRE_THAT(
-                (coords_result.row(i) - coords_reptated.row(i)).norm(),
-                Catch::Matchers::WithinAbs(0, tol)
-            ); 
-        } 
-    }
-    else 
-    {
-        // Move was not taken 
-        for (int i = 0; i < 10; ++i)
-        {
-            REQUIRE_THAT(
-                (coords_result.row(i) - coords.row(i)).norm(),
-                Catch::Matchers::WithinAbs(0, tol)
-            ); 
-        } 
+        // Reset the coordinates in the sampler 
+        sampler_cosine_dihedral.setCoords(coords); 
     } 
 
-    // Generate a 10-mer with a dual Gaussian mixture angle potential
-    PolymerConfiguration<double> config2 = generateKMer<double, 10>(
-        lj_params, fene_params, AngleMode::GAUSSIAN, gaussian_params,
+    // --------------------------------------------------------------- //
+    // Reptation moves on 10-mer with a Gaussian angle potential and a
+    // harmonic dihedral potential 
+    // --------------------------------------------------------------- //
+    config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::GAUSSIAN, gaussian_params,
         dihedral_params, r0, collision_threshold, max_tries_per_atom,
-        max_n_backtracks, rng, uniform_dist
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
     );
-    Matrix<double, Dynamic, 3> coords2 = config2.getSegment(0, 10);  
-    REQUIRE(config2.getLength() == 10);
-    REQUIRE(coords2.rows() == 10);
+    coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length); 
 
     // Initialize sampler instance
     PolymerCBMCSampler<double> sampler_gaussian(
-        config2, lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
+        config, lj_params, neighbor_threshold, fene_params, AngleMode::GAUSSIAN,
         gaussian_params, dihedral_params, rng
     );  
 
-    // Try reptating by choosing from 50 3-mer reptation candidate moves 
-    PolymerConfiguration<double> config2_original(config2), config2_reptated(config2);  
-    result = sampler_gaussian.moveOnce(
-        n_candidates, CBMCMoveType::MULTIMER_REPTATION, n_reptate, {}
-    ); 
-    forward_moves = std::get<0>(result); 
-    reverse_moves = std::get<1>(result); 
-    move_idx = std::get<2>(result); 
-    prob_accept = std::get<3>(result); 
-    accepted_move = std::get<4>(result);
-    direction = static_cast<ReptationDirection>(std::get<5>(result).at("direction"));
-    REQUIRE(forward_moves.rows() == n_candidates);
-    REQUIRE(forward_moves.cols() == 3 * n_reptate);  
-    REQUIRE(reverse_moves.rows() == n_candidates);
-    REQUIRE(reverse_moves.cols() == 3 * n_reptate); 
-    REQUIRE((move_idx >= 0 && move_idx < n_candidates));
-    REQUIRE((prob_accept >= 0 && prob_accept <= 1)); 
-    REQUIRE(accepted_move != CBMCMoveResult::NONE); 
+    // Try generating 50 reptation moves ...
+    for (int i = 0; i < n_moves; ++i)
+    { 
+        // Try reptating by choosing from 10000 3-mer reptation candidate moves ...
+        //
+        // First generate the move
+        const int n_candidates = 10000;
+        int n_reptate = 3;  
+        PolymerConfiguration<double> config_reptated(config);  
+        auto result = sampler_gaussian.moveOnce(
+            n_candidates, CBMCMoveType::MULTIMER_REPTATION, n_reptate
+        ); 
+        Matrix<double, Dynamic, Dynamic> forward_moves = std::get<0>(result); 
+        Matrix<double, Dynamic, Dynamic> reverse_moves = std::get<1>(result);   // Ill-defined 
+        int move_idx = std::get<2>(result); 
+        double prob_accept = std::get<3>(result); 
+        CBMCMoveResult accepted_move = std::get<4>(result);
+        ReptationDirection direction = static_cast<ReptationDirection>(
+            std::get<5>(result).at("direction")
+        );
 
-    // Generate the reptated configuration (in case the reptation move was not 
-    // accepted)
-    chosen_segment = Matrix<double, Dynamic, 3>::Zero(n_reptate, 3); 
-    for (int i = 0; i < n_reptate; ++i)
-        chosen_segment.row(i) = forward_moves(move_idx, Eigen::seqN(3 * i, 3)); 
-    if (direction == ReptationDirection::HEAD)
-        config2_reptated.reptateTowardsHeadMultimer(chosen_segment); 
-    else 
-        config2_reptated.reptateTowardsTailMultimer(chosen_segment);
+        // Check that the output is correctly specified 
+        REQUIRE(forward_moves.rows() == n_reptate); 
+        REQUIRE(forward_moves.cols() == 3); 
+        REQUIRE(move_idx == 0); 
+        REQUIRE((prob_accept >= 0 && prob_accept <= 1));
 
-    // Check that the terminal atom at the appropriate end of each segment 
-    // has a valid distance to the corresponding terminal atom in the original
-    // configuration
-    for (int i = 0; i < n_candidates; ++i)
-    {
+        // Generate the reptated configuration
+        //
+        // Note that rows must be reversed if reptating towards the head  
         if (direction == ReptationDirection::HEAD)
+            config_reptated.reptateTowardsHeadMultimer(forward_moves.colwise().reverse()); 
+        else 
+            config_reptated.reptateTowardsTailMultimer(forward_moves);
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, 10); 
+
+        // Check that the reptated configuration only contains valid bond lengths 
+        for (int i = 0; i < length - 1; ++i)
         {
-            int term_idx1 = n_reptate - 1;
-            int term_idx2 = 0;
-            Matrix<double, 3, 1> r1 = forward_moves(i, Eigen::seqN(3 * term_idx1, 3)); 
-            Matrix<double, 3, 1> r2 = coords2.row(term_idx2); 
+            Matrix<double, 3, 1> r1 = coords_reptated.row(i); 
+            Matrix<double, 3, 1> r2 = coords_reptated.row(i + 1); 
             REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+        }
+        
+        // Check that, if the acceptance probability is 1, the chosen move was taken 
+        if (prob_accept == 1)
+            REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
+
+        // Check that, if the chosen move was taken, the resulting configuration is
+        // as expected
+        Matrix<double, Dynamic, 3> coords_result = sampler_gaussian.getCoords();  
+        if (accepted_move == CBMCMoveResult::ACCEPT)
+        {
+            // Move was taken 
+            for (int i = 0; i < length; ++i)
+            {
+                REQUIRE_THAT(
+                    (coords_result.row(i) - coords_reptated.row(i)).norm(),
+                    Catch::Matchers::WithinAbs(0, tol)
+                ); 
+            } 
         }
         else 
         {
-            int term_idx1 = 0;
-            int term_idx2 = 9;
-            Matrix<double, 3, 1> r1 = forward_moves(i, Eigen::seqN(3 * term_idx1, 3)); 
-            Matrix<double, 3, 1> r2 = coords2.row(term_idx2); 
-            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
+            // Move was not taken 
+            for (int i = 0; i < length; ++i)
+            {
+                REQUIRE_THAT(
+                    (coords_result.row(i) - coords.row(i)).norm(),
+                    Catch::Matchers::WithinAbs(0, tol)
+                ); 
+            } 
         }
-    }
 
-    // Do the same for the reverse moves 
-    for (int i = 0; i < n_candidates; ++i)
-    {
-        if (direction == ReptationDirection::HEAD)   // Reverse moves are at the tail
-        {
-            int term_idx1 = 0; 
-            int term_idx2 = 9 - n_reptate;    // New terminal index after reptation towards the head
-            Matrix<double, 3, 1> r1 = reverse_moves(i, Eigen::seqN(3 * term_idx1, 3)); 
-            Matrix<double, 3, 1> r2 = coords2.row(term_idx2); 
-            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
-        }
-        else                                         // Reverse moves are at the head  
-        {
-            int term_idx1 = n_reptate - 1;
-            int term_idx2 = n_reptate;        // New terminal index after reptation towards the tail
-            Matrix<double, 3, 1> r1 = reverse_moves(i, Eigen::seqN(3 * term_idx1, 3)); 
-            Matrix<double, 3, 1> r2 = coords2.row(term_idx2); 
-            REQUIRE((r1 - r2).norm() < fene_params["R0"]); 
-        }
-    }
-
-    // Check that the reverse move corresponding to the chosen move is
-    // reversion to the original configuration
-    segment_reversion = Matrix<double, Dynamic, 3>::Zero(n_reptate, 3);
-    for (int i = 0; i < n_reptate; ++i)
-        segment_reversion.row(i) = reverse_moves(0, Eigen::seqN(3 * i, 3));  
-    if (direction == ReptationDirection::HEAD)
-        REQUIRE_THAT(
-            (segment_reversion - coords2(Eigen::seqN(9 - n_reptate, n_reptate), Eigen::all)).norm(), 
-            Catch::Matchers::WithinAbs(0, tol)
-        ); 
-    else 
-        REQUIRE_THAT(
-            (segment_reversion - coords2(Eigen::seqN(0, n_reptate), Eigen::all)).norm(), 
-            Catch::Matchers::WithinAbs(0, tol)
-        );
-
-    // Re-calculate the Rosenbluth weights ...
-    reverse_direction = (
-        direction == ReptationDirection::HEAD ? ReptationDirection::TAIL
-        : ReptationDirection::HEAD
-    ); 
-    for (int i = 0; i < n_candidates; ++i)
-    {
-        Matrix<double, Dynamic, 3> segment_forward(n_reptate, 3), 
-                                   segment_reverse(n_reptate, 3); 
-        for (int j = 0; j < n_reptate; ++j)
-        {
-            segment_forward.row(j) = forward_moves(i, Eigen::seqN(3 * j, 3)); 
-            segment_reverse.row(j) = reverse_moves(i, Eigen::seqN(3 * j, 3)); 
-        }
-        double diff1 = config2.getMultimerReptationNonbondedEnergyDifference(
-            direction, segment_forward, lj_params, neighbor_threshold
-        );
-        double diff2 = config2_reptated.getMultimerReptationNonbondedEnergyDifference(
-            reverse_direction, segment_reverse, lj_params, neighbor_threshold
-        );
-        weights_forward(i) = exp(-diff1 / kT);
-        weights_reverse(i) = exp(-diff2 / kT);
-    }
-    forward_rosenbluth = weights_forward.sum(); 
-    reverse_rosenbluth = weights_reverse.sum();
-
-    // Check that the ratio of Rosenbluth factors is equal to the acceptance 
-    // probability  
-    REQUIRE_THAT(
-        forward_rosenbluth / reverse_rosenbluth,
-        Catch::Matchers::WithinAbs(prob_accept, tol)
-    );
-
-    // Check that, if the acceptance probability is 1, the chosen move was taken 
-    if (prob_accept == 1)
-        REQUIRE(accepted_move == CBMCMoveResult::ACCEPT); 
-
-    // Check that, if the chosen move was taken, the resulting configuration is
-    // as expected
-    Matrix<double, Dynamic, 3> coords2_reptated = config2_reptated.getSegment(0, 10);
-    Matrix<double, Dynamic, 3> coords2_result = sampler_gaussian.getCoords(); 
-    if (accepted_move == CBMCMoveResult::ACCEPT)
-    {
-        // Move was taken 
-        for (int i = 0; i < 10; ++i)
-        {
-            REQUIRE_THAT(
-                (coords2_result.row(i) - coords2_reptated.row(i)).norm(),
-                Catch::Matchers::WithinAbs(0, tol)
-            ); 
-        } 
-    }
-    else 
-    {
-        // Move was not taken 
-        for (int i = 0; i < 10; ++i)
-        {
-            REQUIRE_THAT(
-                (coords2_result.row(i) - coords2.row(i)).norm(),
-                Catch::Matchers::WithinAbs(0, tol)
-            ); 
-        } 
+        // Reset the coordinates in the sampler 
+        sampler_gaussian.setCoords(coords); 
     } 
 }
 
