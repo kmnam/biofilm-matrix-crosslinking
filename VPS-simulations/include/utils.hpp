@@ -1018,14 +1018,14 @@ T sampleDihedralHarmonic(const T K, const T kT, boost::random::mt19937& rng,
  * unique minimum). 
  *
  * @param K Energy parameter.
- * @param kT Boltzmann's constant times temperature (in the appropriate units).
  * @param delta Offset angle. 
+ * @param kT Boltzmann's constant times temperature (in the appropriate units).
  * @param rng Random number generator.
  * @param uniform_dist Pre-defined instance of standard uniform distribution.
  * @returns Sampled dihedral angle. 
  */
 template <typename T>
-T sampleDihedralFourierSingleComponent(const T K, const T kT, const T delta, 
+T sampleDihedralFourierSingleComponent(const T K, const T delta, const T kT, 
                                        boost::random::mt19937& rng,
                                        boost::random::uniform_01<>& uniform_dist)
 {
@@ -1043,7 +1043,10 @@ T sampleDihedralFourierSingleComponent(const T K, const T kT, const T delta,
     // -\pi and \pi
     if (K == 0)
     {
-        return -boost::math::constants::pi<T>() + boost::math::constants::two_pi<T>() * uniform_dist(rng); 
+        return (
+            -boost::math::constants::pi<T>() +
+            boost::math::constants::two_pi<T>() * uniform_dist(rng)
+        ); 
     }
     else 
     {
