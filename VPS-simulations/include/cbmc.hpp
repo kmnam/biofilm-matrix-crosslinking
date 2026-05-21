@@ -1116,9 +1116,11 @@ class PolymerCBMCSampler
          * @returns The chosen terminal segment move and its corresponding 
          *          (total) Rosenbluth weight. 
          */
-        std::pair<Matrix<T, Dynamic, 3>, T> generateForwardTerminalSegmentMove(const int segment_length, 
-                                                                               const TerminalSegmentEnd direction,
-                                                                               const int n_candidates)
+        std::tuple<Matrix<T, Dynamic, Dynamic>, 
+                   Matrix<T, Dynamic, 3>,
+                   T> generateForwardTerminalSegmentMove(const int segment_length, 
+                                                         const TerminalSegmentEnd direction,
+                                                         const int n_candidates)
         {
             const int n = this->length;
 
@@ -1165,9 +1167,11 @@ class PolymerCBMCSampler
                 } 
             #endif
 
-            // Keep track of the growing segment and the total Rosenbluth weight
+            // Keep track of the proposed atom positions, the growing segment, 
+            // and the total Rosenbluth weight
+            Matrix<T, Dynamic, Dynamic> candidate_positions(n_candidates, 3 * segment_length); 
             Matrix<T, Dynamic, 3> segment(0, 3); 
-            T log_rosenbluth_total = 0;  
+            T log_rosenbluth_total = 0; 
              
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
             {
@@ -1241,7 +1245,10 @@ class PolymerCBMCSampler
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -1324,7 +1331,10 @@ class PolymerCBMCSampler
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -1332,7 +1342,7 @@ class PolymerCBMCSampler
                 }
             }
 
-            return std::make_pair(segment, log_rosenbluth_total); 
+            return std::make_tuple(candidate_positions, segment, log_rosenbluth_total); 
         }
 
         /**
@@ -1347,10 +1357,10 @@ class PolymerCBMCSampler
          * @returns Arrays of candidate atomic positions for the new segment
          *          and the corresponding energy differences. 
          */
-        T getBackwardTerminalSegmentMoveRosenbluthWeight(const int segment_length, 
-                                                         const TerminalSegmentEnd direction,
-                                                         const int n_candidates,
-                                                         const Ref<const Matrix<T, Dynamic, 3> >& coords)
+        std::pair<Matrix<T, Dynamic, Dynamic>, T> getBackwardTerminalSegmentMoveRosenbluthWeight(const int segment_length, 
+                                                                                                 const TerminalSegmentEnd direction,
+                                                                                                 const int n_candidates,
+                                                                                                 const Ref<const Matrix<T, Dynamic, 3> >& coords)
         {
             const int n = this->length;
 
@@ -1402,8 +1412,9 @@ class PolymerCBMCSampler
                 } 
             #endif
 
-            // Keep track of the Rosenbluth weight; we are not generating a
-            // new segment 
+            // Keep track of the proposed atom positions and the Rosenbluth
+            // weight; we are not generating a new segment
+            Matrix<T, Dynamic, Dynamic> candidate_positions(n_candidates, 3 * segment_length); 
             T log_rosenbluth_total = 0;
 
             // Extract the segment being re-introduced into the given configuration
@@ -1496,6 +1507,9 @@ class PolymerCBMCSampler
                     // i-th atom 
                     T log_rosenbluth_i = max_residual + log(prob_total); 
                     log_rosenbluth_total += log_rosenbluth_i; 
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
                 }
             }
             else        // Move the terminal segment at the tail 
@@ -1575,11 +1589,14 @@ class PolymerCBMCSampler
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
                 }
             }
 
-            return log_rosenbluth_total; 
+            return std::make_pair(candidate_positions, log_rosenbluth_total);  
         }
 
         /** -------------------------------------------------------------- // 
@@ -1774,10 +1791,10 @@ class PolymerCBMCSampler
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(0, n);  
-                auto result2 = this->getBackwardMultimerReptationRosenbluthWeight(
+                auto reverse_result = this->getBackwardMultimerReptationRosenbluthWeight(
                     reverse_dir, segment_length, n_candidates, forward_coords
                 );
-                T log_reverse_rosenbluth = result2.second;  
+                T log_reverse_rosenbluth = reverse_result.second; 
 
                 // Calculate the Metropolis acceptance probability
                 T log_prob_accept = min(
@@ -1829,8 +1846,8 @@ class PolymerCBMCSampler
                 auto forward_result = this->generateForwardTerminalSegmentMove(
                     segment_length, terminal_end, n_candidates
                 );
-                Matrix<T, Dynamic, 3> forward_move = forward_result.first; 
-                T log_forward_rosenbluth = forward_result.second;
+                Matrix<T, Dynamic, 3> forward_move = std::get<1>(forward_result);  
+                T log_forward_rosenbluth = std::get<2>(forward_result);
 
                 // Generate a copy of the current configuration and apply 
                 // the forward move
@@ -1861,9 +1878,10 @@ class PolymerCBMCSampler
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(0, n);  
-                T log_reverse_rosenbluth = this->getBackwardTerminalSegmentMoveRosenbluthWeight(
+                auto reverse_result = this->getBackwardTerminalSegmentMoveRosenbluthWeight(
                     segment_length, terminal_end, n_candidates, forward_coords
                 );
+                T log_reverse_rosenbluth = reverse_result.second; 
 
                 // Calculate the Metropolis acceptance probability
                 T log_prob_accept = min(
