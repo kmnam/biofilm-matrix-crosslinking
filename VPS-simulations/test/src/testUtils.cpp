@@ -422,7 +422,7 @@ TEST_CASE(
     sample_dihedrals = Array<double, Dynamic, 1>::Zero(n); 
     for (int i = 0; i < n; ++i) 
         sample_dihedrals(i) = sampleDihedralFourierSingleComponent<double>(
-            K_dihedral, kT, -30 * boost::math::constants::pi<double>() / 180.0,
+            K_dihedral, -30 * boost::math::constants::pi<double>() / 180.0, kT,
             rng, uniform_dist 
         );
 
