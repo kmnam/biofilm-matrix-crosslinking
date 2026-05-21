@@ -360,6 +360,21 @@ class PolymerCBMCSampler
             return this->r;
         }
 
+        /**
+         * Set the atomic coordinates to the given values.
+         *
+         * The length is assumed to be preserved.
+         *
+         * @param coords Input coordinates.  
+         */
+        void setCoords(const Ref<const Matrix<T, Dynamic, 3> >& coords)
+        {
+            if (coords.rows() != this->length)
+                throw std::runtime_error("Invalid input coordinate array");  
+            this->config.replaceSegment(coords, 0);
+            this->r = this->config.getSegment(0, this->length);  
+        }
+
         /** -------------------------------------------------------------- // 
          *                    MOVE GENERATION: REPTATION                   // 
          *  -------------------------------------------------------------- */
@@ -910,11 +925,11 @@ class PolymerCBMCSampler
                 // segment backwards (from the end closer to the fixed part
                 // of the chain)
                 segment = this->r(Eigen::seqN(0, n_reptate), Eigen::all);
-                segment = segment.rowwise().reverse().eval(); 
+                segment = segment.colwise().reverse().eval();  
             } 
             else
             { 
-                segment = this->r(Eigen::seqN(n - n_reptate - 1, n_reptate), Eigen::all); 
+                segment = this->r(Eigen::seqN(n - n_reptate, n_reptate), Eigen::all); 
             }
             
             // Again, the reptation direction is from the given configuration,
@@ -1107,41 +1122,6 @@ class PolymerCBMCSampler
         {
             const int n = this->length;
 
-            /*
-            // Define the angle sampling function  
-            std::function<T()> sample_angle;
-            if (this->angle_mode == AngleMode::COSINE)
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleCosine<T>(
-                        this->angle_params.at("K"),
-                        this->angle_params.at("theta0"),
-                        this->config.kT,
-                        this->rng, 
-                        this->uniform_dist
-                    );
-                };
-            } 
-            else     // this->angle_mode == AngleMode::GAUSSIAN
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleDualGaussianMixture<T>(
-                        this->angle_params.at("A1"),
-                        this->angle_params.at("A2"),
-                        this->angle_params.at("w1"),
-                        this->angle_params.at("w2"),
-                        this->angle_params.at("theta1"),
-                        this->angle_params.at("theta2"),
-                        this->config.kT,
-                        this->rng,
-                        this->uniform_dist
-                    );
-                };
-            }
-            */
-
             // Generate bond lengths, bond angles, and dihedral angles 
             Matrix<T, Dynamic, Dynamic> lengths(segment_length, n_candidates),
                                         angles(segment_length, n_candidates),
@@ -1153,13 +1133,6 @@ class PolymerCBMCSampler
                     lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf
                     );
-                    /*
-                    angles(i, j) = sample_angle();
-                    dihedrals(i, j) = sampleDihedralHarmonic<T>(
-                        this->dihedral_params.at("K"), this->config.kT, this->rng,
-                        this->uniform_dist
-                    );
-                    */
                     angles(i, j) = this->sample_angle(); 
                     dihedrals(i, j) = this->sample_dihedral(); 
                 }
@@ -1386,41 +1359,6 @@ class PolymerCBMCSampler
                 coords, this->config.getUnits(), this->config.getTemp()
             );    
 
-            /*
-            // Define the angle sampling function  
-            std::function<T()> sample_angle;
-            if (this->angle_mode == AngleMode::COSINE)
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleCosine<T>(
-                        this->angle_params.at("K"),
-                        this->angle_params.at("theta0"),
-                        this->config.kT,
-                        this->rng, 
-                        this->uniform_dist
-                    );
-                };
-            } 
-            else     // this->angle_mode == AngleMode::GAUSSIAN
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleDualGaussianMixture<T>(
-                        this->angle_params.at("A1"),
-                        this->angle_params.at("A2"),
-                        this->angle_params.at("w1"),
-                        this->angle_params.at("w2"),
-                        this->angle_params.at("theta1"),
-                        this->angle_params.at("theta2"),
-                        this->config.kT,
-                        this->rng,
-                        this->uniform_dist
-                    );
-                };
-            }
-            */
-
             // Generate bond lengths, bond angles, and dihedral angles 
             Matrix<T, Dynamic, Dynamic> lengths(segment_length, n_candidates),
                                         angles(segment_length, n_candidates),
@@ -1432,13 +1370,6 @@ class PolymerCBMCSampler
                     lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf
                     );
-                    /*
-                    angles(i, j) = sample_angle();
-                    dihedrals(i, j) = sampleDihedralHarmonic<T>(
-                        this->dihedral_params.at("K"), this->config.kT, this->rng,
-                        this->uniform_dist
-                    );
-                    */
                     angles(i, j) = this->sample_angle(); 
                     dihedrals(i, j) = this->sample_dihedral(); 
                 }
@@ -1483,11 +1414,11 @@ class PolymerCBMCSampler
                 // the segment backwards (from the end closer to the fixed
                 // part of the chain)
                 segment = this->r(Eigen::seqN(0, segment_length), Eigen::all);
-                segment = segment.rowwise().reverse().eval(); 
+                segment = segment.colwise().reverse().eval();  
             } 
             else
             { 
-                segment = this->r(Eigen::seqN(n - segment_length - 1, segment_length), Eigen::all); 
+                segment = this->r(Eigen::seqN(n - segment_length, segment_length), Eigen::all); 
             }
              
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
@@ -1804,8 +1735,8 @@ class PolymerCBMCSampler
                 auto forward_result = this->generateForwardMultimerReptationMove(
                     rept_dir, segment_length, n_candidates
                 );
-                Matrix<T, Dynamic, 3> forward_move = forward_result.first; 
-                T log_forward_rosenbluth = forward_result.second;
+                Matrix<T, Dynamic, 3> forward_move = std::get<1>(forward_result); 
+                T log_forward_rosenbluth = std::get<2>(forward_result); 
 
                 // Generate a copy of the current configuration and apply 
                 // the forward move
@@ -1843,9 +1774,10 @@ class PolymerCBMCSampler
                 // Generate and select a reverse move and get its total 
                 // Rosenbluth weight
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(0, n);  
-                T log_reverse_rosenbluth = this->getBackwardMultimerReptationRosenbluthWeight(
+                auto result2 = this->getBackwardMultimerReptationRosenbluthWeight(
                     reverse_dir, segment_length, n_candidates, forward_coords
-                ); 
+                );
+                T log_reverse_rosenbluth = result2.second;  
 
                 // Calculate the Metropolis acceptance probability
                 T log_prob_accept = min(
@@ -3277,11 +3209,11 @@ class PolymerMeltCBMCSampler
                 // segment backwards (from the end closer to the fixed part
                 // of the chain)
                 segment = curr_coords(Eigen::seqN(0, n_reptate), Eigen::all);
-                segment = segment.rowwise().reverse().eval(); 
+                segment = segment.colwise().reverse().eval();  
             } 
             else
             { 
-                segment = curr_coords(Eigen::seqN(ni - n_reptate - 1, n_reptate), Eigen::all); 
+                segment = curr_coords(Eigen::seqN(ni - n_reptate, n_reptate), Eigen::all); 
             }
             
             // Again, the reptation direction is from the given configuration,
@@ -3847,11 +3779,11 @@ class PolymerMeltCBMCSampler
                 // the segment backwards (from the end closer to the fixed
                 // part of the chain)
                 segment = curr_coords(Eigen::seqN(0, segment_length), Eigen::all);
-                segment = segment.rowwise().reverse().eval(); 
+                segment = segment.colwise().reverse().eval();  
             } 
             else
             { 
-                segment = curr_coords(Eigen::seqN(ni - segment_length - 1, segment_length), Eigen::all); 
+                segment = curr_coords(Eigen::seqN(ni - segment_length, segment_length), Eigen::all); 
             }
              
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
