@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/22/2026
+ *     5/20/2026
  */
 
 #ifndef POLYMER_CONFIGURATION_HPP
@@ -691,6 +691,10 @@ class PolymerConfiguration
         {
             T energy = 0.0;
 
+            // If the potential is trivial, return zero
+            if (angle_mode == AngleMode::COSINE && angle_params["K"] == 0)
+                return 0.0; 
+
             // Define angle potential function, depending on the parameters
             std::function<T(const T)> potential;  
             if (angle_mode == AngleMode::GAUSSIAN)
@@ -736,19 +740,42 @@ class PolymerConfiguration
          */
         T getDihedralAngleEnergy(std::unordered_map<std::string, T>& dihedral_params) const
         {
-            T energy = 0.0; 
+            T energy = 0.0;
 
-            // Calculate all dihedral angle energies 
-            for (int i = 0; i < this->length - 3; ++i)
+            // If the potential is trivial, return zero
+            if (dihedral_params["K"] == 0)
+                return 0.0; 
+
+            // Calculate all dihedral angle energies ...
+            // 
+            // If there is no offset angle, use a harmonic potential 
+            if (dihedral_params.find("delta") == dihedral_params.end())
             {
-                T phi = getDihedral<T>(
-                    this->r.row(i), this->r.row(i + 1), this->r.row(i + 2),
-                    this->r.row(i + 3)
-                );
-                energy += dihedralHarmonic<T>(
-                    phi, dihedral_params["K"], static_cast<int>(dihedral_params["d"]),
-                    static_cast<int>(dihedral_params["n"])
-                ); 
+                for (int i = 0; i < this->length - 3; ++i)
+                {
+                    T phi = getDihedral<T>(
+                        this->r.row(i), this->r.row(i + 1), this->r.row(i + 2),
+                        this->r.row(i + 3)
+                    );
+                    energy += dihedralHarmonic<T>(
+                        phi, dihedral_params["K"], static_cast<int>(dihedral_params["d"]),
+                        static_cast<int>(dihedral_params["n"])
+                    ); 
+                }
+            }
+            else     // If there is an offset angle, use a Fourier potential 
+            {
+                for (int i = 0; i < this->length - 3; ++i)
+                {
+                    T phi = getDihedral<T>(
+                        this->r.row(i), this->r.row(i + 1), this->r.row(i + 2),
+                        this->r.row(i + 3)
+                    );
+                    energy += dihedralFourierSingleComponent<T>(
+                        phi, dihedral_params["K"], dihedral_params["delta"], 
+                        static_cast<int>(dihedral_params["n"])
+                    ); 
+                }
             }
 
             return energy; 
@@ -1138,22 +1165,37 @@ class PolymerConfiguration
             }
 
             // Write dihedral potential parameters, as long as they are not
-            // trivial 
-            T dihedral_d, dihedral_n;
-            if (dihedral_params.find("d") == dihedral_params.end())
-                dihedral_d = 1; 
-            else 
-                dihedral_d = dihedral_params["d"]; 
-            if (dihedral_params.find("n") == dihedral_params.end())
-                dihedral_n = 1; 
-            else 
-                dihedral_n = dihedral_params["n"];
-            if (!no_dihedrals)
+            // trivial
+            //
+            // If the dihedral potential is harmonic ... 
+            if (dihedral_params.find("delta") == dihedral_params.end())
+            { 
+                int dihedral_d = 1;
+                int dihedral_n = 1;
+                if (dihedral_params.find("d") != dihedral_params.end())
+                    dihedral_d = dihedral_params["d"]; 
+                if (dihedral_params.find("n") != dihedral_params.end())
+                    dihedral_n = dihedral_params["n"];
+                if (!no_dihedrals)
+                {
+                    outfile << "Dihedral Coeffs\n\n"
+                            << "1 " << dihedral_params["K"] << " " 
+                            << dihedral_d << " "
+                            << dihedral_n << "\n\n";
+                }
+            }
+            else    // If the dihedral potential is Fourier ...  
             {
-                outfile << "Dihedral Coeffs\n\n"
-                        << "1 " << dihedral_params["K"] << " " 
-                        << dihedral_d << " "
-                        << dihedral_n << "\n\n";
+                int dihedral_n = 1;
+                if (dihedral_params.find("n") != dihedral_params.end())
+                    dihedral_n = dihedral_params["n"];
+                if (!no_dihedrals)
+                {
+                    outfile << "Dihedral Coeffs\n\n"
+                            << "1 1 " << dihedral_params["K"] << " "
+                            << dihedral_n << " " 
+                            << dihedral_params["delta"] << "\n\n";
+                }
             }
 
             // Write atom coordinates (all mapped to the fundamental cell
@@ -1365,14 +1407,41 @@ std::tuple<PolymerConfiguration<T>,
     ss.clear(); 
     ss.str(std::string()); 
     ss << line;
-    std::getline(ss, token, ' ');    // Skip first entry in the line 
-    std::getline(ss, token, ' ');    // K
-    dihedral_params["K"] = static_cast<T>(std::stod(token)); 
-    std::getline(ss, token, ' ');    // d
-    dihedral_params["d"] = static_cast<T>(std::stod(token));
-    std::getline(ss, token, ' ');    // n
-    dihedral_params["n"] = static_cast<T>(std::stod(token)); 
- 
+
+    // First parse the number of parameters in the line 
+    n_params = 0; 
+    while (std::getline(ss, token, ' '))
+        n_params++; 
+
+    // Distinguish between the two possible potentials
+    if (n_params == 4)
+    {
+        ss.clear(); 
+        ss.str(std::string()); 
+        ss << line; 
+        std::getline(ss, token, ' ');    // Skip first entry in the line 
+        std::getline(ss, token, ' ');    // K
+        dihedral_params["K"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // d
+        dihedral_params["d"] = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // n
+        dihedral_params["n"] = static_cast<T>(std::stod(token));
+    }
+    else    // n_params == 5
+    {
+        ss.clear(); 
+        ss.str(std::string()); 
+        ss << line; 
+        std::getline(ss, token, ' ');    // Skip first entry in the line
+        std::getline(ss, token, ' ');    // Skip second entry in the line (should be 1)
+        std::getline(ss, token, ' ');    // K
+        dihedral_params["K"] = static_cast<T>(std::stod(token)); 
+        std::getline(ss, token, ' ');    // n
+        dihedral_params["n"] = static_cast<T>(std::stod(token));
+        std::getline(ss, token, ' ');    // delta
+        dihedral_params["delta"] = static_cast<T>(std::stod(token));
+    } 
+     
     // Parse the atomic coordinates
     std::getline(infile, line);    // Skip header and blank lines
     std::getline(infile, line);
@@ -1459,7 +1528,14 @@ PolymerConfiguration<T> generateKMer(const int K,
 
     // Define the angle sampling function  
     std::function<T(boost::random::mt19937&)> sample_angle;
-    if (angle_mode == AngleMode::COSINE)
+    if (angle_mode == AngleMode::COSINE && angle_params["K"] == 0)
+    {
+        sample_angle = [&uniform_dist](boost::random::mt19937& rng_) -> T
+        {
+            return boost::math::constants::pi<T>() * uniform_dist(rng_); 
+        };
+    }
+    else if (angle_mode == AngleMode::COSINE)    // Non-trivial cosine potential
     {
         sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
         {
@@ -1469,7 +1545,7 @@ PolymerConfiguration<T> generateKMer(const int K,
             );
         };
     } 
-    else if (angle_mode == AngleMode::GAUSSIAN)
+    else if (angle_mode == AngleMode::GAUSSIAN)   // Gaussian potential 
     {
         sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
         {
@@ -1483,6 +1559,38 @@ PolymerConfiguration<T> generateKMer(const int K,
     else 
     {
         throw std::runtime_error("Invalid angle potential mode specified"); 
+    }
+
+    // Define the dihedral sampling function 
+    std::function<T(boost::random::mt19937&)> sample_dihedral; 
+    if (dihedral_params["K"] == 0)
+    {
+        sample_dihedral = [&uniform_dist](boost::random::mt19937& rng_) -> T
+        {
+            return (
+                -boost::math::constants::pi<T>() + 
+                boost::math::constants::two_pi<T>() * uniform_dist(rng_)
+            ); 
+        };
+    }
+    else if (dihedral_params.find("delta") == dihedral_params.end())    // Non-trivial harmonic potential
+    {
+        sample_dihedral = [&dihedral_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleDihedralHarmonic<T>(
+                dihedral_params["K"], kT, rng_, uniform_dist
+            ); 
+        }; 
+    } 
+    else    // Fourier potential  
+    {
+        sample_dihedral = [&dihedral_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleDihedralFourierSingleComponent<T>(
+                dihedral_params["K"], dihedral_params["delta"], kT, 
+                rng_, uniform_dist
+            ); 
+        }; 
     }
 
     // Sample an initial bond length 
@@ -1555,9 +1663,7 @@ PolymerConfiguration<T> generateKMer(const int K,
         { 
             length = sampleFene<T>(rng, uniform_dist, bond_length_cdf);
             angle = sample_angle(rng);
-            dihedral = sampleDihedralHarmonic<T>(
-                dihedral_params["K"], kT, rng, uniform_dist
-            );
+            dihedral = sample_dihedral(rng); 
             new_atom = generateNextAtomDihedral<T>(
                 r1, r2, r3, length, angle, dihedral, rng, uniform_dist 
             );
