@@ -1,11 +1,12 @@
 # ====================================================================== #
-# Equilibrate a test system of polymers in implicit solvent. 
+# Equilibrate a system of polymers following a Gaussian angle potential and 
+# a harmonic dihedral potential in implicit solvent. 
 #
 # Authors:
 #     Kee-Myoung Nam
 #
 # Last updated:
-#     4/7/2026
+#     5/21/2026
 # ====================================================================== #
 # INPUT VARIABLES
 # ===============
@@ -128,7 +129,7 @@ fix fx1 all nve
 fix fx2 all langevin ${temp} ${temp} ${damp} ${seed_langevin}
 
 # Introduce a ramp for the energy scale of the non-bonded interactions 
-variable soft_prefactor equal ramp(0,30)
+variable soft_prefactor equal ramp(0,41.41947)
 fix fx3 all adapt 1 pair soft a * * v_soft_prefactor
 
 # ====================================================================== #

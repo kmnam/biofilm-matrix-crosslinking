@@ -1,11 +1,12 @@
 # ====================================================================== #
-# Equilibrate a random coil in implicit solvent. 
+# Equilibrate a system of polymers following a Gaussian angle potential and 
+# a Fourier dihedral potential in implicit solvent. 
 #
 # Authors:
 #     Kee-Myoung Nam
 #
 # Last updated:
-#     5/21/2026
+#     4/7/2026
 # ====================================================================== #
 # INPUT VARIABLES
 # ===============
@@ -31,6 +32,13 @@ next f
 variable seed_velocity equal $f
 next f
 variable seed_langevin equal $f
+print ${dt}
+print ${damp}
+print ${nsteps1}
+print ${nsteps2}
+print ${nsteps_per_dump}
+print ${seed_velocity}
+print ${seed_langevin}
 
 # ====================================================================== #
 # INITIALIZATION
@@ -43,8 +51,12 @@ dimension 3
 atom_style molecular 
 bond_style fene
 
-# No bond angle or dihedral angle potentials
-#  
+# Subject polymeric bond angles to a multiple Gaussian angle potential 
+angle_style gaussian
+
+# Subject polymeric dihedral angles to a Fourier potential
+dihedral_style fourier 
+
 # Use Lennard-Jones potentials between unbonded molecules
 #
 # Note that the 2.5 * \sigma cutoff ratio is re-written below when the initial
@@ -62,9 +74,9 @@ neighbor 0.5595854922 bin
 # Build neighbor lists at every timestep 
 neigh_modify delay 0 every 1 check yes
 
-# Accommodate larger communication cutoff (max FENE bond length = 2.8 nm,
-# no bond angles or dihedrals)
-comm_modify cutoff 2.8
+# Accommodate larger communication cutoff (max FENE bond length = 2.8 nm, 
+# LAMMPS computes a larger cutoff of ~4.6 nm due to bond angles and dihedrals)
+comm_modify cutoff 4.6
 
 # ====================================================================== #
 # PARSE INPUT MOLECULES
@@ -72,8 +84,8 @@ comm_modify cutoff 2.8
 read_data ${init_filename}
 pair_modify shift yes
 
-# - Exclude non-bonded interactions between FENE-bonded atoms
-# - Weight non-bonded interactions between 1-3 atoms with angles
+# - Exclude Lennard-Jones potential contributions between FENE-bonded atoms
+# - Weight Lennard-Jones potential contributions between 1-3 atoms with angles
 special_bonds fene angle no
 
 # Write the Lennard-Jones potential parameters
@@ -95,7 +107,7 @@ velocity all create ${temp} ${seed_velocity} rot yes dist gaussian
 # PRINT THERMODYNAMIC INFORMATION DURING SIMULATION
 # =================================================
 thermo ${nsteps_per_dump}
-thermo_style custom step temp press vol pxx pyy pzz etotal ke pe epair ebond eangle
+thermo_style custom step temp press vol pxx pyy pzz etotal ke pe epair ebond eangle edihed
 
 # ====================================================================== #
 # SET UP SIMULATION
@@ -148,7 +160,7 @@ minimize 1e-4 1e-6 5000 10000
 # RUN SECOND SIMULATION
 # =====================
 thermo ${nsteps_per_dump}
-thermo_style custom step temp press vol pxx pyy pzz etotal ke pe epair ebond eangle
+thermo_style custom step temp press vol pxx pyy pzz etotal ke pe epair ebond eangle edihed
 undump sim1
 reset_timestep 0
 dump sim1 all custom ${nsteps_per_dump} ${lammpstrj_filename} id mol type xu yu zu vx vy vz
