@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/27/2026
+ *     5/21/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -812,7 +812,11 @@ class PolymerMeltConfiguration
          * consecutive atoms to the energy of the i-th polymer configuration.
          *
          * The energetic contributions of repulsive Lennard-Jones interactions 
-         * between consecutive atoms is also included, if desired. 
+         * between consecutive atoms is also included, if desired.
+         *
+         * Note that each polymer configuration stores *unwrapped* coordinates
+         * for the atoms, which means that simple (non-periodic) distances 
+         * can be used for calculating the energy.  
          *
          * @param i Polymer index. 
          * @param fene_params FENE parameters.
@@ -838,7 +842,7 @@ class PolymerMeltConfiguration
          * consecutive atoms to the energy of the entire melt. 
          *
          * The energetic contributions of repulsive Lennard-Jones interactions 
-         * between consecutive atoms is also included, if desired. 
+         * between consecutive atoms is also included, if desired.
          *
          * @param fene_params FENE parameters.
          * @param include_lj If true, include the energetic contributions of 
@@ -861,6 +865,10 @@ class PolymerMeltConfiguration
         /**
          * Get the energetic contributions of the bond angles to the energy 
          * of the i-th polymer configuration.
+         *
+         * Note that each polymer configuration stores *unwrapped* coordinates
+         * for the atoms, which means that simple (non-periodic) distances 
+         * can be used for calculating the energy.  
          *
          * @param i Polymer index. 
          * @param angle_mode Angle potential type.  
@@ -904,6 +912,10 @@ class PolymerMeltConfiguration
         /**
          * Get the energetic contributions of the dihedral angles along the 
          * polymer to the energy of the i-th polymer configuration.
+         *
+         * Note that each polymer configuration stores *unwrapped* coordinates
+         * for the atoms, which means that simple (non-periodic) distances 
+         * can be used for calculating the energy.  
          *
          * @param i Polymer index. 
          * @param dihedral_params Dihedral angle potential parameters. 
@@ -1466,21 +1478,36 @@ class PolymerMeltConfiguration
 
             // Write dihedral potential parameters, as long as they are not 
             // trivial
-            T dihedral_d, dihedral_n;
-            if (dihedral_params.find("d") == dihedral_params.end())
-                dihedral_d = 1; 
-            else 
-                dihedral_d = dihedral_params["d"]; 
-            if (dihedral_params.find("n") == dihedral_params.end())
-                dihedral_n = 1; 
-            else 
-                dihedral_n = dihedral_params["n"];
-            if (!no_dihedrals)
-            { 
-                outfile << "Dihedral Coeffs\n\n"
-                        << "1 " << dihedral_params["K"] << " " 
-                        << dihedral_d << " "
-                        << dihedral_n << "\n\n";
+            //
+            // If the dihedral potential is harmonic ... 
+            if (dihedral_params.find("delta") == dihedral_params.end())
+            {
+                int dihedral_d = 1;
+                int dihedral_n = 1;
+                if (dihedral_params.find("d") != dihedral_params.end())
+                    dihedral_d = dihedral_params["d"]; 
+                if (dihedral_params.find("n") != dihedral_params.end())
+                    dihedral_n = dihedral_params["n"];
+                if (!no_dihedrals)
+                { 
+                    outfile << "Dihedral Coeffs\n\n"
+                            << "1 " << dihedral_params["K"] << " " 
+                            << dihedral_d << " "
+                            << dihedral_n << "\n\n";
+                }
+            }
+            else    // If the dihedral potential is Fourier ... 
+            {
+                int dihedral_n = 1;
+                if (dihedral_params.find("n") != dihedral_params.end())
+                    dihedral_n = dihedral_params["n"];
+                if (!no_dihedrals)
+                {
+                    outfile << "Dihedral Coeffs\n\n"
+                            << "1 1 " << dihedral_params["K"] << " "
+                            << dihedral_n << " " 
+                            << dihedral_params["delta"] << "\n\n";
+                }
             }
 
             // Write atom coordinates (all mapped to the fundamental cell
@@ -1688,7 +1715,14 @@ PolymerConfiguration<T> generateFirstKMer(const int K,
 
     // Define the angle sampling function  
     std::function<T(boost::random::mt19937&)> sample_angle;
-    if (angle_mode == AngleMode::COSINE)
+    if (angle_mode == AngleMode::COSINE && angle_params["K"] == 0)
+    {
+        sample_angle = [&uniform_dist](boost::random::mt19937& rng_) -> T
+        {
+            return boost::math::constants::pi<T>() * uniform_dist(rng_); 
+        };
+    } 
+    else if (angle_mode == AngleMode::COSINE)     // Non-trivial cosine potential
     {
         sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
         {
@@ -1698,7 +1732,7 @@ PolymerConfiguration<T> generateFirstKMer(const int K,
             );
         };
     } 
-    else if (angle_mode == AngleMode::GAUSSIAN)
+    else if (angle_mode == AngleMode::GAUSSIAN)   // Gaussian potential
     {
         sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
         {
@@ -1712,6 +1746,38 @@ PolymerConfiguration<T> generateFirstKMer(const int K,
     else 
     {
         throw std::runtime_error("Invalid angle potential mode specified"); 
+    }
+
+    // Define the dihedral sampling function 
+    std::function<T(boost::random::mt19937&)> sample_dihedral; 
+    if (dihedral_params["K"] == 0)
+    {
+        sample_dihedral = [&uniform_dist](boost::random::mt19937& rng_) -> T
+        {
+            return (
+                -boost::math::constants::pi<T>() + 
+                boost::math::constants::two_pi<T>() * uniform_dist(rng_)
+            ); 
+        };
+    }
+    else if (dihedral_params.find("delta") == dihedral_params.end())    // Non-trivial harmonic potential
+    {
+        sample_dihedral = [&dihedral_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleDihedralHarmonic<T>(
+                dihedral_params["K"], kT, rng_, uniform_dist
+            ); 
+        }; 
+    } 
+    else    // Fourier potential  
+    {
+        sample_dihedral = [&dihedral_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleDihedralFourierSingleComponent<T>(
+                dihedral_params["K"], dihedral_params["delta"], kT, 
+                rng_, uniform_dist
+            ); 
+        }; 
     }
 
     // Seed the K-mer
@@ -1778,11 +1844,9 @@ PolymerConfiguration<T> generateFirstKMer(const int K,
         { 
             length = sampleFene<T>(rng, uniform_dist, bond_length_cdf); 
             T angle = sample_angle(rng);
-            T dihedral = sampleDihedralHarmonic<T>(
-                dihedral_params["K"], kT, rng, uniform_dist
-            );
+            T dihedral = sample_dihedral(rng);
             new_atom = generateNextAtomDihedral<T>(
-                r1, r2, r3, length, angle, dihedral, rng, uniform_dist 
+                r1, r2, r3, length, angle, dihedral
             );
             found_collision = collision_intra(new_atom); 
             n_tries++; 
@@ -1899,7 +1963,14 @@ PolymerConfiguration<T> generateNextKMer(const int K,
 
     // Define the angle sampling function  
     std::function<T(boost::random::mt19937&)> sample_angle;
-    if (angle_mode == AngleMode::COSINE)
+    if (angle_mode == AngleMode::COSINE && angle_params["K"] == 0)
+    {
+        sample_angle = [&uniform_dist](boost::random::mt19937& rng_) -> T
+        {
+            return boost::math::constants::pi<T>() * uniform_dist(rng_); 
+        };
+    }
+    else if (angle_mode == AngleMode::COSINE)     // Non-trivial cosine potential
     {
         sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
         {
@@ -1909,7 +1980,7 @@ PolymerConfiguration<T> generateNextKMer(const int K,
             );
         };
     } 
-    else if (angle_mode == AngleMode::GAUSSIAN)
+    else if (angle_mode == AngleMode::GAUSSIAN)   // Gaussian potential 
     {
         sample_angle = [&angle_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
         {
@@ -1923,6 +1994,38 @@ PolymerConfiguration<T> generateNextKMer(const int K,
     else 
     {
         throw std::runtime_error("Invalid angle potential mode specified"); 
+    }
+
+    // Define the dihedral sampling function 
+    std::function<T(boost::random::mt19937&)> sample_dihedral; 
+    if (dihedral_params["K"] == 0)
+    {
+        sample_dihedral = [&uniform_dist](boost::random::mt19937& rng_) -> T
+        {
+            return (
+                -boost::math::constants::pi<T>() + 
+                boost::math::constants::two_pi<T>() * uniform_dist(rng_)
+            ); 
+        };
+    }
+    else if (dihedral_params.find("delta") == dihedral_params.end())    // Non-trivial harmonic potential
+    {
+        sample_dihedral = [&dihedral_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleDihedralHarmonic<T>(
+                dihedral_params["K"], kT, rng_, uniform_dist
+            ); 
+        }; 
+    } 
+    else    // Fourier potential  
+    {
+        sample_dihedral = [&dihedral_params, &uniform_dist, &kT](boost::random::mt19937& rng_) -> T
+        {
+            return sampleDihedralFourierSingleComponent<T>(
+                dihedral_params["K"], dihedral_params["delta"], kT, 
+                rng_, uniform_dist
+            ); 
+        }; 
     }
 
     // While we have not exhausted the number of attempts ...
@@ -2029,11 +2132,9 @@ PolymerConfiguration<T> generateNextKMer(const int K,
             { 
                 length = sampleFene<T>(rng, uniform_dist, bond_length_cdf); 
                 T angle = sample_angle(rng);
-                T dihedral = sampleDihedralHarmonic<T>(
-                    dihedral_params["K"], kT, rng, uniform_dist
-                );
+                T dihedral = sample_dihedral(rng);  
                 new_atom = generateNextAtomDihedral<T>(
-                    r1, r2, r3, length, angle, dihedral, rng, uniform_dist 
+                    r1, r2, r3, length, angle, dihedral
                 );
                 found_collision = collision_intra(new_atom); 
                 n_tries_per_atom++; 
