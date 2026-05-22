@@ -58,7 +58,7 @@ TEST_CASE(
         double phi = dihedrals(i - 3); 
         coords.row(i) = generateNextAtomDihedral<double>(
             coords.row(i - 3), coords.row(i - 2), coords.row(i - 1), length,
-            theta, phi, rng, uniform_dist
+            theta, phi
         );
     }
 
@@ -87,11 +87,11 @@ TEST_CASE(
     );
     segment.row(1) = generateNextAtomDihedral<double>(
         config_coords.row(0), config_coords.row(1), segment.row(0), length,
-        theta2, phi2, rng, uniform_dist
+        theta2, phi2
     ); 
     segment.row(2) = generateNextAtomDihedral<double>(
         config_coords.row(1), segment.row(0), segment.row(1), length,
-        theta3, phi3, rng, uniform_dist
+        theta3, phi3
     );
     config.replaceSegment(segment, 2);
 
@@ -158,7 +158,7 @@ TEST_CASE(
         double phi = dihedrals(i - 3); 
         coords.row(i) = generateNextAtomDihedral<double>(
             coords.row(i - 3), coords.row(i - 2), coords.row(i - 1), length,
-            theta, phi, rng, uniform_dist
+            theta, phi
         );
     }
 
@@ -171,12 +171,10 @@ TEST_CASE(
     double phi1 = 58 * boost::math::constants::pi<double>() / 180; 
     double phi2 = -134 * boost::math::constants::pi<double>() / 180;
     Matrix<double, 3, 1> tail1 = generateNextAtomDihedral<double>(
-        coords.row(5), coords.row(6), coords.row(7), length, theta1, phi1, 
-        rng, uniform_dist
+        coords.row(5), coords.row(6), coords.row(7), length, theta1, phi1 
     ); 
     Matrix<double, 3, 1> tail2 = generateNextAtomDihedral<double>(
-        coords.row(6), coords.row(7), tail1, length, theta2, phi2,  
-        rng, uniform_dist
+        coords.row(6), coords.row(7), tail1, length, theta2, phi2
     ); 
 
     // Update the polymer configuration
@@ -228,19 +226,17 @@ TEST_CASE(
     double phi5 = -20 * boost::math::constants::pi<double>() / 180; 
     double phi6 = 63 * boost::math::constants::pi<double>() / 180; 
     Matrix<double, 3, 1> head1 = generateNextAtomDihedral<double>(
-        old_coords.row(2), old_coords.row(1), old_coords.row(0),
-        length, theta3, phi3, rng, uniform_dist
+        old_coords.row(2), old_coords.row(1), old_coords.row(0), length,
+        theta3, phi3
     ); 
     Matrix<double, 3, 1> head2 = generateNextAtomDihedral<double>(
-        old_coords.row(1), old_coords.row(0), head1, length, theta4,
-        phi4, rng, uniform_dist
+        old_coords.row(1), old_coords.row(0), head1, length, theta4, phi4
     ); 
     Matrix<double, 3, 1> head3 = generateNextAtomDihedral<double>(
-        old_coords.row(0), head1, head2, length, theta5, phi5, rng,
-        uniform_dist
+        old_coords.row(0), head1, head2, length, theta5, phi5
     ); 
     Matrix<double, 3, 1> head4 = generateNextAtomDihedral<double>(
-        head1, head2, head3, length, theta6, phi6, rng, uniform_dist
+        head1, head2, head3, length, theta6, phi6
     );
 
     // Update the polymer configuration
@@ -300,8 +296,8 @@ TEST_CASE(
     double theta7 = 37 * boost::math::constants::pi<double>() / 180; 
     double phi7 = -99 * boost::math::constants::pi<double>() / 180;
     Matrix<double, 3, 1> tail3 = generateNextAtomDihedral<double>(
-        old_coords.row(5), old_coords.row(6), old_coords.row(7),
-        length, theta7, phi7, rng, uniform_dist
+        old_coords.row(5), old_coords.row(6), old_coords.row(7), length,
+        theta7, phi7
     );
     config.reptateTowardsTail(tail3);
 
@@ -326,8 +322,8 @@ TEST_CASE(
     double theta8 = 126 * boost::math::constants::pi<double>() / 180; 
     double phi8 = -2 * boost::math::constants::pi<double>() / 180;
     Matrix<double, 3, 1> head5 = generateNextAtomDihedral<double>(
-        old_coords.row(2), old_coords.row(1), old_coords.row(0),
-        length, theta8, phi8, rng, uniform_dist
+        old_coords.row(2), old_coords.row(1), old_coords.row(0), length,
+        theta8, phi8
     );
     config.reptateTowardsHead(head5);
 
@@ -357,16 +353,16 @@ TEST_CASE(
     double phi11 = -132 * boost::math::constants::pi<double>() / 180; 
     Matrix<double, Dynamic, 3> tail_segment(3, 3); 
     tail_segment.row(0) = generateNextAtomDihedral<double>(
-        old_coords.row(5), old_coords.row(6), old_coords.row(7), 
-        length, theta9, phi9, rng, uniform_dist
+        old_coords.row(5), old_coords.row(6), old_coords.row(7), length,
+        theta9, phi9
     ); 
     tail_segment.row(1) = generateNextAtomDihedral<double>(
-        old_coords.row(6), old_coords.row(7), tail_segment.row(0), 
-        length, theta10, phi10, rng, uniform_dist
+        old_coords.row(6), old_coords.row(7), tail_segment.row(0), length,
+        theta10, phi10
     ); 
     tail_segment.row(2) = generateNextAtomDihedral<double>(
-        old_coords.row(7), tail_segment.row(0), tail_segment.row(1), 
-        length, theta11, phi11, rng, uniform_dist
+        old_coords.row(7), tail_segment.row(0), tail_segment.row(1), length,
+        theta11, phi11
     );
     config.reptateTowardsTailMultimer(tail_segment);
 
@@ -406,20 +402,20 @@ TEST_CASE(
     double phi15 = 49 * boost::math::constants::pi<double>() / 180; 
     Matrix<double, Dynamic, 3> head_segment(4, 3); 
     head_segment.row(3) = generateNextAtomDihedral<double>(
-        old_coords.row(2), old_coords.row(1), old_coords.row(0), 
-        length, theta12, phi12, rng, uniform_dist
+        old_coords.row(2), old_coords.row(1), old_coords.row(0), length,
+        theta12, phi12
     ); 
     head_segment.row(2) = generateNextAtomDihedral<double>(
-        old_coords.row(1), old_coords.row(0), head_segment.row(3), 
-        length, theta13, phi13, rng, uniform_dist
+        old_coords.row(1), old_coords.row(0), head_segment.row(3), length,
+        theta13, phi13
     ); 
     head_segment.row(1) = generateNextAtomDihedral<double>(
-        old_coords.row(0), head_segment.row(3), head_segment.row(2), 
-        length, theta14, phi14, rng, uniform_dist
+        old_coords.row(0), head_segment.row(3), head_segment.row(2), length,
+        theta14, phi14
     );
     head_segment.row(0) = generateNextAtomDihedral<double>(
-        head_segment.row(3), head_segment.row(2), head_segment.row(1),
-        length, theta15, phi15, rng, uniform_dist
+        head_segment.row(3), head_segment.row(2), head_segment.row(1), length,
+        theta15, phi15
     );
     config.reptateTowardsHeadMultimer(head_segment); 
 

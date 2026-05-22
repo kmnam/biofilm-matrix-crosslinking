@@ -191,7 +191,7 @@ TEST_CASE(
         double phi = dihedrals(i - 3); 
         coords.row(i) = generateNextAtomDihedral<double>(
             coords.row(i - 3), coords.row(i - 2), coords.row(i - 1), length,
-            theta, phi, rng, uniform_dist
+            theta, phi
         );
     }
 
