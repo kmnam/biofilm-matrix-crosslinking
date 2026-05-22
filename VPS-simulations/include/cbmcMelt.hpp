@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     5/20/2026
+ *     5/21/2026
  */
 
 #ifndef MULTI_CHAIN_CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -73,14 +73,22 @@ class PolymerMeltCBMCSampler
         std::unordered_map<std::string, T> fene_params;
         AngleMode angle_mode;  
         std::unordered_map<std::string, T> angle_params; 
-        std::unordered_map<std::string, T> dihedral_params; 
+        std::unordered_map<std::string, T> dihedral_params;
+
+        // Indicators for whether angle or dihedral potentials are trivial 
+        bool no_angle_potential; 
+        bool no_dihedral_potential; 
 
         // Random number generator and standard uniform distribution instances 
         boost::random::mt19937 rng; 
         boost::random::uniform_01<> uniform_dist; 
 
         // Bond length CDF
-        Matrix<T, Dynamic, 2> bond_length_cdf;  
+        Matrix<T, Dynamic, 2> bond_length_cdf; 
+
+        // Bond angle and dihedral angle sampling functions 
+        std::function<T()> sample_angle; 
+        std::function<T()> sample_dihedral; 
 
         /**
          * Internal function for updating atomic coordinates after each 
@@ -132,14 +140,98 @@ class PolymerMeltCBMCSampler
             this->xlen = this->xmax - this->xmin; 
             this->ylen = this->ymax - this->ymin; 
             this->zlen = this->zmax - this->zmin; 
+
+            // Are the bond angle and dihedral angle potentials trivial? 
+            this->no_angle_potential = (
+                this->angle_mode == AngleMode::COSINE && this->angle_params["K"] == 0
+            );
+            this->no_dihedral_potential = (this->dihedral_params["K"] == 0); 
+
+            // Calculate FENE bond length CDF 
             this->bond_length_cdf = getFeneCDF<T>(
                 this->lj_params.at("eps"), 
                 this->lj_params.at("sigma"), 
                 this->fene_params.at("K"), 
                 this->fene_params.at("R0"), 
-                this->melt_config.kT,
+                this->config.kT,
                 n_bins 
-            );   
+            );
+
+            // Define the angle sampling function  
+            if (this->no_angle_potential)
+            {
+                this->sample_angle = [this]() -> T
+                {
+                    return boost::math::constants::pi<T>() * this->uniform_dist(this->rng);
+                };
+            }
+            else if (this->angle_mode == AngleMode::COSINE)
+            {
+                this->sample_angle = [this]() -> T
+                {
+                    return sampleAngleCosine<T>(
+                        this->angle_params.at("K"),
+                        this->angle_params.at("theta0"),
+                        this->config.kT,
+                        this->rng, 
+                        this->uniform_dist
+                    );
+                };
+            } 
+            else     // this->angle_mode == AngleMode::GAUSSIAN
+            {
+                this->sample_angle = [this]() -> T
+                {
+                    return sampleAngleDualGaussianMixture<T>(
+                        this->angle_params.at("A1"),
+                        this->angle_params.at("A2"),
+                        this->angle_params.at("w1"),
+                        this->angle_params.at("w2"),
+                        this->angle_params.at("theta1"),
+                        this->angle_params.at("theta2"),
+                        this->config.kT,
+                        this->rng,
+                        this->uniform_dist
+                    );
+                };
+            }
+
+            // Define the dihedral sampling function 
+            if (this->no_dihedral_potential)
+            {
+                this->sample_dihedral = [this]() -> T
+                {
+                    return (
+                        -boost::math::constants::pi<T>() +
+                        boost::math::constants::two_pi<T>() * this->uniform_dist(this->rng)
+                    ); 
+                };
+            }
+            else if (this->dihedral_params.find("delta") == this->dihedral_params.end())
+            {
+                this->sample_dihedral = [this]() -> T
+                {
+                    return sampleDihedralHarmonic<T>(
+                        this->dihedral_params.at("K"),
+                        this->config.kT, 
+                        this->rng, 
+                        this->uniform_dist
+                    ); 
+                };
+            } 
+            else     // "delta" has been specified as an offset angle 
+            {
+                this->sample_dihedral = [this]() -> T
+                {
+                    return sampleDihedralFourierSingleComponent<T>(
+                        this->dihedral_params.at("K"),
+                        this->dihedral_params.at("delta"), 
+                        this->config.kT, 
+                        this->rng,
+                        this->uniform_dist
+                    );
+                };
+            }
         }
 
         /**
@@ -181,7 +273,89 @@ class PolymerMeltCBMCSampler
             this->xlen = this->xmax - this->xmin; 
             this->ylen = this->ymax - this->ymin; 
             this->zlen = this->zmax - this->zmin; 
-            this->bond_length_cdf = bond_length_cdf; 
+            this->bond_length_cdf = bond_length_cdf;
+
+            // Are the bond angle and dihedral angle potentials trivial? 
+            this->no_angle_potential = (
+                this->angle_mode == AngleMode::COSINE && this->angle_params["K"] == 0
+            );
+            this->no_dihedral_potential = (this->dihedral_params["K"] == 0);
+
+            // Define the angle sampling function  
+            if (this->no_angle_potential)
+            {
+                this->sample_angle = [this]() -> T
+                {
+                    return boost::math::constants::pi<T>() * this->uniform_dist(this->rng);
+                };
+            }
+            else if (this->angle_mode == AngleMode::COSINE)
+            {
+                this->sample_angle = [this]() -> T
+                {
+                    return sampleAngleCosine<T>(
+                        this->angle_params.at("K"),
+                        this->angle_params.at("theta0"),
+                        this->config.kT,
+                        this->rng, 
+                        this->uniform_dist
+                    );
+                };
+            } 
+            else     // this->angle_mode == AngleMode::GAUSSIAN
+            {
+                this->sample_angle = [this]() -> T
+                {
+                    return sampleAngleDualGaussianMixture<T>(
+                        this->angle_params.at("A1"),
+                        this->angle_params.at("A2"),
+                        this->angle_params.at("w1"),
+                        this->angle_params.at("w2"),
+                        this->angle_params.at("theta1"),
+                        this->angle_params.at("theta2"),
+                        this->config.kT,
+                        this->rng,
+                        this->uniform_dist
+                    );
+                };
+            }
+
+            // Define the dihedral sampling function 
+            if (this->no_dihedral_potential)
+            {
+                this->sample_dihedral = [this]() -> T
+                {
+                    return (
+                        -boost::math::constants::pi<T>() +
+                        boost::math::constants::two_pi<T>() * this->uniform_dist(this->rng)
+                    ); 
+                };
+            }
+            else if (this->dihedral_params.find("delta") == this->dihedral_params.end())
+            {
+                this->sample_dihedral = [this]() -> T
+                {
+                    return sampleDihedralHarmonic<T>(
+                        this->dihedral_params.at("K"),
+                        this->config.kT, 
+                        this->rng, 
+                        this->uniform_dist
+                    ); 
+                };
+            } 
+            else     // "delta" has been specified as an offset angle 
+            {
+                this->sample_dihedral = [this]() -> T
+                {
+                    return sampleDihedralFourierSingleComponent<T>(
+                        this->dihedral_params.at("K"),
+                        this->dihedral_params.at("delta"), 
+                        this->config.kT, 
+                        this->rng,
+                        this->uniform_dist
+                    );
+                };
+            }
         }
 
         /**
@@ -243,39 +417,6 @@ class PolymerMeltCBMCSampler
             Matrix<T, Dynamic, 3> moves(n_candidates, 3);
             Matrix<T, Dynamic, 1> residuals(n_candidates); 
 
-            // Define the angle sampling function  
-            std::function<T()> sample_angle;
-            if (this->angle_mode == AngleMode::COSINE)
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleCosine<T>(
-                        this->angle_params.at("K"),
-                        this->angle_params.at("theta0"),
-                        this->melt_config.kT,
-                        this->rng, 
-                        this->uniform_dist
-                    );
-                };
-            } 
-            else     // this->angle_mode == AngleMode::GAUSSIAN
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleDualGaussianMixture<T>(
-                        this->angle_params.at("A1"),
-                        this->angle_params.at("A2"),
-                        this->angle_params.at("w1"),
-                        this->angle_params.at("w2"),
-                        this->angle_params.at("theta1"),
-                        this->angle_params.at("theta2"),
-                        this->melt_config.kT,
-                        this->rng,
-                        this->uniform_dist
-                    );
-                };
-            }
-
             // Generate bond lengths, bond angles, and dihedral angles 
             Matrix<T, Dynamic, 1> bond_lengths(n_candidates),
                                   bond_angles(n_candidates), 
@@ -285,11 +426,8 @@ class PolymerMeltCBMCSampler
                 bond_lengths(i) = sampleFene<T>(
                     this->rng, this->uniform_dist, this->bond_length_cdf 
                 );
-                bond_angles(i) = sample_angle();
-                dihedrals(i) = sampleDihedralHarmonic<T>(
-                    this->dihedral_params.at("K"), this->melt_config.kT,
-                    this->rng, this->uniform_dist
-                );
+                bond_angles(i) = this->sample_angle();
+                dihedrals(i) = this->sample_dihedral(); 
             }
             #ifdef CHECK_CBMC_SAMPLED_VALUES
                 for (int i = 0; i < n_candidates; ++i)
@@ -401,39 +539,6 @@ class PolymerMeltCBMCSampler
                 this->ymin, this->ymax, this->zmin, this->zmax 
             );    
 
-            // Define the angle sampling function  
-            std::function<T()> sample_angle;
-            if (this->angle_mode == AngleMode::COSINE)
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleCosine<T>(
-                        this->angle_params.at("K"),
-                        this->angle_params.at("theta0"),
-                        this->melt_config.kT,
-                        this->rng, 
-                        this->uniform_dist
-                    );
-                };
-            } 
-            else     // this->angle_mode == AngleMode::GAUSSIAN
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleDualGaussianMixture<T>(
-                        this->angle_params.at("A1"),
-                        this->angle_params.at("A2"),
-                        this->angle_params.at("w1"),
-                        this->angle_params.at("w2"),
-                        this->angle_params.at("theta1"),
-                        this->angle_params.at("theta2"),
-                        this->melt_config.kT,
-                        this->rng,
-                        this->uniform_dist
-                    );
-                };
-            }
-
             // Generate bond lengths, bond angles, and dihedral angles 
             Matrix<T, Dynamic, 1> bond_lengths(n_candidates),
                                   bond_angles(n_candidates), 
@@ -443,11 +548,8 @@ class PolymerMeltCBMCSampler
                 bond_lengths(i) = sampleFene<T>(
                     this->rng, this->uniform_dist, this->bond_length_cdf 
                 );
-                bond_angles(i) = sample_angle();
-                dihedrals(i) = sampleDihedralHarmonic<T>(
-                    this->dihedral_params.at("K"), this->melt_config.kT,
-                    this->rng, this->uniform_dist
-                );
+                bond_angles(i) = this->sample_angle();
+                dihedrals(i) = this->sample_dihedral(); 
             }
             #ifdef CHECK_CBMC_SAMPLED_VALUES
                 for (int i = 0; i < n_candidates; ++i)
@@ -561,45 +663,14 @@ class PolymerMeltCBMCSampler
          * @returns The chosen multimer reptation move and its corresponding
          *          (total) Rosenbluth weight. 
          */
-        std::pair<Matrix<T, Dynamic, 3>, T> generateForwardMultimerReptationMove(const int polymer_idx,
-                                                                                 const ReptationDirection direction,
-                                                                                 const int n_reptate, 
-                                                                                 const int n_candidates)
+        std::tuple<Matrix<T, Dynamic, Dynamic>, 
+                   Matrix<T, Dynamic, 3>,
+                   T> generateForwardMultimerReptationMove(const int polymer_idx,
+                                                           const ReptationDirection direction,
+                                                           const int n_reptate, 
+                                                           const int n_candidates)
         {
             const int ni = this->lengths[polymer_idx]; 
-
-            // Define the angle sampling function  
-            std::function<T()> sample_angle;
-            if (this->angle_mode == AngleMode::COSINE)
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleCosine<T>(
-                        this->angle_params.at("K"),
-                        this->angle_params.at("theta0"),
-                        this->melt_config.kT,
-                        this->rng, 
-                        this->uniform_dist
-                    );
-                };
-            } 
-            else     // this->angle_mode == AngleMode::GAUSSIAN
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleDualGaussianMixture<T>(
-                        this->angle_params.at("A1"),
-                        this->angle_params.at("A2"),
-                        this->angle_params.at("w1"),
-                        this->angle_params.at("w2"),
-                        this->angle_params.at("theta1"),
-                        this->angle_params.at("theta2"),
-                        this->melt_config.kT,
-                        this->rng,
-                        this->uniform_dist
-                    );
-                };
-            }
 
             // Generate bond lengths, bond angles, and dihedral angles 
             Matrix<T, Dynamic, Dynamic> bond_lengths(n_reptate, n_candidates),
@@ -612,11 +683,8 @@ class PolymerMeltCBMCSampler
                     bond_lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf 
                     );
-                    bond_angles(i, j) = sample_angle();
-                    dihedrals(i, j) = sampleDihedralHarmonic<T>(
-                        this->dihedral_params.at("K"), this->melt_config.kT,
-                        this->rng, this->uniform_dist
-                    );
+                    bond_angles(i, j) = this->sample_angle();
+                    dihedrals(i, j) = this->sample_dihedral();
                 }
             }
             #ifdef CHECK_CBMC_SAMPLED_VALUES
@@ -647,9 +715,12 @@ class PolymerMeltCBMCSampler
                 } 
             #endif
 
-            // Keep track of the growing segment and the total Rosenbluth weight
+            // Keep track of the proposed atom positions, the growing segment,
+            // and the total Rosenbluth weight
+            Matrix<T, Dynamic, Dynamic> candidate_positions(n_candidates, 3 * n_reptate); 
             Matrix<T, Dynamic, 3> segment(0, 3); 
             T log_rosenbluth_total = 0;
+
             if (direction == ReptationDirection::HEAD)    // Reptate towards the head 
             {
                 // For each atom ... 
@@ -687,7 +758,7 @@ class PolymerMeltCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, bond_lengths(i, j), bond_angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -721,7 +792,10 @@ class PolymerMeltCBMCSampler
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -765,7 +839,7 @@ class PolymerMeltCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, bond_lengths(i, j), bond_angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -799,7 +873,10 @@ class PolymerMeltCBMCSampler
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -807,7 +884,7 @@ class PolymerMeltCBMCSampler
                 }
             }
 
-            return std::make_pair(segment, log_rosenbluth_total);  
+            return std::make_tuple(candidate_positions, segment, log_rosenbluth_total);  
         }
 
         /**
@@ -822,11 +899,11 @@ class PolymerMeltCBMCSampler
          * @param coords Input array of atomic coordinates.  
          * @returns The corresponding reverse Rosenbluth factor. 
          */
-        T getBackwardMultimerReptationRosenbluthWeight(const int polymer_idx,
-                                                       const ReptationDirection direction,
-                                                       const int n_reptate,
-                                                       const int n_candidates,
-                                                       const Ref<const Matrix<T, Dynamic, 3> >& coords)
+        std::pair<Matrix<T, Dynamic, Dynamic>, T> getBackwardMultimerReptationRosenbluthWeight(const int polymer_idx,
+                                                                                               const ReptationDirection direction,
+                                                                                               const int n_reptate,
+                                                                                               const int n_candidates,
+                                                                                               const Ref<const Matrix<T, Dynamic, 3> >& coords)
         {
             const int ni = this->lengths[polymer_idx]; 
 
@@ -845,39 +922,6 @@ class PolymerMeltCBMCSampler
                 this->ymin, this->ymax, this->zmin, this->zmax
             );
 
-            // Define the angle sampling function  
-            std::function<T()> sample_angle;
-            if (this->angle_mode == AngleMode::COSINE)
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleCosine<T>(
-                        this->angle_params.at("K"),
-                        this->angle_params.at("theta0"),
-                        this->melt_config.kT,
-                        this->rng, 
-                        this->uniform_dist
-                    );
-                };
-            } 
-            else     // this->angle_mode == AngleMode::GAUSSIAN
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleDualGaussianMixture<T>(
-                        this->angle_params.at("A1"),
-                        this->angle_params.at("A2"),
-                        this->angle_params.at("w1"),
-                        this->angle_params.at("w2"),
-                        this->angle_params.at("theta1"),
-                        this->angle_params.at("theta2"),
-                        this->melt_config.kT,
-                        this->rng,
-                        this->uniform_dist
-                    );
-                };
-            }
-
             // Generate bond lengths, bond angles, and dihedral angles 
             Matrix<T, Dynamic, Dynamic> bond_lengths(n_reptate, n_candidates),
                                         bond_angles(n_reptate, n_candidates),
@@ -889,11 +933,8 @@ class PolymerMeltCBMCSampler
                     bond_lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf 
                     );
-                    bond_angles(i, j) = sample_angle();
-                    dihedrals(i, j) = sampleDihedralHarmonic<T>(
-                        this->dihedral_params.at("K"), this->melt_config.kT,
-                        this->rng, this->uniform_dist
-                    );
+                    bond_angles(i, j) = this->sample_angle();
+                    dihedrals(i, j) = this->sample_dihedral();  
                 }
             }
             #ifdef CHECK_CBMC_SAMPLED_VALUES
@@ -924,8 +965,9 @@ class PolymerMeltCBMCSampler
                 } 
             #endif
 
-            // Keep track of the Rosenbluth weight; we are not generating a
-            // new segment 
+            // Keep track of the proposed atom positions and the Rosenbluth
+            // weight; we are not generating a new segment
+            Matrix<T, Dynamic, Dynamic> candidate_positions(n_candidates, 3 * n_reptate); 
             T log_rosenbluth_total = 0;
 
             // Extract the segment being re-introduced into the given configuration
@@ -997,7 +1039,7 @@ class PolymerMeltCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, bond_lengths(i, j), bond_angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1014,17 +1056,20 @@ class PolymerMeltCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors in log-space 
+                    // Calculate the corresponding atom position probabilities 
                     Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->melt_config.kT;
-                    T max_residual = residuals_norm.maxCoeff(); 
-
-                    // Calculate the corresponding Rosenbluth weight for the
-                    // i-th atom
+                    T max_residual = residuals_norm.maxCoeff();
                     T prob_total = 0; 
                     for (int j = 0; j < n_candidates; ++j)
                         prob_total += exp(residuals_norm(j) - max_residual); 
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
                 }
             }
             else        // Reptate towards the tail 
@@ -1075,7 +1120,7 @@ class PolymerMeltCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, bond_lengths(i, j), bond_angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1092,21 +1137,24 @@ class PolymerMeltCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors in log-space 
+                    // Calculate the corresponding atom position probabilities 
                     Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->melt_config.kT;
-                    T max_residual = residuals_norm.maxCoeff(); 
-
-                    // Calculate the corresponding Rosenbluth weight for the
-                    // i-th atom
+                    T max_residual = residuals_norm.maxCoeff();
                     T prob_total = 0; 
                     for (int j = 0; j < n_candidates; ++j)
                         prob_total += exp(residuals_norm(j) - max_residual); 
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
                 }
             }
 
-            return log_rosenbluth_total; 
+            return std::make_pair(candidate_positions, log_rosenbluth_total);  
         }
 
         /** -------------------------------------------------------------- // 
@@ -1126,45 +1174,14 @@ class PolymerMeltCBMCSampler
          * @returns The chosen terminal segment move and its corresponding 
          *          (total) Rosenbluth weight. 
          */
-        std::pair<Matrix<T, Dynamic, 3>, T> generateForwardTerminalSegmentMove(const int polymer_idx,
-                                                                               const int segment_length, 
-                                                                               const TerminalSegmentEnd direction,
-                                                                               const int n_candidates)
+        std::tuple<Matrix<T, Dynamic, Dynamic>,
+                   Matrix<T, Dynamic, 3>,
+                   T> generateForwardTerminalSegmentMove(const int polymer_idx,
+                                                         const int segment_length, 
+                                                         const TerminalSegmentEnd direction,
+                                                         const int n_candidates)
         {
             const int ni = this->lengths[polymer_idx];
-
-            // Define the angle sampling function  
-            std::function<T()> sample_angle;
-            if (this->angle_mode == AngleMode::COSINE)
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleCosine<T>(
-                        this->angle_params.at("K"),
-                        this->angle_params.at("theta0"),
-                        this->melt_config.kT,
-                        this->rng, 
-                        this->uniform_dist
-                    );
-                };
-            } 
-            else     // this->angle_mode == AngleMode::GAUSSIAN
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleDualGaussianMixture<T>(
-                        this->angle_params.at("A1"),
-                        this->angle_params.at("A2"),
-                        this->angle_params.at("w1"),
-                        this->angle_params.at("w2"),
-                        this->angle_params.at("theta1"),
-                        this->angle_params.at("theta2"),
-                        this->melt_config.kT,
-                        this->rng,
-                        this->uniform_dist
-                    );
-                };
-            }
 
             // Generate bond lengths, bond angles, and dihedral angles 
             Matrix<T, Dynamic, Dynamic> bond_lengths(segment_length, n_candidates),
@@ -1177,11 +1194,8 @@ class PolymerMeltCBMCSampler
                     bond_lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf
                     );
-                    bond_angles(i, j) = sample_angle();
-                    dihedrals(i, j) = sampleDihedralHarmonic<T>(
-                        this->dihedral_params.at("K"), this->melt_config.kT,
-                        this->rng, this->uniform_dist
-                    );
+                    bond_angles(i, j) = this->sample_angle();
+                    dihedrals(i, j) = this->sample_dihedral();  
                 }
             }
             #ifdef CHECK_CBMC_SAMPLED_VALUES
@@ -1212,10 +1226,13 @@ class PolymerMeltCBMCSampler
                 } 
             #endif
 
-            // Keep track of the growing segment and the total Rosenbluth weight
+            // Keep track of the proposed atom positions, the growing segment, 
+            // and the total Rosenbluth weight
+            Matrix<T, Dynamic, Dynamic> candidate_positions(n_candidates, 3 * segment_length); 
             Matrix<T, Dynamic, 3> segment(0, 3);
-            Matrix<T, Dynamic, 3> curr_coords = this->r[polymer_idx];  
             T log_rosenbluth_total = 0;  
+
+            Matrix<T, Dynamic, 3> curr_coords = this->r[polymer_idx];  
             if (direction == TerminalSegmentEnd::HEAD)    // Move the terminal segment at the head 
             {
                 // For each atom in the terminal segment ...
@@ -1254,7 +1271,7 @@ class PolymerMeltCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, bond_lengths(i, j), bond_angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1288,7 +1305,10 @@ class PolymerMeltCBMCSampler
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+                    
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3); 
@@ -1337,7 +1357,7 @@ class PolymerMeltCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, bond_lengths(i, j), bond_angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1371,7 +1391,10 @@ class PolymerMeltCBMCSampler
                     // Calculate the corresponding Rosenbluth weight for the
                     // i-th atom 
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
 
                     // Grow the segment 
                     segment.conservativeResize(i + 1, 3);
@@ -1379,7 +1402,7 @@ class PolymerMeltCBMCSampler
                 }
             }
 
-            return std::make_pair(segment, log_rosenbluth_total); 
+            return std::make_tuple(candidate_positions, segment, log_rosenbluth_total); 
         }
 
         /**
@@ -1395,11 +1418,11 @@ class PolymerMeltCBMCSampler
          * @returns Arrays of candidate atomic positions for the new segment
          *          and the corresponding energy differences. 
          */
-        T getBackwardTerminalSegmentMoveRosenbluthWeight(const int polymer_idx,
-                                                         const int segment_length, 
-                                                         const TerminalSegmentEnd direction,
-                                                         const int n_candidates,
-                                                         const Ref<const Matrix<T, Dynamic, 3> >& coords)
+        std::pair<Matrix<T, Dynamic, Dynamic>, T> getBackwardTerminalSegmentMoveRosenbluthWeight(const int polymer_idx,
+                                                                                                 const int segment_length, 
+                                                                                                 const TerminalSegmentEnd direction,
+                                                                                                 const int n_candidates,
+                                                                                                 const Ref<const Matrix<T, Dynamic, 3> >& coords)
         {
             const int ni = this->lengths[polymer_idx];
 
@@ -1418,39 +1441,6 @@ class PolymerMeltCBMCSampler
                 this->ymin, this->ymax, this->zmin, this->zmax 
             );
 
-            // Define the angle sampling function  
-            std::function<T()> sample_angle;
-            if (this->angle_mode == AngleMode::COSINE)
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleCosine<T>(
-                        this->angle_params.at("K"),
-                        this->angle_params.at("theta0"),
-                        this->melt_config.kT,
-                        this->rng, 
-                        this->uniform_dist
-                    );
-                };
-            } 
-            else     // this->angle_mode == AngleMode::GAUSSIAN
-            {
-                sample_angle = [this]() -> T
-                {
-                    return sampleAngleDualGaussianMixture<T>(
-                        this->angle_params.at("A1"),
-                        this->angle_params.at("A2"),
-                        this->angle_params.at("w1"),
-                        this->angle_params.at("w2"),
-                        this->angle_params.at("theta1"),
-                        this->angle_params.at("theta2"),
-                        this->melt_config.kT,
-                        this->rng,
-                        this->uniform_dist
-                    );
-                };
-            }
-
             // Generate bond lengths, bond angles, and dihedral angles 
             Matrix<T, Dynamic, Dynamic> bond_lengths(segment_length, n_candidates),
                                         bond_angles(segment_length, n_candidates),
@@ -1462,11 +1452,8 @@ class PolymerMeltCBMCSampler
                     bond_lengths(i, j) = sampleFene<T>(
                         this->rng, this->uniform_dist, this->bond_length_cdf
                     );
-                    bond_angles(i, j) = sample_angle();
-                    dihedrals(i, j) = sampleDihedralHarmonic<T>(
-                        this->dihedral_params.at("K"), this->melt_config.kT,
-                        this->rng, this->uniform_dist
-                    );
+                    bond_angles(i, j) = this->sample_angle();
+                    dihedrals(i, j) = this->sample_dihedral(); 
                 }
             }
             #ifdef CHECK_CBMC_SAMPLED_VALUES
@@ -1497,8 +1484,9 @@ class PolymerMeltCBMCSampler
                 } 
             #endif
 
-            // Keep track of the Rosenbluth weight; we are not generating a
-            // new segment 
+            // Keep track of the proposed atom positions and the Rosenbluth
+            // weight; we are not generating a new segment
+            Matrix<T, Dynamic, Dynamic> candidate_positions(n_candidates, 3 * segment_length); 
             T log_rosenbluth_total = 0;
 
             // Extract the segment being re-introduced into the given configuration
@@ -1564,7 +1552,7 @@ class PolymerMeltCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, bond_lengths(i, j), bond_angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1581,17 +1569,20 @@ class PolymerMeltCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors in log-space 
+                    // Calculate the corresponding atom position probabilities 
                     Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->melt_config.kT;
-                    T max_residual = residuals_norm.maxCoeff(); 
-
-                    // Calculate the corresponding Rosenbluth weight for the
-                    // i-th atom
+                    T max_residual = residuals_norm.maxCoeff();
                     T prob_total = 0; 
                     for (int j = 0; j < n_candidates; ++j)
                         prob_total += exp(residuals_norm(j) - max_residual); 
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
                 }
             }
             else        // Move the terminal segment at the tail 
@@ -1644,7 +1635,7 @@ class PolymerMeltCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, bond_lengths(i, j), bond_angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1661,21 +1652,24 @@ class PolymerMeltCBMCSampler
                         ); 
                     }
 
-                    // Calculate the corresponding Boltzmann factors in log-space 
+                    // Calculate the corresponding atom position probabilities 
                     Matrix<T, Dynamic, 1> residuals_norm = -residuals_i / this->melt_config.kT;
-                    T max_residual = residuals_norm.maxCoeff(); 
-
-                    // Calculate the corresponding Rosenbluth weight for the
-                    // i-th atom
+                    T max_residual = residuals_norm.maxCoeff();
                     T prob_total = 0; 
                     for (int j = 0; j < n_candidates; ++j)
                         prob_total += exp(residuals_norm(j) - max_residual); 
+
+                    // Calculate the corresponding Rosenbluth weight for the
+                    // i-th atom
                     T log_rosenbluth_i = max_residual + log(prob_total); 
-                    log_rosenbluth_total += log_rosenbluth_i; 
+                    log_rosenbluth_total += log_rosenbluth_i;
+
+                    // Keep track of the generated positions 
+                    candidate_positions(Eigen::all, Eigen::seqN(3 * i, 3)) = candidates_i;  
                 }
             }
 
-            return log_rosenbluth_total; 
+            return std::make_pair(candidate_positions, log_rosenbluth_total);  
         }
 
         /** -------------------------------------------------------------- // 
@@ -1846,8 +1840,8 @@ class PolymerMeltCBMCSampler
                 auto forward_result = this->generateForwardMultimerReptationMove(
                     polymer_idx, rept_dir, segment_length, n_candidates
                 );
-                Matrix<T, Dynamic, 3> forward_move = forward_result.first;
-                T log_forward_rosenbluth = forward_result.second;
+                Matrix<T, Dynamic, 3> forward_move = std::get<1>(forward_result);
+                T log_forward_rosenbluth = std::get<2>(forward_result);
 
                 // Generate a copy of the current configuration and apply 
                 // the forward move
@@ -1902,10 +1896,11 @@ class PolymerMeltCBMCSampler
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(
                     polymer_idx, 0, this->lengths[polymer_idx]
                 );  
-                T log_reverse_rosenbluth = this->getBackwardMultimerReptationRosenbluthWeight(
+                auto reverse_result = this->getBackwardMultimerReptationRosenbluthWeight(
                     polymer_idx, reverse_dir, segment_length, n_candidates,
                     forward_coords
                 ); 
+                T log_reverse_rosenbluth = reverse_result.second; 
 
                 // Calculate the Metropolis acceptance probability
                 T log_prob_accept = min(
@@ -1961,8 +1956,8 @@ class PolymerMeltCBMCSampler
                 auto forward_result = this->generateForwardTerminalSegmentMove(
                     polymer_idx, segment_length, terminal_end, n_candidates
                 );
-                Matrix<T, Dynamic, 3> forward_move = forward_result.first; 
-                T log_forward_rosenbluth = forward_result.second;
+                Matrix<T, Dynamic, 3> forward_move = std::get<1>(forward_result);  
+                T log_forward_rosenbluth = std::get<2>(forward_result);
 
                 // Generate a copy of the current configuration and apply 
                 // the forward move
@@ -2011,10 +2006,11 @@ class PolymerMeltCBMCSampler
                 Matrix<T, Dynamic, 3> forward_coords = forward_config.getSegment(
                     polymer_idx, 0, this->lengths[polymer_idx]
                 );  
-                T log_reverse_rosenbluth = this->getBackwardTerminalSegmentMoveRosenbluthWeight(
+                auto reverse_result = this->getBackwardTerminalSegmentMoveRosenbluthWeight(
                     polymer_idx, segment_length, terminal_end, n_candidates,
                     forward_coords
                 );
+                T log_reverse_rosenbluth = reverse_result.second; 
 
                 // Calculate the Metropolis acceptance probability
                 T log_prob_accept = min(
@@ -2195,7 +2191,7 @@ class PolymerMeltCBMCSampler
             while (collect_idx < n_collect)
             {
                 // Sample a move type 
-                T r = uniform_dist(rng);
+                T r = this->uniform_dist(this->rng);
                 CBMCMoveType move_type;         
                 if (r < move_probs(0))
                     move_type = CBMCMoveType::REPTATION;
@@ -2205,7 +2201,7 @@ class PolymerMeltCBMCSampler
                     move_type = CBMCMoveType::TERMINAL_SEGMENT;
 
                 // Sample a polymer in the melt 
-                const int polymer_idx = polymer_dist(rng);
+                const int polymer_idx = polymer_dist(this->rng);
 
                 // Generate and accept/reject a corresponding move 
                 int segment_length = 0;
