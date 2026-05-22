@@ -1665,7 +1665,7 @@ PolymerConfiguration<T> generateKMer(const int K,
             angle = sample_angle(rng);
             dihedral = sample_dihedral(rng); 
             new_atom = generateNextAtomDihedral<T>(
-                r1, r2, r3, length, angle, dihedral, rng, uniform_dist 
+                r1, r2, r3, length, angle, dihedral
             );
             found_collision = collision(config, new_atom); 
             n_tries++; 
