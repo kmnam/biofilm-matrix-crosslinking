@@ -419,9 +419,7 @@ Matrix<T, 3, 1> generateNextAtomDihedral(const Ref<const Matrix<T, 3, 1> >& r1,
                                          const Ref<const Matrix<T, 3, 1> >& r3, 
                                          const T length,
                                          const T angle,
-                                         const T dihedral,  
-                                         boost::random::mt19937& rng,
-                                         boost::random::uniform_01<>& uniform_dist)
+                                         const T dihedral) 
 {
     // If the bond angle at atom 3 is \pi, then the position of atom 4 is fixed
     // and the dihedral angle should be ignored
