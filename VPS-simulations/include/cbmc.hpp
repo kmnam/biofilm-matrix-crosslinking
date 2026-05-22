@@ -437,8 +437,7 @@ class PolymerCBMCSampler
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
                         this->r.row(2), this->r.row(1), this->r.row(0),
-                        lengths(i), angles(i), dihedrals(i), this->rng,
-                        this->uniform_dist
+                        lengths(i), angles(i), dihedrals(i)
                     );
 
                     // Get the residual energy 
@@ -454,8 +453,7 @@ class PolymerCBMCSampler
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
                         this->r.row(n - 3), this->r.row(n - 2), this->r.row(n - 1),
-                        lengths(i), angles(i), dihedrals(i), this->rng,
-                        this->uniform_dist
+                        lengths(i), angles(i), dihedrals(i)
                     );
 
                     // Get the residual energy 
@@ -554,8 +552,7 @@ class PolymerCBMCSampler
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
                         coords.row(2), coords.row(1), coords.row(0),
-                        lengths(i), angles(i), dihedrals(i), this->rng,
-                        this->uniform_dist
+                        lengths(i), angles(i), dihedrals(i)
                     );
 
                     // Get the residual energy 
@@ -585,8 +582,7 @@ class PolymerCBMCSampler
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
                         coords.row(n - 3), coords.row(n - 2), coords.row(n - 1),
-                        lengths(i), angles(i), dihedrals(i), this->rng,
-                        this->uniform_dist
+                        lengths(i), angles(i), dihedrals(i)
                     );
 
                     // Get the residual energy 
@@ -713,7 +709,7 @@ class PolymerCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -794,7 +790,7 @@ class PolymerCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -981,7 +977,7 @@ class PolymerCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1062,7 +1058,7 @@ class PolymerCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1210,7 +1206,7 @@ class PolymerCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1296,7 +1292,7 @@ class PolymerCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1478,7 +1474,7 @@ class PolymerCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -1561,7 +1557,7 @@ class PolymerCBMCSampler
                         }
                         candidates_i.row(j) = generateNextAtomDihedral<T>(
                             r1, r2, r3, lengths(i, j), angles(i, j), 
-                            dihedrals(i, j), this->rng, this->uniform_dist
+                            dihedrals(i, j)
                         );
                     }
 
@@ -2018,7 +2014,7 @@ class PolymerCBMCSampler
             while (collect_idx < n_collect)
             {
                 // Sample a move type 
-                T r = uniform_dist(rng);
+                T r = this->uniform_dist(this->rng);
                 CBMCMoveType move_type;         
                 if (r < move_probs(0))
                     move_type = CBMCMoveType::REPTATION;
