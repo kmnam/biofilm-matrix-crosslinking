@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/10/2026
+ *     5/21/2026
  */
 
 #include <iostream>
@@ -13,7 +13,6 @@
 #include "../include/polymerConfiguration.hpp"
 #include "../include/polymerEnsemble.hpp"
 #include "../include/polymerMelt.hpp"
-#include "../include/cbmc.hpp"
 
 int main(int argc, char** argv)
 {
@@ -25,17 +24,22 @@ int main(int argc, char** argv)
     // Parse input json file 
     boost::json::object json_data = parseConfigFile(json_filename).as_object();
 
-    // Define potential and sampling parameters 
+    // Define potential and sampling parameters ...  
     std::unordered_map<std::string, double> lj_params, 
                                             fene_params, 
                                             angle_params, 
                                             dihedral_params;
     const double kT = 1.380649e-2 * 300;    // Use "nano" units 
-    const int length = json_data["length"].as_int64(); 
+    const int length = json_data["length"].as_int64();
+    const int n_chains = json_data["n_chains"].as_int64(); 
+
+    // Parse Lennard-Jones and FENE potential parameters 
     lj_params["eps"] = json_data["lj_eps"].as_double() * kT; 
     lj_params["sigma"] = json_data["lj_sigma"].as_double(); 
     fene_params["K"] = json_data["fene_K"].as_double() * kT;
     fene_params["R0"] = json_data["fene_R0"].as_double();
+
+    // Parse angle potential parameters 
     AngleMode angle_mode = (
         json_data["angle_mode"].as_int64() == 0 ? AngleMode::COSINE : AngleMode::GAUSSIAN
     ); 
@@ -58,11 +62,26 @@ int main(int argc, char** argv)
         angle_params["theta2"] = (
             json_data["gaussian_theta2"].as_double() * boost::math::constants::pi<double>() / 180
         );
-    } 
+    }
+
+    // Parse dihedral potential parameters  
     dihedral_params["K"] = json_data["dihedral_K"].as_double() * kT;
     dihedral_params["d"] = 1; 
     dihedral_params["n"] = 1;
-    const int n_chains = json_data["n_chains"].as_int64(); 
+    try
+    {
+        dihedral_params["delta"] = (
+            json_data["dihedral_delta"].as_double() * boost::math::constants::pi<double>() / 180
+        ); 
+    }
+    catch (boost::wrapexcept<boost::system::system_error>& e) { }
+
+    // Parse domain limits (xmin = -xmax, ymin = -ymax, zmin = -zmax)
+    const double xmax = json_data["domain_xmax"].as_double(); 
+    const double ymax = json_data["domain_ymax"].as_double(); 
+    const double zmax = json_data["domain_zmax"].as_double();
+
+    // Parse additional initialization parameters
     const double intra_collision_threshold = json_data["init_intra_collision_threshold"].as_double();
     const double inter_collision_threshold = json_data["init_inter_collision_threshold"].as_double(); 
     const int max_tries_per_atom = json_data["init_max_tries_per_atom"].as_int64();
@@ -71,26 +90,6 @@ int main(int argc, char** argv)
     const int max_n_backtracks = json_data["init_max_n_backtracks"].as_int64();
     const int max_n_restarts = json_data["init_max_n_restarts"].as_int64(); 
     const int n_bins = json_data["n_bins_fene_cdf"].as_int64();
-    const double xmax = json_data["domain_xmax"].as_double(); 
-    const double ymax = json_data["domain_ymax"].as_double(); 
-    const double zmax = json_data["domain_zmax"].as_double();
-    const int n_candidates = json_data["n_candidates"].as_int64(); 
-    const int n_target = json_data["n_target_configs"].as_int64(); 
-    const int n_burnin = json_data["n_burnin"].as_int64(); 
-    const int mod_collect = json_data["collect_config_every_iter"].as_int64();
-    const int mod_write = json_data["write_configs_every_iter"].as_int64();  
-    const int max_iter = n_burnin + (n_target - 1) * mod_collect;
-    const int max_stall = json_data["max_stall_iter"].as_int64();
-
-    // Fix move probabilities 
-    Matrix<double, 3, 1> move_probs; 
-    move_probs << json_data["reptation_prob"].as_double(),
-                  json_data["multimer_reptation_prob"].as_double(), 
-                  json_data["terminal_segment_move_prob"].as_double(); 
-
-    // Parse multimer reptation length and terminal segment length
-    const int multimer_reptation_length = json_data["multimer_reptation_length"].as_int64(); 
-    const int terminal_segment_length = json_data["terminal_segment_length"].as_int64(); 
 
     // Initialize random number generator 
     boost::random::mt19937 rng(seed); 
@@ -114,7 +113,7 @@ int main(int argc, char** argv)
         bond_length_cdf, Units::NANO, 300, true
     );
 
-    // Parse additional input parameters
+    // Parse additional input parameters to pass into LAMMPS
     const int ncores = std::stoi(argv[4]);  
     const double mass = json_data["monomer_mass"].as_double();
     const double dt = json_data["dt"].as_double(); 
@@ -159,15 +158,30 @@ int main(int argc, char** argv)
     outfile.close();
 
     // Run LAMMPS
-    std::string lammps_script_filename; 
-    if (angle_mode == AngleMode::GAUSSIAN)
-        lammps_script_filename = "bimodal_angles_gaussian_soft.lammps";
-    else if (angle_params["cosine_K"] == 0)
+    //
+    // There are three possible modes:
+    // 1) No angle or dihedral potential (random coils with excluded volume
+    //    interactions 
+    // 2) Gaussian angle potential and harmonic (or trivial) dihedral potential
+    // 3) Gaussian angle potential and Fourier dihedral potential 
+    std::string lammps_script_filename;
+    if (angle_mode == AngleMode::COSINE && angle_params["K"] == 0)
+    {
         lammps_script_filename = "random_coil_soft.lammps";
+    } 
+    else if (angle_mode == AngleMode::GAUSSIAN)
+    {
+        if (dihedral_params.find("delta") == dihedral_params.end())
+            lammps_script_filename = "bimodal_angles_gaussian_soft.lammps";
+        else 
+            lammps_script_filename = "bimodal_angles_gaussian_fourier_soft.lammps"; 
+    }
     else
+    {
         throw std::runtime_error(
-            "Semiflexible polymer with cosine potential not implemented"
-        ); 
+            "Invalid combination of angle and dihedral potentials"
+        );
+    } 
     ss.str(std::string()); 
     ss.clear();
     ss << "mpirun -np " << ncores << " lmp -i " << lammps_script_filename
