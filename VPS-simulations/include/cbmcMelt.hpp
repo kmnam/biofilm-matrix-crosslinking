@@ -162,7 +162,9 @@ class PolymerMeltCBMCSampler
             {
                 this->sample_angle = [this]() -> T
                 {
-                    return boost::math::constants::pi<T>() * this->uniform_dist(this->rng);
+                    // The density should be proportional to sin(\theta)
+                    T u = -1 + 2 * this->uniform_dist(this->rng);
+                    return acosSafe<T>(u);  
                 };
             }
             else if (this->angle_mode == AngleMode::COSINE)
@@ -286,7 +288,9 @@ class PolymerMeltCBMCSampler
             {
                 this->sample_angle = [this]() -> T
                 {
-                    return boost::math::constants::pi<T>() * this->uniform_dist(this->rng);
+                    // The density should be proportional to sin(\theta)
+                    T u = -1 + 2 * this->uniform_dist(this->rng);
+                    return acosSafe<T>(u);  
                 };
             }
             else if (this->angle_mode == AngleMode::COSINE)

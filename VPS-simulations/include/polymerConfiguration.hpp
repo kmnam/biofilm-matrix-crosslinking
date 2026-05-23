@@ -1532,7 +1532,9 @@ PolymerConfiguration<T> generateKMer(const int K,
     {
         sample_angle = [&uniform_dist](boost::random::mt19937& rng_) -> T
         {
-            return boost::math::constants::pi<T>() * uniform_dist(rng_); 
+            // The density should be proportional to sin(\theta)
+            T u = -1 + 2 * uniform_dist(rng_); 
+            return acosSafe<T>(u); 
         };
     }
     else if (angle_mode == AngleMode::COSINE)    // Non-trivial cosine potential
