@@ -1506,7 +1506,7 @@ class PolymerMeltConfiguration
                     outfile << "Dihedral Coeffs\n\n"
                             << "1 1 " << dihedral_params["K"] << " "
                             << dihedral_n << " " 
-                            << dihedral_params["delta"] << "\n\n";
+                            << 180 * dihedral_params["delta"] / boost::math::constants::pi<T>() << "\n\n";
                 }
             }
 
