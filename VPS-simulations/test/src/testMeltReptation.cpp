@@ -2730,9 +2730,9 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
 
     // Check that the ratio of Rosenbluth factors is equal to the acceptance 
     // probability (if it is <= 1)
-    std::cout << "- Forward Rosenbluth (no angle potential, no dihedral potential): "
+    std::cout << "- Forward Rosenbluth (cosine angle potential, no dihedral potential): "
               << forward_rosenbluth << std::endl; 
-    std::cout << "- Reverse Rosenbluth (no angle potential, no dihedral potential): "
+    std::cout << "- Reverse Rosenbluth (cosine angle potential, no dihedral potential): "
               << reverse_rosenbluth << std::endl; 
     std::cout << "- Acceptance probability: " << prob_accept << std::endl;  
     REQUIRE_THAT(
@@ -3115,9 +3115,9 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
 
     // Check that the ratio of Rosenbluth factors is equal to the acceptance 
     // probability (if it is <= 1)
-    std::cout << "- Forward Rosenbluth (no angle potential, no dihedral potential): "
+    std::cout << "- Forward Rosenbluth (cosine angle potential, harmonic dihedral potential): "
               << forward_rosenbluth << std::endl; 
-    std::cout << "- Reverse Rosenbluth (no angle potential, no dihedral potential): "
+    std::cout << "- Reverse Rosenbluth (cosine angle potential, harmonic dihedral potential): "
               << reverse_rosenbluth << std::endl; 
     std::cout << "- Acceptance probability: " << prob_accept << std::endl;  
     REQUIRE_THAT(
@@ -3500,9 +3500,9 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
 
     // Check that the ratio of Rosenbluth factors is equal to the acceptance 
     // probability (if it is <= 1)
-    std::cout << "- Forward Rosenbluth (no angle potential, no dihedral potential): "
+    std::cout << "- Forward Rosenbluth (Gaussian angle potential, harmonic dihedral potential): "
               << forward_rosenbluth << std::endl; 
-    std::cout << "- Reverse Rosenbluth (no angle potential, no dihedral potential): "
+    std::cout << "- Reverse Rosenbluth (Gaussian angle potential, harmonic dihedral potential): "
               << reverse_rosenbluth << std::endl; 
     std::cout << "- Acceptance probability: " << prob_accept << std::endl;  
     REQUIRE_THAT(

@@ -1412,6 +1412,7 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config2.reptateTowardsHead(forward_moves.row(i)); 
         else 
             config2.reptateTowardsTail(forward_moves.row(i));
+        Matrix<double, Dynamic, 3> coords_reptated = config2.getSegment(0, length); 
 
         // Calculate the non-bonded energy difference between the two 
         // configurations  
@@ -1420,8 +1421,54 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config.getNonbondedEnergy(lj_params, neighbor_threshold, true)
         );
 
+        // Calculate the non-bonded interaction energy between the new atom
+        // and every atom that survives the reptation move
+        //
+        // If we are reptating towards the head, this is the interaction energy
+        // between the new atom and atoms 2, ..., 9 in the reptated configuration
+        //
+        // If we are reptating towards the tail, this is the interaction energy
+        // between the new atom and atoms 0, ..., 7 in the reptated configuration 
+        double energy_new = 0; 
+        int min_idx = (direction == ReptationDirection::HEAD ? 2 : 0); 
+        int max_idx = (direction == ReptationDirection::HEAD ? 9 : 7); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (forward_moves.row(i) - coords_reptated.row(j)).norm(); 
+            energy_new += lj<double>(r, lj_params["eps"], lj_params["sigma"], true);  
+        }
+
+        // Calculate the non-bonded interaction energy between the atom that
+        // dies from the reptation move and every atom that survives the 
+        // reptation move
+        //
+        // If we are reptating towards the head:
+        // - the old atom is atom 9, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   0, ..., 7 in the original configuration
+        //
+        // If we are reptating towards the tail:
+        // - the old atom is atom 0, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   2, ..., 9 in the original configuration
+        double energy_old = 0;
+        Matrix<double, 3, 1> old_atom = (
+            direction == ReptationDirection::HEAD ? coords.row(length - 1) : coords.row(0)
+        ); 
+        min_idx = (direction == ReptationDirection::HEAD ? 0 : 2); 
+        max_idx = (direction == ReptationDirection::HEAD ? 7 : 9); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (old_atom.transpose() - coords.row(j)).norm(); 
+            energy_old += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+
+        // The energy difference should be exactly the difference between these
+        // contributions 
+        REQUIRE_THAT(energy_new - energy_old, Catch::Matchers::WithinRel(diff, tol)); 
+
         // Calculate the corresponding Boltzmann weight  
-        weights_forward(i) = exp(-diff / kT);
+        weights_forward(i) = exp(-energy_new / kT);
     }
 
     // For each reverse move ... 
@@ -1434,6 +1481,8 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config2.reptateTowardsTail(reverse_moves.row(i)); 
         else 
             config2.reptateTowardsHead(reverse_moves.row(i));
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        Matrix<double, Dynamic, 3> coords_reverse_reptated = config2.getSegment(0, length); 
 
         // Calculate the non-bonded energy difference between the two 
         // configurations  
@@ -1442,8 +1491,57 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config_reptated.getNonbondedEnergy(lj_params, neighbor_threshold, true)
         );
 
+        // Calculate the non-bonded interaction energy between the new atom
+        // and every atom that survives the reptation move
+        //
+        // If we are (reverse) reptating towards the head, this is the
+        // interaction energy between the new atom and atoms 2, ..., 9 in the
+        // twice-reptated configuration
+        //
+        // If we are (reverse) reptating towards the tail, this is the
+        // interaction energy between the new atom and atoms 0, ..., 7 in the
+        // twice-reptated configuration 
+        double energy_new = 0; 
+        int min_idx = (reverse_direction == ReptationDirection::HEAD ? 2 : 0); 
+        int max_idx = (reverse_direction == ReptationDirection::HEAD ? 9 : 7); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (reverse_moves.row(i) - coords_reverse_reptated.row(j)).norm(); 
+            energy_new += lj<double>(r, lj_params["eps"], lj_params["sigma"], true);  
+        }
+
+        // Calculate the non-bonded interaction energy between the atom that
+        // dies from the reptation move and every atom that survives the 
+        // reptation move
+        //
+        // If we are (reverse) reptating towards the head:
+        // - the old atom is atom 9 in the once-reptated configuration, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   0, ..., 7 in the once-reptated configuration
+        //
+        // If we are (reverse) reptating towards the tail:
+        // - the old atom is atom 0 in the once-reptated configuration, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   2, ..., 9 in the once-reptated configuration
+        double energy_old = 0;
+        Matrix<double, 3, 1> old_atom = (
+            reverse_direction == ReptationDirection::HEAD ?
+            coords_reptated.row(length - 1) : coords_reptated.row(0)
+        ); 
+        min_idx = (reverse_direction == ReptationDirection::HEAD ? 0 : 2); 
+        max_idx = (reverse_direction == ReptationDirection::HEAD ? 7 : 9); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (old_atom.transpose() - coords_reptated.row(j)).norm(); 
+            energy_old += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        
+        // The energy difference should be exactly the difference between these
+        // contributions 
+        REQUIRE_THAT(energy_new - energy_old, Catch::Matchers::WithinRel(diff, tol)); 
+
         // Calculate the corresponding Boltzmann weight 
-        weights_reverse(i) = exp(-diff / kT);
+        weights_reverse(i) = exp(-energy_new / kT);
     }
 
     // Calculate the Rosenbluth factors
@@ -1593,6 +1691,7 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config2.reptateTowardsHead(forward_moves.row(i)); 
         else 
             config2.reptateTowardsTail(forward_moves.row(i));
+        Matrix<double, Dynamic, 3> coords_reptated = config2.getSegment(0, length); 
 
         // Calculate the non-bonded energy difference between the two 
         // configurations  
@@ -1601,8 +1700,54 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config.getNonbondedEnergy(lj_params, neighbor_threshold, true)
         );
 
+        // Calculate the non-bonded interaction energy between the new atom
+        // and every atom that survives the reptation move
+        //
+        // If we are reptating towards the head, this is the interaction energy
+        // between the new atom and atoms 2, ..., 9 in the reptated configuration
+        //
+        // If we are reptating towards the tail, this is the interaction energy
+        // between the new atom and atoms 0, ..., 7 in the reptated configuration 
+        double energy_new = 0; 
+        int min_idx = (direction == ReptationDirection::HEAD ? 2 : 0); 
+        int max_idx = (direction == ReptationDirection::HEAD ? 9 : 7); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (forward_moves.row(i) - coords_reptated.row(j)).norm(); 
+            energy_new += lj<double>(r, lj_params["eps"], lj_params["sigma"], true);  
+        }
+
+        // Calculate the non-bonded interaction energy between the atom that
+        // dies from the reptation move and every atom that survives the 
+        // reptation move
+        //
+        // If we are reptating towards the head:
+        // - the old atom is atom 9, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   0, ..., 7 in the original configuration
+        //
+        // If we are reptating towards the tail:
+        // - the old atom is atom 0, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   2, ..., 9 in the original configuration
+        double energy_old = 0;
+        Matrix<double, 3, 1> old_atom = (
+            direction == ReptationDirection::HEAD ? coords.row(length - 1) : coords.row(0)
+        ); 
+        min_idx = (direction == ReptationDirection::HEAD ? 0 : 2); 
+        max_idx = (direction == ReptationDirection::HEAD ? 7 : 9); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (old_atom.transpose() - coords.row(j)).norm(); 
+            energy_old += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+
+        // The energy difference should be exactly the difference between these
+        // contributions 
+        REQUIRE_THAT(energy_new - energy_old, Catch::Matchers::WithinRel(diff, tol)); 
+
         // Calculate the corresponding Boltzmann weight  
-        weights_forward(i) = exp(-diff / kT);
+        weights_forward(i) = exp(-energy_new / kT);
     }
 
     // For each reverse move ... 
@@ -1615,6 +1760,8 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config2.reptateTowardsTail(reverse_moves.row(i)); 
         else 
             config2.reptateTowardsHead(reverse_moves.row(i));
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        Matrix<double, Dynamic, 3> coords_reverse_reptated = config2.getSegment(0, length); 
 
         // Calculate the non-bonded energy difference between the two 
         // configurations  
@@ -1623,8 +1770,57 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config_reptated.getNonbondedEnergy(lj_params, neighbor_threshold, true)
         );
 
+        // Calculate the non-bonded interaction energy between the new atom
+        // and every atom that survives the reptation move
+        //
+        // If we are (reverse) reptating towards the head, this is the
+        // interaction energy between the new atom and atoms 2, ..., 9 in the
+        // twice-reptated configuration
+        //
+        // If we are (reverse) reptating towards the tail, this is the
+        // interaction energy between the new atom and atoms 0, ..., 7 in the
+        // twice-reptated configuration 
+        double energy_new = 0; 
+        int min_idx = (reverse_direction == ReptationDirection::HEAD ? 2 : 0); 
+        int max_idx = (reverse_direction == ReptationDirection::HEAD ? 9 : 7); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (reverse_moves.row(i) - coords_reverse_reptated.row(j)).norm(); 
+            energy_new += lj<double>(r, lj_params["eps"], lj_params["sigma"], true);  
+        }
+
+        // Calculate the non-bonded interaction energy between the atom that
+        // dies from the reptation move and every atom that survives the 
+        // reptation move
+        //
+        // If we are (reverse) reptating towards the head:
+        // - the old atom is atom 9 in the once-reptated configuration, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   0, ..., 7 in the once-reptated configuration
+        //
+        // If we are (reverse) reptating towards the tail:
+        // - the old atom is atom 0 in the once-reptated configuration, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   2, ..., 9 in the once-reptated configuration
+        double energy_old = 0;
+        Matrix<double, 3, 1> old_atom = (
+            reverse_direction == ReptationDirection::HEAD ?
+            coords_reptated.row(length - 1) : coords_reptated.row(0)
+        ); 
+        min_idx = (reverse_direction == ReptationDirection::HEAD ? 0 : 2); 
+        max_idx = (reverse_direction == ReptationDirection::HEAD ? 7 : 9); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (old_atom.transpose() - coords_reptated.row(j)).norm(); 
+            energy_old += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        
+        // The energy difference should be exactly the difference between these
+        // contributions 
+        REQUIRE_THAT(energy_new - energy_old, Catch::Matchers::WithinRel(diff, tol)); 
+
         // Calculate the corresponding Boltzmann weight 
-        weights_reverse(i) = exp(-diff / kT);
+        weights_reverse(i) = exp(-energy_new / kT);
     }
 
     // Calculate the Rosenbluth factors
@@ -1769,33 +1965,82 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
     for (int i = 0; i < n_candidates; ++i)
     {
         // Generate the reptated configuration from the original configuration 
-        PolymerConfiguration<double> config2(config); 
+        PolymerConfiguration<double> config2(config);
         if (direction == ReptationDirection::HEAD)
             config2.reptateTowardsHead(forward_moves.row(i)); 
         else 
-            config2.reptateTowardsTail(forward_moves.row(i)); 
-        
+            config2.reptateTowardsTail(forward_moves.row(i));
+        Matrix<double, Dynamic, 3> coords_reptated = config2.getSegment(0, length); 
+
         // Calculate the non-bonded energy difference between the two 
-        // configurations 
+        // configurations  
         double diff = (
             config2.getNonbondedEnergy(lj_params, neighbor_threshold, true) - 
             config.getNonbondedEnergy(lj_params, neighbor_threshold, true)
-        ); 
+        );
 
-        // Calculate the corresponding Boltzmann weight 
-        weights_forward(i) = exp(-diff / kT);
+        // Calculate the non-bonded interaction energy between the new atom
+        // and every atom that survives the reptation move
+        //
+        // If we are reptating towards the head, this is the interaction energy
+        // between the new atom and atoms 2, ..., 9 in the reptated configuration
+        //
+        // If we are reptating towards the tail, this is the interaction energy
+        // between the new atom and atoms 0, ..., 7 in the reptated configuration 
+        double energy_new = 0; 
+        int min_idx = (direction == ReptationDirection::HEAD ? 2 : 0); 
+        int max_idx = (direction == ReptationDirection::HEAD ? 9 : 7); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (forward_moves.row(i) - coords_reptated.row(j)).norm(); 
+            energy_new += lj<double>(r, lj_params["eps"], lj_params["sigma"], true);  
+        }
+
+        // Calculate the non-bonded interaction energy between the atom that
+        // dies from the reptation move and every atom that survives the 
+        // reptation move
+        //
+        // If we are reptating towards the head:
+        // - the old atom is atom 9, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   0, ..., 7 in the original configuration
+        //
+        // If we are reptating towards the tail:
+        // - the old atom is atom 0, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   2, ..., 9 in the original configuration
+        double energy_old = 0;
+        Matrix<double, 3, 1> old_atom = (
+            direction == ReptationDirection::HEAD ? coords.row(length - 1) : coords.row(0)
+        ); 
+        min_idx = (direction == ReptationDirection::HEAD ? 0 : 2); 
+        max_idx = (direction == ReptationDirection::HEAD ? 7 : 9); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (old_atom.transpose() - coords.row(j)).norm(); 
+            energy_old += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+
+        // The energy difference should be exactly the difference between these
+        // contributions 
+        REQUIRE_THAT(energy_new - energy_old, Catch::Matchers::WithinRel(diff, tol)); 
+
+        // Calculate the corresponding Boltzmann weight  
+        weights_forward(i) = exp(-energy_new / kT);
     }
 
     // For each reverse move ... 
     for (int i = 0; i < n_candidates; ++i)
     {
-        // Generate a new reptated configuration from the *reptated* 
-        // configuration, in the reverse direction  
+        // Generate a new reptated configuration from the *reptated*
+        // configuration, in the reverse direction 
         PolymerConfiguration<double> config2(config_reptated); 
         if (direction == ReptationDirection::HEAD)
             config2.reptateTowardsTail(reverse_moves.row(i)); 
         else 
             config2.reptateTowardsHead(reverse_moves.row(i));
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        Matrix<double, Dynamic, 3> coords_reverse_reptated = config2.getSegment(0, length); 
 
         // Calculate the non-bonded energy difference between the two 
         // configurations  
@@ -1804,8 +2049,57 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config_reptated.getNonbondedEnergy(lj_params, neighbor_threshold, true)
         );
 
-        // Calculate the corresponding Boltzmann weight
-        weights_reverse(i) = exp(-diff / kT);
+        // Calculate the non-bonded interaction energy between the new atom
+        // and every atom that survives the reptation move
+        //
+        // If we are (reverse) reptating towards the head, this is the
+        // interaction energy between the new atom and atoms 2, ..., 9 in the
+        // twice-reptated configuration
+        //
+        // If we are (reverse) reptating towards the tail, this is the
+        // interaction energy between the new atom and atoms 0, ..., 7 in the
+        // twice-reptated configuration 
+        double energy_new = 0; 
+        int min_idx = (reverse_direction == ReptationDirection::HEAD ? 2 : 0); 
+        int max_idx = (reverse_direction == ReptationDirection::HEAD ? 9 : 7); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (reverse_moves.row(i) - coords_reverse_reptated.row(j)).norm(); 
+            energy_new += lj<double>(r, lj_params["eps"], lj_params["sigma"], true);  
+        }
+
+        // Calculate the non-bonded interaction energy between the atom that
+        // dies from the reptation move and every atom that survives the 
+        // reptation move
+        //
+        // If we are (reverse) reptating towards the head:
+        // - the old atom is atom 9 in the once-reptated configuration, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   0, ..., 7 in the once-reptated configuration
+        //
+        // If we are (reverse) reptating towards the tail:
+        // - the old atom is atom 0 in the once-reptated configuration, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   2, ..., 9 in the once-reptated configuration
+        double energy_old = 0;
+        Matrix<double, 3, 1> old_atom = (
+            reverse_direction == ReptationDirection::HEAD ?
+            coords_reptated.row(length - 1) : coords_reptated.row(0)
+        ); 
+        min_idx = (reverse_direction == ReptationDirection::HEAD ? 0 : 2); 
+        max_idx = (reverse_direction == ReptationDirection::HEAD ? 7 : 9); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (old_atom.transpose() - coords_reptated.row(j)).norm(); 
+            energy_old += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        
+        // The energy difference should be exactly the difference between these
+        // contributions 
+        REQUIRE_THAT(energy_new - energy_old, Catch::Matchers::WithinRel(diff, tol)); 
+
+        // Calculate the corresponding Boltzmann weight 
+        weights_reverse(i) = exp(-energy_new / kT);
     }
 
     // Calculate the Rosenbluth factors 
@@ -1955,16 +2249,63 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config2.reptateTowardsHead(forward_moves.row(i)); 
         else 
             config2.reptateTowardsTail(forward_moves.row(i));
+        Matrix<double, Dynamic, 3> coords_reptated = config2.getSegment(0, length); 
 
         // Calculate the non-bonded energy difference between the two 
         // configurations  
         double diff = (
             config2.getNonbondedEnergy(lj_params, neighbor_threshold, true) - 
             config.getNonbondedEnergy(lj_params, neighbor_threshold, true)
-        ); 
+        );
 
-        // Calculate the corresponding Boltzmann weight 
-        weights_forward(i) = exp(-diff / kT);
+        // Calculate the non-bonded interaction energy between the new atom
+        // and every atom that survives the reptation move
+        //
+        // If we are reptating towards the head, this is the interaction energy
+        // between the new atom and atoms 2, ..., 9 in the reptated configuration
+        //
+        // If we are reptating towards the tail, this is the interaction energy
+        // between the new atom and atoms 0, ..., 7 in the reptated configuration 
+        double energy_new = 0; 
+        int min_idx = (direction == ReptationDirection::HEAD ? 2 : 0); 
+        int max_idx = (direction == ReptationDirection::HEAD ? 9 : 7); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (forward_moves.row(i) - coords_reptated.row(j)).norm(); 
+            energy_new += lj<double>(r, lj_params["eps"], lj_params["sigma"], true);  
+        }
+
+        // Calculate the non-bonded interaction energy between the atom that
+        // dies from the reptation move and every atom that survives the 
+        // reptation move
+        //
+        // If we are reptating towards the head:
+        // - the old atom is atom 9, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   0, ..., 7 in the original configuration
+        //
+        // If we are reptating towards the tail:
+        // - the old atom is atom 0, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   2, ..., 9 in the original configuration
+        double energy_old = 0;
+        Matrix<double, 3, 1> old_atom = (
+            direction == ReptationDirection::HEAD ? coords.row(length - 1) : coords.row(0)
+        ); 
+        min_idx = (direction == ReptationDirection::HEAD ? 0 : 2); 
+        max_idx = (direction == ReptationDirection::HEAD ? 7 : 9); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (old_atom.transpose() - coords.row(j)).norm(); 
+            energy_old += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+
+        // The energy difference should be exactly the difference between these
+        // contributions 
+        REQUIRE_THAT(energy_new - energy_old, Catch::Matchers::WithinRel(diff, tol)); 
+
+        // Calculate the corresponding Boltzmann weight  
+        weights_forward(i) = exp(-energy_new / kT);
     }
 
     // For each reverse move ... 
@@ -1977,6 +2318,8 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config2.reptateTowardsTail(reverse_moves.row(i)); 
         else 
             config2.reptateTowardsHead(reverse_moves.row(i));
+        Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length); 
+        Matrix<double, Dynamic, 3> coords_reverse_reptated = config2.getSegment(0, length); 
 
         // Calculate the non-bonded energy difference between the two 
         // configurations  
@@ -1985,8 +2328,57 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
             config_reptated.getNonbondedEnergy(lj_params, neighbor_threshold, true)
         );
 
-        // Calculate the corresponding Boltzmann weight  
-        weights_reverse(i) = exp(-diff / kT);
+        // Calculate the non-bonded interaction energy between the new atom
+        // and every atom that survives the reptation move
+        //
+        // If we are (reverse) reptating towards the head, this is the
+        // interaction energy between the new atom and atoms 2, ..., 9 in the
+        // twice-reptated configuration
+        //
+        // If we are (reverse) reptating towards the tail, this is the
+        // interaction energy between the new atom and atoms 0, ..., 7 in the
+        // twice-reptated configuration 
+        double energy_new = 0; 
+        int min_idx = (reverse_direction == ReptationDirection::HEAD ? 2 : 0); 
+        int max_idx = (reverse_direction == ReptationDirection::HEAD ? 9 : 7); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (reverse_moves.row(i) - coords_reverse_reptated.row(j)).norm(); 
+            energy_new += lj<double>(r, lj_params["eps"], lj_params["sigma"], true);  
+        }
+
+        // Calculate the non-bonded interaction energy between the atom that
+        // dies from the reptation move and every atom that survives the 
+        // reptation move
+        //
+        // If we are (reverse) reptating towards the head:
+        // - the old atom is atom 9 in the once-reptated configuration, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   0, ..., 7 in the once-reptated configuration
+        //
+        // If we are (reverse) reptating towards the tail:
+        // - the old atom is atom 0 in the once-reptated configuration, and 
+        // - this is the interaction energy between the old atom and atoms
+        //   2, ..., 9 in the once-reptated configuration
+        double energy_old = 0;
+        Matrix<double, 3, 1> old_atom = (
+            reverse_direction == ReptationDirection::HEAD ?
+            coords_reptated.row(length - 1) : coords_reptated.row(0)
+        ); 
+        min_idx = (reverse_direction == ReptationDirection::HEAD ? 0 : 2); 
+        max_idx = (reverse_direction == ReptationDirection::HEAD ? 7 : 9); 
+        for (int j = min_idx; j <= max_idx; ++j)
+        {
+            double r = (old_atom.transpose() - coords_reptated.row(j)).norm(); 
+            energy_old += lj<double>(r, lj_params["eps"], lj_params["sigma"], true); 
+        }
+        
+        // The energy difference should be exactly the difference between these
+        // contributions 
+        REQUIRE_THAT(energy_new - energy_old, Catch::Matchers::WithinRel(diff, tol)); 
+
+        // Calculate the corresponding Boltzmann weight 
+        weights_reverse(i) = exp(-energy_new / kT);
     }
 
     // Calculate the Rosenbluth factors 
