@@ -467,8 +467,7 @@ class PolymerMeltCBMCSampler
                 for (int i = 0; i < n_candidates; ++i)
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
-                        r1, r2, r3, bond_lengths(i), bond_angles(i),
-                        dihedrals(i), this->rng, this->uniform_dist
+                        r1, r2, r3, bond_lengths(i), bond_angles(i), dihedrals(i)
                     );
 
                     // Get the residual energy 
@@ -487,8 +486,7 @@ class PolymerMeltCBMCSampler
                 for (int i = 0; i < n_candidates; ++i)
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
-                        r1, r2, r3, bond_lengths(i), bond_angles(i),
-                        dihedrals(i), this->rng, this->uniform_dist
+                        r1, r2, r3, bond_lengths(i), bond_angles(i), dihedrals(i)
                     );
 
                     // Get the residual energy 
@@ -602,8 +600,7 @@ class PolymerMeltCBMCSampler
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
                         coords.row(2), coords.row(1), coords.row(0),
-                        bond_lengths(i), bond_angles(i), dihedrals(i),
-                        this->rng, this->uniform_dist
+                        bond_lengths(i), bond_angles(i), dihedrals(i)
                     );
 
                     // Get the residual energy 
@@ -635,8 +632,7 @@ class PolymerMeltCBMCSampler
                 {
                     moves.row(i) = generateNextAtomDihedral<T>(
                         coords.row(ni - 3), coords.row(ni - 2), coords.row(ni - 1),
-                        bond_lengths(i), bond_angles(i), dihedrals(i),
-                        this->rng, this->uniform_dist
+                        bond_lengths(i), bond_angles(i), dihedrals(i)
                     );
 
                     // Get the residual energy 
