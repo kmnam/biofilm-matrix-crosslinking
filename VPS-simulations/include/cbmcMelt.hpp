@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     5/24/2026
+ *     5/25/2026
  */
 
 #ifndef MULTI_CHAIN_CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -382,6 +382,7 @@ class PolymerMeltCBMCSampler
         /**
          * Return the current polymer configuration.
          *
+         * @param i Polymer index. 
          * @returns Current polymer configuration.  
          */
         PolymerConfiguration<T> getConfig(const int i)
@@ -392,11 +393,28 @@ class PolymerMeltCBMCSampler
         /**
          * Return the current atomic coordinates.
          *
+         * @param i Polymer index.
          * @returns Current atomic coordinates.  
          */
         Matrix<T, Dynamic, 3> getCoords(const int i)
         {
             return this->r[i];
+        }
+
+        /**
+         * Set the atomic coordinates to the given values.
+         *
+         * The length is assumed to be preserved.
+         *
+         * @param i Polymer index.
+         * @param coords Input coordinates.  
+         */
+        void setCoords(const int i, const Ref<const Matrix<T, Dynamic, 3> >& coords)
+        {
+            if (coords.rows() != this->lengths[i])
+                throw std::runtime_error("Invalid input coordinate array");  
+            this->melt_config.replaceSegment(i, coords, 0);
+            this->r[i] = this->melt_config.getSegment(i, 0, this->lengths[i]);  
         }
 
         /** -------------------------------------------------------------- // 
