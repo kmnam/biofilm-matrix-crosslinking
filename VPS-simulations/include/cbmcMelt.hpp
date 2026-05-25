@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     5/21/2026
+ *     5/24/2026
  */
 
 #ifndef MULTI_CHAIN_CONFIGURATIONAL_BIAS_MONTE_CARLO_HPP
@@ -122,7 +122,7 @@ class PolymerMeltCBMCSampler
             {
                 int ni = this->melt_config.getLength(i); 
                 this->lengths.push_back(ni); 
-                this->r.push_back(this->melt_config.getSegment(0, ni));  
+                this->r.push_back(this->melt_config.getSegment(i, 0, ni));  
             } 
             this->lj_params = lj_params; 
             this->neighbor_threshold = neighbor_threshold;
@@ -153,7 +153,7 @@ class PolymerMeltCBMCSampler
                 this->lj_params.at("sigma"), 
                 this->fene_params.at("K"), 
                 this->fene_params.at("R0"), 
-                this->config.kT,
+                this->melt_config.kT,
                 n_bins 
             );
 
@@ -174,7 +174,7 @@ class PolymerMeltCBMCSampler
                     return sampleAngleCosine<T>(
                         this->angle_params.at("K"),
                         this->angle_params.at("theta0"),
-                        this->config.kT,
+                        this->melt_config.kT,
                         this->rng, 
                         this->uniform_dist
                     );
@@ -191,7 +191,7 @@ class PolymerMeltCBMCSampler
                         this->angle_params.at("w2"),
                         this->angle_params.at("theta1"),
                         this->angle_params.at("theta2"),
-                        this->config.kT,
+                        this->melt_config.kT,
                         this->rng,
                         this->uniform_dist
                     );
@@ -215,7 +215,7 @@ class PolymerMeltCBMCSampler
                 {
                     return sampleDihedralHarmonic<T>(
                         this->dihedral_params.at("K"),
-                        this->config.kT, 
+                        this->melt_config.kT, 
                         this->rng, 
                         this->uniform_dist
                     ); 
@@ -228,7 +228,7 @@ class PolymerMeltCBMCSampler
                     return sampleDihedralFourierSingleComponent<T>(
                         this->dihedral_params.at("K"),
                         this->dihedral_params.at("delta"), 
-                        this->config.kT, 
+                        this->melt_config.kT, 
                         this->rng,
                         this->uniform_dist
                     );
@@ -300,7 +300,7 @@ class PolymerMeltCBMCSampler
                     return sampleAngleCosine<T>(
                         this->angle_params.at("K"),
                         this->angle_params.at("theta0"),
-                        this->config.kT,
+                        this->melt_config.kT,
                         this->rng, 
                         this->uniform_dist
                     );
@@ -317,7 +317,7 @@ class PolymerMeltCBMCSampler
                         this->angle_params.at("w2"),
                         this->angle_params.at("theta1"),
                         this->angle_params.at("theta2"),
-                        this->config.kT,
+                        this->melt_config.kT,
                         this->rng,
                         this->uniform_dist
                     );
@@ -341,7 +341,7 @@ class PolymerMeltCBMCSampler
                 {
                     return sampleDihedralHarmonic<T>(
                         this->dihedral_params.at("K"),
-                        this->config.kT, 
+                        this->melt_config.kT, 
                         this->rng, 
                         this->uniform_dist
                     ); 
@@ -354,7 +354,7 @@ class PolymerMeltCBMCSampler
                     return sampleDihedralFourierSingleComponent<T>(
                         this->dihedral_params.at("K"),
                         this->dihedral_params.at("delta"), 
-                        this->config.kT, 
+                        this->melt_config.kT, 
                         this->rng,
                         this->uniform_dist
                     );
