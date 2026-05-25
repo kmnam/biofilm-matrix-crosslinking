@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     5/21/2026
+ *     5/24/2026
  */
 
 #ifndef POLYMER_MELT_HPP
@@ -491,21 +491,6 @@ class PolymerMeltConfiguration
         }
 
         /**
-         * Pop the atom at the head of the i-th polymer. 
-         *
-         * @param i Polymer index.
-         */
-        void popAtomFromHead(const int i)
-        {
-            // Check that i is a valid index
-            if (i < 0 || i >= this->n_chains)
-                throw std::runtime_error("Undefined polymer index");
-
-            this->configs[i].popAtomFromHead();
-            this->lengths[i] -= 1; 
-        }
-
-        /**
          * Pop the given segment from the tail of the i-th polymer. 
          *
          * @param i Polymer index.
@@ -520,23 +505,6 @@ class PolymerMeltConfiguration
             this->configs[i].popSegmentFromTail(atom_idx);
             const int tail_length = this->lengths[i] - atom_idx; 
             this->lengths[i] -= tail_length; 
-        }
-
-        /**
-         * Pop the given segment from the head of the polymer. 
-         *
-         * @param i Polymer index.
-         * @param atom_idx Index of last atom to remove from the polymer. 
-         */
-        void popSegmentFromHead(const int i, const int atom_idx)
-        {
-            // Check that i is a valid index
-            if (i < 0 || i >= this->n_chains)
-                throw std::runtime_error("Undefined polymer index");
-
-            this->configs[i].popSegmentFromHead(atom_idx);
-            const int head_length = atom_idx + 1; 
-            this->lengths[i] -= head_length;  
         }
 
         /**

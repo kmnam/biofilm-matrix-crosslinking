@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     5/20/2026
+ *     5/24/2026
  */
 
 #ifndef POLYMER_CONFIGURATION_HPP
@@ -409,17 +409,6 @@ class PolymerConfiguration
         }
 
         /**
-         * Pop the atom at the head of the polymer. 
-         */
-        void popAtomFromHead()
-        {
-            this->r(Eigen::seqN(1, this->length - 1), Eigen::all)
-                = this->r(Eigen::seqN(0, this->length - 1), Eigen::all).eval(); 
-            this->r.conservativeResize(this->length, 3);
-            this->length--;
-        }
-
-        /**
          * Pop the given segment from the tail of the polymer. 
          *
          * @param idx Index of first atom to remove from the polymer. 
@@ -432,27 +421,6 @@ class PolymerConfiguration
 
             this->r.conservativeResize(idx, 3);
             this->length = idx;  
-        }
-
-        /**
-         * Pop the given segment from the head of the polymer. 
-         *
-         * @param idx Index of last atom to remove from the polymer. 
-         */
-        void popSegmentFromHead(const int idx)
-        {
-            // Disallow removal of all atoms 
-            if (idx < 0 || idx >= this->length - 1)
-                throw std::runtime_error("Invalid index for last atom to be removed"); 
-            const int n = this->length - idx - 1; 
-
-            // Copy over the current polymer coordinates 
-            this->r(Eigen::seqN(0, n), Eigen::all)
-                = this->r(Eigen::seqN(idx + 1, n), Eigen::all).eval();
-
-            // Remove the remaining rows 
-            this->r.conservativeResize(n, 3); 
-            this->length = n; 
         }
 
         /**
