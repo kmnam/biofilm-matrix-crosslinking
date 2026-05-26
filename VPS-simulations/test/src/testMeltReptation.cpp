@@ -127,8 +127,14 @@ TEST_CASE("Tests for forward reptation move generation", "[generateReptationMove
     REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
+    Matrix<double, 3, 1> r_end = coords[chain_idx].row(0); 
     for (int i = 0; i < n_candidates; ++i) 
-        REQUIRE((r_new.row(i) - coords[chain_idx].row(0)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_new.row(i) - r_end.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_new.row(i), r_end, xlen, ylen, zlen).norm() < fene_params["R0"]
+        );
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -193,9 +199,15 @@ TEST_CASE("Tests for forward reptation move generation", "[generateReptationMove
     REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
-    int tail_idx = length - 1; 
+    int tail_idx = length - 1;
+    r_end = coords[chain_idx].row(tail_idx);  
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_new.row(i) - coords[chain_idx].row(tail_idx)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_new.row(i) - r_end.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_new.row(i), r_end, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -287,8 +299,14 @@ TEST_CASE("Tests for forward reptation move generation", "[generateReptationMove
     REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
+    r_end = coords[chain_idx].row(0); 
     for (int i = 0; i < n_candidates; ++i) 
-        REQUIRE((r_new.row(i) - coords[chain_idx].row(0)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_new.row(i) - r_end.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_new.row(i), r_end, xlen, ylen, zlen).norm() < fene_params["R0"]
+        );
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -353,9 +371,15 @@ TEST_CASE("Tests for forward reptation move generation", "[generateReptationMove
     REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
-    tail_idx = length - 1; 
+    tail_idx = length - 1;
+    r_end = coords[chain_idx].row(tail_idx);  
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_new.row(i) - coords[chain_idx].row(tail_idx)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_new.row(i) - r_end.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_new.row(i), r_end, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -447,8 +471,14 @@ TEST_CASE("Tests for forward reptation move generation", "[generateReptationMove
     REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
-    for (int i = 0; i < n_candidates; ++i) 
-        REQUIRE((r_new.row(i) - coords[chain_idx].row(0)).norm() < fene_params["R0"]); 
+    r_end = coords[chain_idx].row(0); 
+    for (int i = 0; i < n_candidates; ++i)
+    { 
+        REQUIRE((r_new.row(i) - r_end.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_new.row(i), r_end, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -513,9 +543,15 @@ TEST_CASE("Tests for forward reptation move generation", "[generateReptationMove
     REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
-    tail_idx = length - 1; 
+    tail_idx = length - 1;
+    r_end = coords[chain_idx].row(tail_idx);  
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_new.row(i) - coords[chain_idx].row(tail_idx)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_new.row(i) - r_end.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_new.row(i), r_end, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -607,8 +643,14 @@ TEST_CASE("Tests for forward reptation move generation", "[generateReptationMove
     REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
+    r_end = coords[chain_idx].row(0); 
     for (int i = 0; i < n_candidates; ++i) 
-        REQUIRE((r_new.row(i) - coords[chain_idx].row(0)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_new.row(i) - r_end.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_new.row(i), r_end, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -673,9 +715,15 @@ TEST_CASE("Tests for forward reptation move generation", "[generateReptationMove
     REQUIRE(residuals.size() == n_candidates); 
 
     // Check that each new atom has a valid distance to the 0-th atom
-    tail_idx = length - 1; 
+    tail_idx = length - 1;
+    r_end = coords[chain_idx].row(tail_idx);  
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_new.row(i) - coords[chain_idx].row(tail_idx)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_new.row(i) - r_end.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_new.row(i), r_end, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -852,16 +900,23 @@ TEST_CASE("Tests for reverse reptation move generation", "[generateReptationMove
     //
     // Since we were originally reptating towards the head (reverse = tail), 
     // we are looking for the 9-th atom in the original configuration 
-    int tail_idx = length - 1; 
+    int tail_idx = length - 1;
+    Matrix<double, 3, 1> r_end = coords[chain_idx].row(tail_idx);  
     REQUIRE_THAT(
-        (r_reverse.row(0) - coords[chain_idx].row(tail_idx)).norm(),
+        (r_reverse.row(0) - r_end.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
 
     // Check that each new atom has a valid distance to the 8-th atom in the
     // original configuration
+    Matrix<double, 3, 1> r_end2 = coords[chain_idx].row(tail_idx - 1); 
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_reverse.row(i) - coords[chain_idx].row(tail_idx - 1)).norm() < fene_params["R0"]);
+    {
+        REQUIRE((r_reverse.row(i) - r_end2.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_reverse.row(i), r_end2, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    }
 
     // Check the residual energy of each proposed move 
     //
@@ -980,16 +1035,23 @@ TEST_CASE("Tests for reverse reptation move generation", "[generateReptationMove
     // Check that the 0-th atom is reversion to the original configuration 
     // 
     // Since we were originally reptating towards the tail (reverse = head), 
-    // we are looking for the 0-th atom in the original configuration 
+    // we are looking for the 0-th atom in the original configuration
+    r_end = coords[chain_idx].row(0); 
     REQUIRE_THAT(
-        (r_reverse.row(0) - coords[chain_idx].row(0)).norm(),
+        (r_reverse.row(0) - r_end.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );  
 
     // Check that each new atom has a valid distance to the 1st atom in the
     // original configuration
+    r_end2 = coords[chain_idx].row(1); 
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_reverse.row(i) - coords[chain_idx].row(1)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_reverse.row(i) - r_end2.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_reverse.row(i), r_end2, xlen, ylen, zlen).norm() < fene_params["R0"] 
+        );  
+    }
 
     // Check the residual energy of each proposed move 
     //
@@ -1136,16 +1198,23 @@ TEST_CASE("Tests for reverse reptation move generation", "[generateReptationMove
     //
     // Since we were originally reptating towards the head (reverse = tail), 
     // we are looking for the 9-th atom in the original configuration 
-    tail_idx = length - 1; 
+    tail_idx = length - 1;
+    r_end = coords[chain_idx].row(tail_idx);  
     REQUIRE_THAT(
-        (r_reverse.row(0) - coords[chain_idx].row(tail_idx)).norm(),
+        (r_reverse.row(0) - r_end.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
 
     // Check that each new atom has a valid distance to the 8-th atom in the
     // original configuration
+    r_end2 = coords[chain_idx].row(tail_idx - 1); 
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_reverse.row(i) - coords[chain_idx].row(tail_idx - 1)).norm() < fene_params["R0"]);
+    {
+        REQUIRE((r_reverse.row(i) - r_end2.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_reverse.row(i), r_end2, xlen, ylen, zlen).norm() < fene_params["R0"]
+        );  
+    }
 
     // Check the residual energy of each proposed move 
     //
@@ -1264,16 +1333,23 @@ TEST_CASE("Tests for reverse reptation move generation", "[generateReptationMove
     // Check that the 0-th atom is reversion to the original configuration 
     // 
     // Since we were originally reptating towards the tail (reverse = head), 
-    // we are looking for the 0-th atom in the original configuration 
+    // we are looking for the 0-th atom in the original configuration
+    r_end = coords[chain_idx].row(0); 
     REQUIRE_THAT(
-        (r_reverse.row(0) - coords[chain_idx].row(0)).norm(),
+        (r_reverse.row(0) - r_end.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );  
 
     // Check that each new atom has a valid distance to the 1st atom in the
     // original configuration
+    r_end2 = coords[chain_idx].row(1); 
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_reverse.row(i) - coords[chain_idx].row(1)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_reverse.row(i) - r_end2.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_reverse.row(i), r_end2, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    } 
 
     // Check the residual energy of each proposed move 
     //
@@ -1420,16 +1496,23 @@ TEST_CASE("Tests for reverse reptation move generation", "[generateReptationMove
     //
     // Since we were originally reptating towards the head (reverse = tail), 
     // we are looking for the 9-th atom in the original configuration 
-    tail_idx = length - 1; 
+    tail_idx = length - 1;
+    r_end = coords[chain_idx].row(tail_idx);  
     REQUIRE_THAT(
-        (r_reverse.row(0) - coords[chain_idx].row(tail_idx)).norm(),
+        (r_reverse.row(0) - r_end.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
 
     // Check that each new atom has a valid distance to the 8-th atom in the
     // original configuration
+    r_end2 = coords[chain_idx].row(tail_idx - 1); 
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_reverse.row(i) - coords[chain_idx].row(tail_idx - 1)).norm() < fene_params["R0"]);
+    {
+        REQUIRE((r_reverse.row(i) - r_end2.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_reverse.row(i), r_end2, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    }
 
     // Check the residual energy of each proposed move 
     //
@@ -1548,16 +1631,23 @@ TEST_CASE("Tests for reverse reptation move generation", "[generateReptationMove
     // Check that the 0-th atom is reversion to the original configuration 
     // 
     // Since we were originally reptating towards the tail (reverse = head), 
-    // we are looking for the 0-th atom in the original configuration 
+    // we are looking for the 0-th atom in the original configuration
+    r_end = coords[chain_idx].row(0);  
     REQUIRE_THAT(
-        (r_reverse.row(0) - coords[chain_idx].row(0)).norm(),
+        (r_reverse.row(0) - r_end.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );  
 
     // Check that each new atom has a valid distance to the 1st atom in the
     // original configuration
+    r_end2 = coords[chain_idx].row(1); 
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_reverse.row(i) - coords[chain_idx].row(1)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_reverse.row(i) - r_end2.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_reverse.row(i), r_end2, xlen, ylen, zlen).norm() < fene_params["R0"]
+        );  
+    }
 
     // Check the residual energy of each proposed move 
     //
@@ -1704,16 +1794,23 @@ TEST_CASE("Tests for reverse reptation move generation", "[generateReptationMove
     //
     // Since we were originally reptating towards the head (reverse = tail), 
     // we are looking for the 9-th atom in the original configuration 
-    tail_idx = length - 1; 
+    tail_idx = length - 1;
+    r_end = coords[chain_idx].row(tail_idx);  
     REQUIRE_THAT(
-        (r_reverse.row(0) - coords[chain_idx].row(tail_idx)).norm(),
+        (r_reverse.row(0) - r_end.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
 
     // Check that each new atom has a valid distance to the 8-th atom in the
     // original configuration
+    r_end2 = coords[chain_idx].row(tail_idx - 1); 
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_reverse.row(i) - coords[chain_idx].row(tail_idx - 1)).norm() < fene_params["R0"]);
+    {
+        REQUIRE((r_reverse.row(i) - r_end2.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_reverse.row(i), r_end2, xlen, ylen, zlen).norm() < fene_params["R0"]
+        ); 
+    }
 
     // Check the residual energy of each proposed move 
     //
@@ -1832,16 +1929,23 @@ TEST_CASE("Tests for reverse reptation move generation", "[generateReptationMove
     // Check that the 0-th atom is reversion to the original configuration 
     // 
     // Since we were originally reptating towards the tail (reverse = head), 
-    // we are looking for the 0-th atom in the original configuration 
+    // we are looking for the 0-th atom in the original configuration
+    r_end = coords[chain_idx].row(0); 
     REQUIRE_THAT(
-        (r_reverse.row(0) - coords[chain_idx].row(0)).norm(),
+        (r_reverse.row(0) - r_end.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );  
 
     // Check that each new atom has a valid distance to the 1st atom in the
     // original configuration
+    r_end2 = coords[chain_idx].row(1); 
     for (int i = 0; i < n_candidates; ++i)
-        REQUIRE((r_reverse.row(i) - coords[chain_idx].row(1)).norm() < fene_params["R0"]); 
+    {
+        REQUIRE((r_reverse.row(i) - r_end2.transpose()).norm() < fene_params["R0"]);
+        REQUIRE(
+            periodicDistVec<double>(r_reverse.row(i), r_end2, xlen, ylen, zlen).norm() < fene_params["R0"]
+        );  
+    }
 
     // Check the residual energy of each proposed move 
     //
@@ -2070,15 +2174,35 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
         { 
             int forward_idx = 0;    // Forward move should involve new atom bonded to 0
             int reverse_idx = 8;    // Reverse move should involve new atom bonded to 8
-            REQUIRE((forward_moves.row(i) - coords[chain_idx].row(forward_idx)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords[chain_idx].row(reverse_idx)).norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> r_fwd = coords[chain_idx].row(forward_idx); 
+            Matrix<double, 3, 1> r_rev = coords[chain_idx].row(reverse_idx); 
+            REQUIRE((forward_moves.row(i) - r_fwd.transpose()).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - r_rev.transpose()).norm() < fene_params["R0"]);
+            Matrix<double, 3, 1> dvec_fwd = periodicDistVec<double>(
+                forward_moves.row(i), r_fwd, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_fwd.norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> dvec_rev = periodicDistVec<double>(
+                reverse_moves.row(i), r_rev, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_rev.norm() < fene_params["R0"]);  
         }
         else 
         {
             int forward_idx = 9;    // Forward move should involve new atom bonded to 9
             int reverse_idx = 1;    // Reverse move should involve new atom bonded to 1
-            REQUIRE((forward_moves.row(i) - coords[chain_idx].row(forward_idx)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords[chain_idx].row(reverse_idx)).norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> r_fwd = coords[chain_idx].row(forward_idx); 
+            Matrix<double, 3, 1> r_rev = coords[chain_idx].row(reverse_idx); 
+            REQUIRE((forward_moves.row(i) - r_fwd.transpose()).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - r_rev.transpose()).norm() < fene_params["R0"]);
+            Matrix<double, 3, 1> dvec_fwd = periodicDistVec<double>(
+                forward_moves.row(i), r_fwd, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_fwd.norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> dvec_rev = periodicDistVec<double>(
+                reverse_moves.row(i), r_rev, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_rev.norm() < fene_params["R0"]);  
         }
     }
 
@@ -2455,15 +2579,35 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
         { 
             int forward_idx = 0;    // Forward move should involve new atom bonded to 0
             int reverse_idx = 8;    // Reverse move should involve new atom bonded to 8
-            REQUIRE((forward_moves.row(i) - coords[chain_idx].row(forward_idx)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords[chain_idx].row(reverse_idx)).norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> r_fwd = coords[chain_idx].row(forward_idx); 
+            Matrix<double, 3, 1> r_rev = coords[chain_idx].row(reverse_idx); 
+            REQUIRE((forward_moves.row(i) - r_fwd.transpose()).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - r_rev.transpose()).norm() < fene_params["R0"]);
+            Matrix<double, 3, 1> dvec_fwd = periodicDistVec<double>(
+                forward_moves.row(i), r_fwd, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_fwd.norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> dvec_rev = periodicDistVec<double>(
+                reverse_moves.row(i), r_rev, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_rev.norm() < fene_params["R0"]);  
         }
         else 
         {
             int forward_idx = 9;    // Forward move should involve new atom bonded to 9
             int reverse_idx = 1;    // Reverse move should involve new atom bonded to 1
-            REQUIRE((forward_moves.row(i) - coords[chain_idx].row(forward_idx)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords[chain_idx].row(reverse_idx)).norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> r_fwd = coords[chain_idx].row(forward_idx); 
+            Matrix<double, 3, 1> r_rev = coords[chain_idx].row(reverse_idx); 
+            REQUIRE((forward_moves.row(i) - r_fwd.transpose()).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - r_rev.transpose()).norm() < fene_params["R0"]);
+            Matrix<double, 3, 1> dvec_fwd = periodicDistVec<double>(
+                forward_moves.row(i), r_fwd, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_fwd.norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> dvec_rev = periodicDistVec<double>(
+                reverse_moves.row(i), r_rev, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_rev.norm() < fene_params["R0"]);  
         }
     }
 
@@ -2840,15 +2984,35 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
         { 
             int forward_idx = 0;    // Forward move should involve new atom bonded to 0
             int reverse_idx = 8;    // Reverse move should involve new atom bonded to 8
-            REQUIRE((forward_moves.row(i) - coords[chain_idx].row(forward_idx)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords[chain_idx].row(reverse_idx)).norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> r_fwd = coords[chain_idx].row(forward_idx); 
+            Matrix<double, 3, 1> r_rev = coords[chain_idx].row(reverse_idx); 
+            REQUIRE((forward_moves.row(i) - r_fwd.transpose()).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - r_rev.transpose()).norm() < fene_params["R0"]);
+            Matrix<double, 3, 1> dvec_fwd = periodicDistVec<double>(
+                forward_moves.row(i), r_fwd, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_fwd.norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> dvec_rev = periodicDistVec<double>(
+                reverse_moves.row(i), r_rev, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_rev.norm() < fene_params["R0"]);  
         }
         else 
         {
             int forward_idx = 9;    // Forward move should involve new atom bonded to 9
             int reverse_idx = 1;    // Reverse move should involve new atom bonded to 1
-            REQUIRE((forward_moves.row(i) - coords[chain_idx].row(forward_idx)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords[chain_idx].row(reverse_idx)).norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> r_fwd = coords[chain_idx].row(forward_idx); 
+            Matrix<double, 3, 1> r_rev = coords[chain_idx].row(reverse_idx); 
+            REQUIRE((forward_moves.row(i) - r_fwd.transpose()).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - r_rev.transpose()).norm() < fene_params["R0"]);
+            Matrix<double, 3, 1> dvec_fwd = periodicDistVec<double>(
+                forward_moves.row(i), r_fwd, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_fwd.norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> dvec_rev = periodicDistVec<double>(
+                reverse_moves.row(i), r_rev, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_rev.norm() < fene_params["R0"]);  
         }
     }
 
@@ -3225,15 +3389,35 @@ TEST_CASE("Tests for reptation", "[moveOnce()]")
         { 
             int forward_idx = 0;    // Forward move should involve new atom bonded to 0
             int reverse_idx = 8;    // Reverse move should involve new atom bonded to 8
-            REQUIRE((forward_moves.row(i) - coords[chain_idx].row(forward_idx)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords[chain_idx].row(reverse_idx)).norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> r_fwd = coords[chain_idx].row(forward_idx); 
+            Matrix<double, 3, 1> r_rev = coords[chain_idx].row(reverse_idx); 
+            REQUIRE((forward_moves.row(i) - r_fwd.transpose()).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - r_rev.transpose()).norm() < fene_params["R0"]);
+            Matrix<double, 3, 1> dvec_fwd = periodicDistVec<double>(
+                forward_moves.row(i), r_fwd, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_fwd.norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> dvec_rev = periodicDistVec<double>(
+                reverse_moves.row(i), r_rev, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_rev.norm() < fene_params["R0"]);  
         }
         else 
         {
             int forward_idx = 9;    // Forward move should involve new atom bonded to 9
             int reverse_idx = 1;    // Reverse move should involve new atom bonded to 1
-            REQUIRE((forward_moves.row(i) - coords[chain_idx].row(forward_idx)).norm() < fene_params["R0"]);
-            REQUIRE((reverse_moves.row(i) - coords[chain_idx].row(reverse_idx)).norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> r_fwd = coords[chain_idx].row(forward_idx); 
+            Matrix<double, 3, 1> r_rev = coords[chain_idx].row(reverse_idx); 
+            REQUIRE((forward_moves.row(i) - r_fwd.transpose()).norm() < fene_params["R0"]);
+            REQUIRE((reverse_moves.row(i) - r_rev.transpose()).norm() < fene_params["R0"]);
+            Matrix<double, 3, 1> dvec_fwd = periodicDistVec<double>(
+                forward_moves.row(i), r_fwd, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_fwd.norm() < fene_params["R0"]); 
+            Matrix<double, 3, 1> dvec_rev = periodicDistVec<double>(
+                reverse_moves.row(i), r_rev, xlen, ylen, zlen
+            ); 
+            REQUIRE(dvec_rev.norm() < fene_params["R0"]);  
         }
     }
 
