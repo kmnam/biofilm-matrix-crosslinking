@@ -1,6 +1,6 @@
 # ====================================================================== #
-# Equilibrate a system of polymers following a Gaussian angle potential and
-# a harmonic dihedral potential in implicit solvent 
+# Equilibrate a system of polymers following a Gaussian angle potential and 
+# a Fourier dihedral potential in implicit solvent. 
 #
 # Authors:
 #     Kee-Myoung Nam
@@ -49,8 +49,8 @@ bond_style fene
 # Subject polymeric bond angles to a multiple Gaussian angle potential 
 angle_style gaussian
 
-# Subject polymeric dihedral angles to a harmonic potential
-dihedral_style harmonic 
+# Subject polymeric dihedral angles to a Fourier potential
+dihedral_style fourier 
 
 # Use Lennard-Jones potentials between unbonded molecules
 #
@@ -124,5 +124,5 @@ run ${nsteps}
 # ====================================================================== #
 # WRITE FINAL SYSTEM STATE TO FILE 
 # ================================
-write_data ${outfilename} 
-
+write_data ${outfilename}
+ 
