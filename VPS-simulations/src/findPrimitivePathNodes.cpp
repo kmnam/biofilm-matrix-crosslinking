@@ -19,8 +19,12 @@ int main(int argc, char** argv)
 
     // Parse the input polymer configurations and primitive paths  
     auto result = parseMeltConfigFile<double>(config_filename);
-    std::vector<PolymerMeltConfiguration<double> > melt_configs = std::get<0>(result);  
-    std::vector<PrimitivePathCollection<double> > paths = parseZ1SPFile<double>(path_filename); 
+    std::vector<PolymerMeltConfiguration<double> > melt_configs = std::get<0>(result); 
+    std::cout << "... parsed " << melt_configs.size() << " configurations from: "
+              << config_filename << std::endl;  
+    std::vector<PrimitivePathCollection<double> > paths = parseZ1SPFile<double>(path_filename);
+    std::cout << "... parsed " << paths.size() << " configurations from: "
+              << path_filename << std::endl; 
     const int n_configs = melt_configs.size();
     const int n_chains = melt_configs[0].numChains();
     const double angle_threshold = 0.5 * (
@@ -67,37 +71,58 @@ int main(int argc, char** argv)
                 } 
             }
 
-            // Write the kink indices to file 
-            outfile1 << i << '\t' << j << '\t';
-            for (int k = 0; k < n_below_threshold - 1; ++k)
-                outfile1 << below_threshold(k) << '\t';
-            outfile1 << below_threshold(n_below_threshold - 1) << std::endl;
-
-            // Write the node indices to file 
-            outfile2 << i << '\t' << j << '\t';
-            for (int k = 0; k < nearest.size() - 1; ++k)
-                outfile2 << nearest(k) << '\t'; 
-            outfile2 << nearest(nearest.size() - 1) << std::endl; 
-
-            // For each node along the primitive path ...
-            Matrix<int, Dynamic, 1> dists_to_nearest_kink(nearest.size()); 
-            for (int k = 0; k < nearest.size(); ++k)
+            // Write the kink indices to file
+            if (n_below_threshold > 0)
+            { 
+                outfile1 << i << '\t' << j << '\t';
+                for (int k = 0; k < n_below_threshold - 1; ++k)
+                    outfile1 << below_threshold(k) << '\t';
+                outfile1 << below_threshold(n_below_threshold - 1) << std::endl;
+            }
+            else 
             {
-                // Get the index of the kink nearest to the node's nearest bead
-                // along the chain contour 
-                int nearest_below_threshold_idx = nearestValue<int>(
-                    below_threshold, nearest(k)
-                );
-                dists_to_nearest_kink(k) = abs(
-                    nearest(k) - below_threshold(nearest_below_threshold_idx)
-                );
+                outfile1 << i << '\t' << j << std::endl; 
             }
 
-            // Write the node-kink distances to file 
-            outfile3 << i << '\t' << j << '\t';
-            for (int k = 0; k < nearest.size() - 1; ++k)
-                outfile3 << dists_to_nearest_kink(k) << '\t';
-            outfile3 << dists_to_nearest_kink(nearest.size() - 1) << std::endl; 
+            // Write the node indices to file
+            if (nearest.size() > 0)
+            { 
+                outfile2 << i << '\t' << j << '\t';
+                for (int k = 0; k < nearest.size() - 1; ++k)
+                    outfile2 << nearest(k) << '\t'; 
+                outfile2 << nearest(nearest.size() - 1) << std::endl; 
+            }
+            else 
+            {
+                outfile2 << i << '\t' << j << std::endl; 
+            }
+
+            // For each node along the primitive path ...
+            if (nearest.size() > 0 && n_below_threshold > 0)
+            {
+                Matrix<int, Dynamic, 1> dists_to_nearest_kink(nearest.size()); 
+                for (int k = 0; k < nearest.size(); ++k)
+                {
+                    // Get the index of the kink nearest to the node's nearest bead
+                    // along the chain contour
+                    int nearest_below_threshold_idx = nearestValue<int>(
+                        below_threshold, nearest(k)
+                    );
+                    dists_to_nearest_kink(k) = abs(
+                        nearest(k) - below_threshold(nearest_below_threshold_idx)
+                    );
+                }
+
+                // Write the node-kink distances to file
+                outfile3 << i << '\t' << j << '\t';
+                for (int k = 0; k < nearest.size() - 1; ++k)
+                    outfile3 << dists_to_nearest_kink(k) << '\t';
+                outfile3 << dists_to_nearest_kink(nearest.size() - 1) << std::endl;
+            }
+            else 
+            {
+                outfile3 << i << '\t' << j << std::endl; 
+            }
         }
     }
 
