@@ -46,20 +46,17 @@ class PrimitivePathCollection
          * (approximate) bead position in the polymer corresponding to the
          * given node in the given primitive path.
          *
-         * The node index may be a floating-point number, in which case the 
+         * The node index is a 0-indexed floating-point number, and the 
          * returned position is an interpolation of two neighboring bead 
          * positions. 
-         *
-         * The node index also ranges between 1 and N, where N is the chain
-         * length. 
          */
         Matrix<T, 3, 1> getContourBeadPosition(PolymerMeltConfiguration<T>& melt_config,
                                                const int path_idx,
                                                const double node_idx)
         {
-            const int node_floor = static_cast<int>(floor(node_idx - 1)); 
-            const int node_ceil = static_cast<int>(ceil(node_idx - 1));
-            const double delta = (node_idx - 1) - node_floor;  
+            const int node_floor = static_cast<int>(floor(node_idx)); 
+            const int node_ceil = static_cast<int>(ceil(node_idx));
+            const double delta = node_idx - node_floor;  
             Matrix<T, 3, 1> p = melt_config.getSegment(path_idx, node_floor, 1); 
             Matrix<T, 3, 1> q = melt_config.getSegment(path_idx, node_ceil, 1);
             Matrix<T, 3, 1> r = (q - p) / (q - p).norm();
@@ -80,40 +77,42 @@ class PrimitivePathCollection
         }
 
         /**
+         * Return the coordinates of the nodes along the given primitive path.
+         *
+         * @param path_idx Input path index.
+         * @returns Corresponding node coordinates.  
+         */
+        Matrix<T, Dynamic, 3> getNodeCoords(const int path_idx)
+        {
+            return this->coords[path_idx]; 
+        }
+
+        /**
          * Return the approximate bead indices in the polymer corresponding 
          * to each node in the given primitive path.
          *
          * @param path_idx Input path index. 
-         * @param zero_indexed If true, return 0-indexed bead indices. 
          * @returns The (floating-point) index of the nearest bead to each node
          *          in the primitive path. 
          */
-        Matrix<T, Dynamic, 1> getContourIndices(const int path_idx,
-                                                const bool zero_indexed = true)
+        Matrix<T, Dynamic, 1> getContourIndices(const int path_idx)
         {
-            if (zero_indexed)
-                return (this->contour_indices[path_idx].array() - 1).matrix(); 
-            else 
-                return this->contour_indices[path_idx];  
+            return this->contour_indices[path_idx];  
         }
 
         /**
          * Return the *nearest* bead indices in the polymer corresponding to
          * each node in the given primitive path.
          *
+         * Each bead index is rounded to the nearest integer. 
+         *
          * @param path_idx Input path index. 
-         * @param zero_indexed If true, return 0-indexed bead indices. 
          * @returns The index of the nearest bead to each node in the primitive
          *          path.  
          */
-        Matrix<int, Dynamic, 1> getNearestContourIndices(const int path_idx,
-                                                         const bool zero_indexed = true)
+        Matrix<int, Dynamic, 1> getNearestContourIndices(const int path_idx)
         {
-            Matrix<int, Dynamic, 1> idx = this->contour_indices[path_idx].array().round().matrix().template cast<int>(); 
-            if (zero_indexed)
-                return (idx.array() - 1).matrix(); 
-            else 
-                return idx;  
+            return this->contour_indices[path_idx].array().round().matrix().template cast<int>(); 
         }
 
         /**
@@ -141,9 +140,9 @@ class PrimitivePathCollection
                 double contour_idx = this->contour_indices[path_idx](i);
 
                 // Get the neighboring beads and interpolate between them 
-                const int bead_floor = static_cast<int>(floor(contour_idx - 1)); 
-                const int bead_ceil = static_cast<int>(ceil(contour_idx - 1));
-                const double delta = (contour_idx - 1) - bead_floor;  
+                const int bead_floor = static_cast<int>(floor(contour_idx)); 
+                const int bead_ceil = static_cast<int>(ceil(contour_idx));
+                const double delta = contour_idx - bead_floor;  
                 Matrix<T, 3, 1> p = melt_config.getSegment(path_idx, bead_floor, 1); 
                 Matrix<T, 3, 1> q = melt_config.getSegment(path_idx, bead_ceil, 1);
                 Matrix<T, 3, 1> r = (q - p) / (q - p).norm();
@@ -274,9 +273,9 @@ std::vector<PrimitivePathCollection<T> > parseZ1SPFile(const std::string& filena
             T rx = static_cast<T>(std::stod(entries[0]));    // Node x-coordinate
             T ry = static_cast<T>(std::stod(entries[1]));    // Node y-coordinate
             T rz = static_cast<T>(std::stod(entries[2]));    // Node z-coordinate
-            T contour_idx = static_cast<T>(std::stod(entries[3]));   // Contour index
-            int partner_chain_idx = (std::stoi(entries[4]) == 0 ? -1 : std::stoi(entries[5])); 
-            int partner_node_idx = (std::stoi(entries[4]) == 0 ? -1 : std::stoi(entries[6]));
+            T contour_idx = static_cast<T>(std::stod(entries[3])) - 1;   // Contour index
+            int partner_chain_idx = (std::stoi(entries[4]) == 0 ? -1 : std::stoi(entries[5]) - 1); 
+            int partner_node_idx = (std::stoi(entries[4]) == 0 ? -1 : std::stoi(entries[6]) - 1);
             curr_path(curr_node_idx, 0) = rx; 
             curr_path(curr_node_idx, 1) = ry; 
             curr_path(curr_node_idx, 2) = rz; 
