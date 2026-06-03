@@ -49,11 +49,11 @@ int main(int argc, char** argv)
     {
         for (int j = 0; j < n_chains; ++j)
         {
-            Matrix<double, Dynamic, 3> node_coords = paths[i].getCoords(j);
+            Matrix<double, Dynamic, 3> node_coords = paths[i].getNodeCoords(j);
             for (int k = 0; k < node_coords.rows() - 1; ++k)
             { 
                 Matrix<double, 3, 1> dvec = periodicDistVec<double>(
-                    coords.row(k), coords.row(k + 1), xlen, ylen, zlen
+                    node_coords.row(k), node_coords.row(k + 1), xlen, ylen, zlen
                 );  
                 Lpp(i, j) += dvec.norm();
             }
