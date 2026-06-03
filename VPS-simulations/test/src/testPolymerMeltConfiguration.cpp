@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/23/2026
+ *     5/21/2026
  */
 
 #include <iostream>
@@ -19,25 +19,13 @@
 using namespace Eigen;
 
 /**
- * Tests for getting and replacing segments in the PolymerMeltConfiguration
- * class. 
+ * Generate an example system of multiple polymers, atom by atom. 
+ *
+ * This function returns a vector of coordinate arrays, one for each polymer.   
  */
-TEST_CASE(
-    "Tests for getting and replacing segments", "[getSegment(), replaceSegment()]"
-)
+std::vector<Matrix<double, Dynamic, 3> > generateExampleMeltCoords(boost::random::mt19937& rng,
+                                                                   boost::random::uniform_01<>& uniform_dist)
 {
-    boost::random::mt19937 rng(1234567890);
-    boost::random::uniform_01<> uniform_dist;
-    const double tol = 1e-5; 
-
-    // Define a large box
-    const double xmin = -100.0; 
-    const double xmax = 100.0; 
-    const double ymin = -100.0; 
-    const double ymax = 100.0;
-    const double zmin = -100.0;
-    const double zmax = 100.0;
-
     // Generate three polymer chains ...
     Matrix<double, Dynamic, 3> coords1, coords2, coords3;  
     
@@ -70,7 +58,7 @@ TEST_CASE(
         double phi = dihedrals(i - 3); 
         coords1.row(i) = generateNextAtomDihedral<double>(
             coords1.row(i - 3), coords1.row(i - 2), coords1.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
+            theta, phi
         );
     }
 
@@ -100,7 +88,7 @@ TEST_CASE(
         double phi = dihedrals(i - 3); 
         coords2.row(i) = generateNextAtomDihedral<double>(
             coords2.row(i - 3), coords2.row(i - 2), coords2.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
+            theta, phi
         );
     }
 
@@ -132,7 +120,7 @@ TEST_CASE(
         double phi = dihedrals(i - 3); 
         coords3.row(i) = generateNextAtomDihedral<double>(
             coords3.row(i - 3), coords3.row(i - 2), coords3.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
+            theta, phi
         );
     }
 
@@ -140,7 +128,36 @@ TEST_CASE(
     std::vector<Matrix<double, Dynamic, 3> > coords_all; 
     coords_all.push_back(coords1); 
     coords_all.push_back(coords2); 
-    coords_all.push_back(coords3); 
+    coords_all.push_back(coords3);
+    return coords_all;  
+}
+
+/**
+ * Tests for getting and replacing segments in the PolymerMeltConfiguration
+ * class. 
+ */
+TEST_CASE(
+    "Tests for getting and replacing segments", "[getSegment(), replaceSegment()]"
+)
+{
+    boost::random::mt19937 rng(1234567890);
+    boost::random::uniform_01<> uniform_dist;
+    const double tol = 1e-5;
+
+    // Define a large box
+    const double xmin = -100.0; 
+    const double xmax = 100.0; 
+    const double ymin = -100.0; 
+    const double ymax = 100.0;
+    const double zmin = -100.0;
+    const double zmax = 100.0;
+
+    // Generate an example melt configuration
+    auto coords_all = generateExampleMeltCoords(rng, uniform_dist);
+    REQUIRE(coords_all.size() == 3); 
+    Matrix<double, Dynamic, 3> coords1 = coords_all[0]; 
+    Matrix<double, Dynamic, 3> coords2 = coords_all[1]; 
+    Matrix<double, Dynamic, 3> coords3 = coords_all[2];  
     PolymerMeltConfiguration<double> melt_configs(
         3, coords_all, Units::NANO, 300, xmin, xmax, ymin, ymax, zmin, zmax
     ); 
@@ -171,27 +188,28 @@ TEST_CASE(
             Catch::Matchers::WithinAbs(0, tol)
         );
 
-    // Replace atoms 2, 3, 4 in the second polymer 
+    // Replace atoms 2, 3, 4 in the second polymer
+    const double length = 1.5; 
     double theta1 = 132 * boost::math::constants::pi<double>() / 180; 
     double theta2 = 153 * boost::math::constants::pi<double>() / 180;
     double theta3 = 165 * boost::math::constants::pi<double>() / 180; 
-    double phi2 = 54 * boost::math::constants::pi<double>() / 180;
-    double phi3 = -72 * boost::math::constants::pi<double>() / 180;
-    Matrix<double, Dynamic, 3> segment(3, 3); 
-    segment.row(0) = generateNextAtom<double>(
+    double phi1 = 54 * boost::math::constants::pi<double>() / 180;
+    double phi2 = -72 * boost::math::constants::pi<double>() / 180;
+    Matrix<double, Dynamic, 3> new_segment(3, 3); 
+    new_segment.row(0) = generateNextAtom<double>(
         coords2.row(0), coords2.row(1), length, theta1, rng, uniform_dist
     );
-    segment.row(1) = generateNextAtomDihedral<double>(
-        coords2.row(0), coords2.row(1), segment.row(0), length,
-        theta2, phi2, rng, uniform_dist, (phi2 > 0 ? 1 : -1)
+    new_segment.row(1) = generateNextAtomDihedral<double>(
+        coords2.row(0), coords2.row(1), new_segment.row(0), length, theta2,
+        phi1
     ); 
-    segment.row(2) = generateNextAtomDihedral<double>(
-        coords2.row(1), segment.row(0), segment.row(1), length,
-        theta3, phi3, rng, uniform_dist, (phi3 > 0 ? 1 : -1)
+    new_segment.row(2) = generateNextAtomDihedral<double>(
+        coords2.row(1), new_segment.row(0), new_segment.row(1), length,
+        theta3, phi2
     );
-    melt_configs.replaceSegment(1, segment, 2);
+    melt_configs.replaceSegment(1, new_segment, 2);
 
-    // Check the polymer length and coordinates
+    // Check the new polymer length and coordinates
     REQUIRE(melt_configs.getLength(1) == 6);
     config_coords2 = melt_configs.getSegment(1, 0, 6); 
     REQUIRE(config_coords2.rows() == 6); 
@@ -202,7 +220,7 @@ TEST_CASE(
         );
     for (int i = 2; i < 5; ++i)    // Replaced segment
         REQUIRE_THAT(
-            (config_coords2.row(i) - segment.row(i - 2)).norm(), 
+            (config_coords2.row(i) - new_segment.row(i - 2)).norm(), 
             Catch::Matchers::WithinAbs(0, tol)
         ); 
     for (int i = 5; i < 6; ++i)    // Downstream of replaced segment 
@@ -218,7 +236,7 @@ TEST_CASE(
  */
 TEST_CASE(
     "Tests for reptation, pop, and append methods",
-    "[appendSegmentToTail(), appendSegmentToHead(), popSegmentFromTail(), popSegmentFromHead(), reptateTowardsTail(), reptateTowardsHead()]"
+    "[appendSegmentToTail(), appendSegmentToHead(), popSegmentFromTail(), reptateTowardsTail(), reptateTowardsHead()]"
 )
 {
     boost::random::mt19937 rng(1234567890);
@@ -233,128 +251,30 @@ TEST_CASE(
     const double zmin = -100.0;
     const double zmax = 100.0;
 
-    // Generate three polymer chains ...
-    Matrix<double, Dynamic, 3> coords1, coords2, coords3;  
-    
-    // Start with an 8-atom segment 
-    const double length = 1.5; 
-    Array<double, Dynamic, 1> angles(6);
-    angles << 140 * boost::math::constants::pi<double>() / 180,
-              170 * boost::math::constants::pi<double>() / 180,  
-              160 * boost::math::constants::pi<double>() / 180,
-              boost::math::constants::half_pi<double>(), 
-              150 * boost::math::constants::pi<double>() / 180,
-              130 * boost::math::constants::pi<double>() / 180;
-    Array<double, Dynamic, 1> dihedrals(5);
-    dihedrals << 60 * boost::math::constants::pi<double>() / 180, 
-                 -60 * boost::math::constants::pi<double>() / 180,
-                 boost::math::constants::pi<double>(),  
-                 120 * boost::math::constants::pi<double>() / 180, 
-                 60 * boost::math::constants::pi<double>() / 180;
-    coords1.resize(8, 3); 
-    coords1.row(0) = Matrix<double, 3, 1>::Zero();
-    coords1(1, 0) = length; 
-    coords1(1, 1) = 0; 
-    coords1(1, 2) = 0;
-    coords1.row(2) = generateNextAtom<double>(
-        coords1.row(0), coords1.row(1), length, angles(0), rng, uniform_dist
-    ); 
-    for (int i = 3; i < 8; ++i) 
-    {
-        double theta = angles(i - 2); 
-        double phi = dihedrals(i - 3); 
-        coords1.row(i) = generateNextAtomDihedral<double>(
-            coords1.row(i - 3), coords1.row(i - 2), coords1.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
-        );
-    }
-
-    // Then generate a 6-atom segment 
-    angles = Array<double, Dynamic, 1>::Zero(4);
-    angles << 130 * boost::math::constants::pi<double>() / 180, 
-              170 * boost::math::constants::pi<double>() / 180, 
-              150 * boost::math::constants::pi<double>() / 180, 
-              160 * boost::math::constants::pi<double>() / 180;  
-    dihedrals = Array<double, Dynamic, 1>::Zero(3);
-    dihedrals << 72 * boost::math::constants::pi<double>() / 180, 
-                 -40 * boost::math::constants::pi<double>() / 180, 
-                 100 * boost::math::constants::pi<double>() / 180;
-    coords2.resize(6, 3); 
-    coords2(0, 0) = 4; 
-    coords2(0, 1) = 5; 
-    coords2(0, 2) = 6; 
-    coords2(1, 0) = coords2(0, 0); 
-    coords2(1, 1) = coords2(0, 1) + length;
-    coords2(1, 2) = coords2(0, 2); 
-    coords2.row(2) = generateNextAtom<double>(
-        coords2.row(0), coords2.row(1), length, angles(0), rng, uniform_dist
-    );
-    for (int i = 3; i < 6; ++i) 
-    {
-        double theta = angles(i - 2); 
-        double phi = dihedrals(i - 3); 
-        coords2.row(i) = generateNextAtomDihedral<double>(
-            coords2.row(i - 3), coords2.row(i - 2), coords2.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
-        );
-    }
-
-    // Then generate a 7-atom segment 
-    angles = Array<double, Dynamic, 1>::Zero(5);
-    angles << 120 * boost::math::constants::pi<double>() / 180, 
-              110 * boost::math::constants::pi<double>() / 180, 
-              140 * boost::math::constants::pi<double>() / 180, 
-              170 * boost::math::constants::pi<double>() / 180, 
-              160 * boost::math::constants::pi<double>() / 180; 
-    dihedrals = Array<double, Dynamic, 1>::Zero(4);
-    dihedrals << 48 * boost::math::constants::pi<double>() / 180, 
-                 106 * boost::math::constants::pi<double>() / 180,  
-                 -22 * boost::math::constants::pi<double>() / 180, 
-                 57 * boost::math::constants::pi<double>() / 180;  
-    coords3.resize(7, 3); 
-    coords3(0, 0) = -5; 
-    coords3(0, 1) = -4; 
-    coords3(0, 2) = -3; 
-    coords3(1, 0) = coords3(0, 0); 
-    coords3(1, 1) = coords3(0, 1);
-    coords3(1, 2) = coords3(0, 2) + length; 
-    coords3.row(2) = generateNextAtom<double>(
-        coords3.row(0), coords3.row(1), length, angles(0), rng, uniform_dist
-    );
-    for (int i = 3; i < 7; ++i) 
-    {
-        double theta = angles(i - 2); 
-        double phi = dihedrals(i - 3); 
-        coords3.row(i) = generateNextAtomDihedral<double>(
-            coords3.row(i - 3), coords3.row(i - 2), coords3.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
-        );
-    }
-
-    // Generate the corresponding polymer melt 
-    std::vector<Matrix<double, Dynamic, 3> > coords_all; 
-    coords_all.push_back(coords1); 
-    coords_all.push_back(coords2); 
-    coords_all.push_back(coords3); 
+    // Generate an example melt configuration
+    auto coords_all = generateExampleMeltCoords(rng, uniform_dist);
+    REQUIRE(coords_all.size() == 3); 
+    Matrix<double, Dynamic, 3> coords1 = coords_all[0]; 
+    Matrix<double, Dynamic, 3> coords2 = coords_all[1]; 
+    Matrix<double, Dynamic, 3> coords3 = coords_all[2];  
     PolymerMeltConfiguration<double> melt_configs(
         3, coords_all, Units::NANO, 300, xmin, xmax, ymin, ymax, zmin, zmax
-    );
+    ); 
     REQUIRE(melt_configs.getLength(0) == 8); 
     REQUIRE(melt_configs.getLength(1) == 6); 
     REQUIRE(melt_configs.getLength(2) == 7);  
 
-    // Append a 2-atom segment to the tail of the first polymer 
+    // Append a 2-atom segment to the tail of the first polymer
+    const double length = 1.5; 
     double theta1 = 173 * boost::math::constants::pi<double>() / 180; 
     double theta2 = 159 * boost::math::constants::pi<double>() / 180; 
     double phi1 = 58 * boost::math::constants::pi<double>() / 180; 
     double phi2 = -134 * boost::math::constants::pi<double>() / 180;
     Matrix<double, 3, 1> tail1 = generateNextAtomDihedral<double>(
-        coords1.row(5), coords1.row(6), coords1.row(7), length, theta1, phi1, 
-        rng, uniform_dist, (phi1 > 0 ? 1 : -1)
+        coords1.row(5), coords1.row(6), coords1.row(7), length, theta1, phi1 
     ); 
     Matrix<double, 3, 1> tail2 = generateNextAtomDihedral<double>(
-        coords1.row(6), coords1.row(7), tail1, length, theta2, phi2,  
-        rng, uniform_dist, (phi2 > 0 ? 1 : -1)
+        coords1.row(6), coords1.row(7), tail1, length, theta2, phi2
     ); 
 
     // Update the first polymer's configuration
@@ -380,20 +300,7 @@ TEST_CASE(
         (new_coords1.row(9) - tail2.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
-
-    // Remove 3-atom segment from the head of the third polymer 
-    melt_configs.popSegmentFromHead(2, 2);     // Last index to remove is 2
     
-    // Check the polymer length and coordinates
-    REQUIRE(melt_configs.getLength(2) == 4);
-    Matrix<double, Dynamic, 3> new_coords3 = melt_configs.getSegment(2, 0, 4); 
-    REQUIRE(new_coords3.rows() == 4); 
-    for (int i = 0; i < 4; ++i)
-        REQUIRE_THAT(
-            (new_coords3.row(i) - coords3.row(i + 3)).norm(),
-            Catch::Matchers::WithinAbs(0, tol)
-        );
-
     // Append a 4-atom segment to the head of the second polymer
     double theta3 = 132 * boost::math::constants::pi<double>() / 180; 
     double theta4 = 156 * boost::math::constants::pi<double>() / 180;
@@ -404,20 +311,16 @@ TEST_CASE(
     double phi5 = -20 * boost::math::constants::pi<double>() / 180; 
     double phi6 = 63 * boost::math::constants::pi<double>() / 180; 
     Matrix<double, 3, 1> head1 = generateNextAtomDihedral<double>(
-        coords2.row(2), coords2.row(1), coords2.row(0),
-        length, theta3, phi3, rng, uniform_dist, (phi3 > 0 ? 1 : -1)
+        coords2.row(2), coords2.row(1), coords2.row(0), length, theta3, phi3
     ); 
     Matrix<double, 3, 1> head2 = generateNextAtomDihedral<double>(
-        coords2.row(1), coords2.row(0), head1, length, theta4,
-        phi4, rng, uniform_dist, (phi4 > 0 ? 1 : -1)
+        coords2.row(1), coords2.row(0), head1, length, theta4, phi4
     ); 
     Matrix<double, 3, 1> head3 = generateNextAtomDihedral<double>(
-        coords2.row(0), head1, head2, length, theta5, phi5, rng,
-        uniform_dist, (phi5 > 0 ? 1 : -1)
+        coords2.row(0), head1, head2, length, theta5, phi5
     ); 
     Matrix<double, 3, 1> head4 = generateNextAtomDihedral<double>(
-        head1, head2, head3, length, theta6, phi6, rng, uniform_dist,
-        (phi6 > 0 ? 1 : -1)
+        head1, head2, head3, length, theta6, phi6
     );
 
     // Update the polymer configuration
@@ -477,8 +380,8 @@ TEST_CASE(
     double theta7 = 37 * boost::math::constants::pi<double>() / 180; 
     double phi7 = -99 * boost::math::constants::pi<double>() / 180;
     Matrix<double, 3, 1> tail3 = generateNextAtomDihedral<double>(
-        old_coords1.row(4), old_coords1.row(5), old_coords1.row(6),
-        length, theta7, phi7, rng, uniform_dist, (phi7 > 0 ? 1 : -1)
+        old_coords1.row(4), old_coords1.row(5), old_coords1.row(6), length,
+        theta7, phi7
     );
     melt_configs.reptateTowardsTail(0, tail3);
 
@@ -499,27 +402,26 @@ TEST_CASE(
     );
 
     // Reptate towards the head of the third polymer
-    Matrix<double, Dynamic, 3> old_coords3 = new_coords3; 
     double theta8 = 126 * boost::math::constants::pi<double>() / 180; 
     double phi8 = -2 * boost::math::constants::pi<double>() / 180;
     Matrix<double, 3, 1> head5 = generateNextAtomDihedral<double>(
-        old_coords3.row(2), old_coords3.row(1), old_coords3.row(0),
-        length, theta8, phi8, rng, uniform_dist, (phi8 > 0 ? 1 : -1)
+        coords3.row(2), coords3.row(1), coords3.row(0), length,
+        theta8, phi8
     );
     melt_configs.reptateTowardsHead(2, head5);
 
     // Check the polymer length and coordinates
-    REQUIRE(melt_configs.getLength(2) == 4);
-    new_coords3 = melt_configs.getSegment(2, 0, 4); 
-    REQUIRE(new_coords3.rows() == 4);
+    REQUIRE(melt_configs.getLength(2) == 7);
+    Matrix<double, Dynamic, 3> new_coords3 = melt_configs.getSegment(2, 0, 7); 
+    REQUIRE(new_coords3.rows() == 7);
     REQUIRE_THAT(
         (new_coords3.row(0) - head5.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
-    for (int i = 1; i < 4; ++i)
+    for (int i = 1; i < 7; ++i)
     {
         REQUIRE_THAT(
-            (new_coords3.row(i) - old_coords3.row(i - 1)).norm(),
+            (new_coords3.row(i) - coords3.row(i - 1)).norm(),
             Catch::Matchers::WithinAbs(0, tol)
         );
     }
@@ -534,16 +436,16 @@ TEST_CASE(
     double phi11 = -132 * boost::math::constants::pi<double>() / 180; 
     Matrix<double, Dynamic, 3> tail_segment(3, 3); 
     tail_segment.row(0) = generateNextAtomDihedral<double>(
-        old_coords2.row(7), old_coords2.row(8), old_coords2.row(9), 
-        length, theta9, phi9, rng, uniform_dist, (phi9 > 0 ? 1 : -1)
+        old_coords2.row(7), old_coords2.row(8), old_coords2.row(9), length,
+        theta9, phi9
     ); 
     tail_segment.row(1) = generateNextAtomDihedral<double>(
-        old_coords2.row(8), old_coords2.row(9), tail_segment.row(0), 
-        length, theta10, phi10, rng, uniform_dist, (phi10 > 0 ? 1 : -1)
+        old_coords2.row(8), old_coords2.row(9), tail_segment.row(0), length,
+        theta10, phi10
     ); 
     tail_segment.row(2) = generateNextAtomDihedral<double>(
-        old_coords2.row(9), tail_segment.row(0), tail_segment.row(1), 
-        length, theta11, phi11, rng, uniform_dist, (phi11 > 0 ? 1 : -1)
+        old_coords2.row(9), tail_segment.row(0), tail_segment.row(1), length,
+        theta11, phi11
     );
     melt_configs.reptateTowardsTailMultimer(1, tail_segment);
 
@@ -571,11 +473,8 @@ TEST_CASE(
         Catch::Matchers::WithinAbs(0, tol)
     );
 
-    // Generate 4 new atoms at the tail of the third polymer and reptate
-    //
-    // Since the third polymer is 4 atoms long, this should result in a 
-    // completely distinct polymer configuration 
-    old_coords3 = new_coords3; 
+    // Generate 4 new atoms at the head of the third polymer and reptate
+    Matrix<double, Dynamic, 3> old_coords3 = new_coords3; 
     double theta12 = 9 * boost::math::constants::pi<double>() / 180; 
     double phi12 = 178 * boost::math::constants::pi<double>() / 180; 
     double theta13 = 52 * boost::math::constants::pi<double>() / 180; 
@@ -586,33 +485,40 @@ TEST_CASE(
     double phi15 = 49 * boost::math::constants::pi<double>() / 180; 
     Matrix<double, Dynamic, 3> head_segment(4, 3); 
     head_segment.row(3) = generateNextAtomDihedral<double>(
-        old_coords3.row(2), old_coords3.row(1), old_coords3.row(0), 
-        length, theta12, phi12, rng, uniform_dist, (phi12 > 0 ? 1 : -1)
+        old_coords3.row(2), old_coords3.row(1), old_coords3.row(0), length,
+        theta12, phi12
     ); 
     head_segment.row(2) = generateNextAtomDihedral<double>(
-        old_coords3.row(1), old_coords3.row(0), head_segment.row(3), 
-        length, theta13, phi13, rng, uniform_dist, (phi13 > 0 ? 1 : -1)
+        old_coords3.row(1), old_coords3.row(0), head_segment.row(3), length,
+        theta13, phi13
     ); 
     head_segment.row(1) = generateNextAtomDihedral<double>(
-        old_coords3.row(0), head_segment.row(3), head_segment.row(2), 
-        length, theta14, phi14, rng, uniform_dist, (phi14 > 0 ? 1 : -1)
+        old_coords3.row(0), head_segment.row(3), head_segment.row(2), length,
+        theta14, phi14
     );
     head_segment.row(0) = generateNextAtomDihedral<double>(
-        head_segment.row(3), head_segment.row(2), head_segment.row(1),
-        length, theta15, phi15, rng, uniform_dist, (phi15 > 0 ? 1 : -1)
+        head_segment.row(3), head_segment.row(2), head_segment.row(1), length,
+        theta15, phi15
     );
     melt_configs.reptateTowardsHeadMultimer(2, head_segment); 
 
     // Check the polymer length and coordinates
-    REQUIRE(melt_configs.getLength(2) == 4);
-    new_coords3 = melt_configs.getSegment(2, 0, 4); 
-    REQUIRE(new_coords3.rows() == 4);
+    REQUIRE(melt_configs.getLength(2) == 7);
+    new_coords3 = melt_configs.getSegment(2, 0, 7); 
+    REQUIRE(new_coords3.rows() == 7);
     for (int i = 0; i < 4; ++i)
     {
         REQUIRE_THAT(
             (new_coords3.row(i) - head_segment.row(i)).norm(), 
             Catch::Matchers::WithinAbs(0, tol)
         );
+    }
+    for (int i = 4; i < 7; ++i)
+    {
+        REQUIRE_THAT(
+            (new_coords3.row(i) - old_coords3.row(i - 4)).norm(), 
+            Catch::Matchers::WithinAbs(0, tol)
+        ); 
     }
 }
 
@@ -659,109 +565,12 @@ TEST_CASE(
     dihedral_params["d"] = 1; 
     dihedral_params["n"] = 1; 
 
-    // Generate three polymer chains ...
-    Matrix<double, Dynamic, 3> coords1, coords2, coords3;  
-    
-    // Start with an 8-atom segment 
-    const double length = 1.5; 
-    Array<double, Dynamic, 1> angles(6);
-    angles << 140 * boost::math::constants::pi<double>() / 180,
-              170 * boost::math::constants::pi<double>() / 180,  
-              160 * boost::math::constants::pi<double>() / 180,
-              boost::math::constants::half_pi<double>(), 
-              150 * boost::math::constants::pi<double>() / 180,
-              130 * boost::math::constants::pi<double>() / 180;
-    Array<double, Dynamic, 1> dihedrals(5);
-    dihedrals << 60 * boost::math::constants::pi<double>() / 180, 
-                 -60 * boost::math::constants::pi<double>() / 180,
-                 boost::math::constants::pi<double>(),  
-                 120 * boost::math::constants::pi<double>() / 180, 
-                 60 * boost::math::constants::pi<double>() / 180;
-    coords1.resize(8, 3); 
-    coords1.row(0) = Matrix<double, 3, 1>::Zero();
-    coords1(1, 0) = length; 
-    coords1(1, 1) = 0; 
-    coords1(1, 2) = 0;
-    coords1.row(2) = generateNextAtom<double>(
-        coords1.row(0), coords1.row(1), length, angles(0), rng, uniform_dist
-    ); 
-    for (int i = 3; i < 8; ++i) 
-    {
-        double theta = angles(i - 2); 
-        double phi = dihedrals(i - 3); 
-        coords1.row(i) = generateNextAtomDihedral<double>(
-            coords1.row(i - 3), coords1.row(i - 2), coords1.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
-        );
-    }
-
-    // Then generate a 6-atom segment 
-    angles = Array<double, Dynamic, 1>::Zero(4);
-    angles << 130 * boost::math::constants::pi<double>() / 180, 
-              170 * boost::math::constants::pi<double>() / 180, 
-              150 * boost::math::constants::pi<double>() / 180, 
-              160 * boost::math::constants::pi<double>() / 180;  
-    dihedrals = Array<double, Dynamic, 1>::Zero(3);
-    dihedrals << 72 * boost::math::constants::pi<double>() / 180, 
-                 -40 * boost::math::constants::pi<double>() / 180, 
-                 100 * boost::math::constants::pi<double>() / 180;
-    coords2.resize(6, 3); 
-    coords2(0, 0) = 4; 
-    coords2(0, 1) = 5; 
-    coords2(0, 2) = 6; 
-    coords2(1, 0) = coords2(0, 0); 
-    coords2(1, 1) = coords2(0, 1) + length;
-    coords2(1, 2) = coords2(0, 2); 
-    coords2.row(2) = generateNextAtom<double>(
-        coords2.row(0), coords2.row(1), length, angles(0), rng, uniform_dist
-    );
-    for (int i = 3; i < 6; ++i) 
-    {
-        double theta = angles(i - 2); 
-        double phi = dihedrals(i - 3); 
-        coords2.row(i) = generateNextAtomDihedral<double>(
-            coords2.row(i - 3), coords2.row(i - 2), coords2.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
-        );
-    }
-
-    // Then generate a 7-atom segment 
-    angles = Array<double, Dynamic, 1>::Zero(5);
-    angles << 120 * boost::math::constants::pi<double>() / 180, 
-              110 * boost::math::constants::pi<double>() / 180, 
-              140 * boost::math::constants::pi<double>() / 180, 
-              170 * boost::math::constants::pi<double>() / 180, 
-              160 * boost::math::constants::pi<double>() / 180; 
-    dihedrals = Array<double, Dynamic, 1>::Zero(4);
-    dihedrals << 48 * boost::math::constants::pi<double>() / 180, 
-                 106 * boost::math::constants::pi<double>() / 180,  
-                 -22 * boost::math::constants::pi<double>() / 180, 
-                 57 * boost::math::constants::pi<double>() / 180;  
-    coords3.resize(7, 3); 
-    coords3(0, 0) = -5; 
-    coords3(0, 1) = -4; 
-    coords3(0, 2) = -3; 
-    coords3(1, 0) = coords3(0, 0); 
-    coords3(1, 1) = coords3(0, 1);
-    coords3(1, 2) = coords3(0, 2) + length; 
-    coords3.row(2) = generateNextAtom<double>(
-        coords3.row(0), coords3.row(1), length, angles(0), rng, uniform_dist
-    );
-    for (int i = 3; i < 7; ++i) 
-    {
-        double theta = angles(i - 2); 
-        double phi = dihedrals(i - 3); 
-        coords3.row(i) = generateNextAtomDihedral<double>(
-            coords3.row(i - 3), coords3.row(i - 2), coords3.row(i - 1), length,
-            theta, phi, rng, uniform_dist, (phi > 0 ? 1 : -1)
-        );
-    }
-
-    // Generate the corresponding polymer melt 
-    std::vector<Matrix<double, Dynamic, 3> > coords_all; 
-    coords_all.push_back(coords1); 
-    coords_all.push_back(coords2); 
-    coords_all.push_back(coords3); 
+    // Generate an example melt configuration 
+    auto coords_all = generateExampleMeltCoords(rng, uniform_dist);
+    REQUIRE(coords_all.size() == 3); 
+    Matrix<double, Dynamic, 3> coords1 = coords_all[0];
+    Matrix<double, Dynamic, 3> coords2 = coords_all[1]; 
+    Matrix<double, Dynamic, 3> coords3 = coords_all[2];  
     PolymerMeltConfiguration<double> melt_configs(
         3, coords_all, Units::NANO, 300, xmin, xmax, ymin, ymax, zmin, zmax
     );
