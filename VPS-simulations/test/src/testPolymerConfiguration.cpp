@@ -122,7 +122,7 @@ TEST_CASE(
  */
 TEST_CASE(
     "Tests for reptation, pop, and append methods",
-    "[appendSegmentToTail(), appendSegmentToHead(), popSegmentFromTail(), popSegmentFromHead(), reptateTowardsTail(), reptateTowardsHead()]"
+    "[appendSegmentToTail(), appendSegmentToHead(), popSegmentFromTail(), reptateTowardsTail(), reptateTowardsHead()]"
 )
 {
     boost::random::mt19937 rng(1234567890);
@@ -201,22 +201,8 @@ TEST_CASE(
         Catch::Matchers::WithinAbs(0, tol)
     );
 
-    // Remove 3-atom segment from the head
-    config.popSegmentFromHead(2);     // Last index to remove is 2
-    
-    // Check the polymer length and coordinates
-    REQUIRE(config.getLength() == 7);
-    Matrix<double, Dynamic, 3> old_coords(new_coords); 
-    new_coords = config.getSegment(0, 7); 
-    REQUIRE(new_coords.rows() == 7); 
-    for (int i = 0; i < 7; ++i)
-        REQUIRE_THAT(
-            (new_coords.row(i) - old_coords.row(i + 3)).norm(),
-            Catch::Matchers::WithinAbs(0, tol)
-        );
-
     // Append a 4-atom segment to the head
-    old_coords = new_coords; 
+    Matrix<double, Dynamic, 3> old_coords = new_coords; 
     double theta3 = 132 * boost::math::constants::pi<double>() / 180; 
     double theta4 = 156 * boost::math::constants::pi<double>() / 180;
     double theta5 = 98 * boost::math::constants::pi<double>() / 180; 
@@ -248,9 +234,9 @@ TEST_CASE(
     config.appendSegmentToHead(head); 
 
     // Check the polymer length and coordinates 
-    REQUIRE(config.getLength() == 11);
-    new_coords = config.getSegment(0, 11);
-    REQUIRE(new_coords.rows() == 11);
+    REQUIRE(config.getLength() == 14);
+    new_coords = config.getSegment(0, 14);
+    REQUIRE(new_coords.rows() == 14);
     REQUIRE_THAT(
         (new_coords.row(0) - head4.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
@@ -267,7 +253,7 @@ TEST_CASE(
         (new_coords.row(3) - head1.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     ); 
-    for (int i = 4; i < 11; ++i)
+    for (int i = 4; i < 14; ++i)
     {
         REQUIRE_THAT(
             (new_coords.row(i) - old_coords.row(i - 4)).norm(),
@@ -276,14 +262,14 @@ TEST_CASE(
     }
 
     // Remove 3-atom segment from the tail 
-    config.popSegmentFromTail(11 - 3);    // Last index to remove
+    config.popSegmentFromTail(11);    // Remove indices 11, 12, 13
 
     // Check the polymer length and coordinates
-    REQUIRE(config.getLength() == 8);
+    REQUIRE(config.getLength() == 11);
     old_coords = new_coords; 
-    new_coords = config.getSegment(0, 8); 
-    REQUIRE(new_coords.rows() == 8);
-    for (int i = 0; i < 8; ++i)
+    new_coords = config.getSegment(0, 11); 
+    REQUIRE(new_coords.rows() == 11);
+    for (int i = 0; i < 11; ++i)
     {
         REQUIRE_THAT(
             (new_coords.row(i) - old_coords.row(i)).norm(),
@@ -302,10 +288,10 @@ TEST_CASE(
     config.reptateTowardsTail(tail3);
 
     // Check the polymer length and coordinates
-    REQUIRE(config.getLength() == 8);
-    new_coords = config.getSegment(0, 8); 
-    REQUIRE(new_coords.rows() == 8);
-    for (int i = 0; i < 7; ++i)
+    REQUIRE(config.getLength() == 11);
+    new_coords = config.getSegment(0, 11); 
+    REQUIRE(new_coords.rows() == 11);
+    for (int i = 0; i < 10; ++i)
     {
         REQUIRE_THAT(
             (new_coords.row(i) - old_coords.row(i + 1)).norm(),
@@ -313,7 +299,7 @@ TEST_CASE(
         );
     }
     REQUIRE_THAT(
-        (new_coords.row(7) - tail3.transpose()).norm(),
+        (new_coords.row(10) - tail3.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
 
@@ -328,14 +314,14 @@ TEST_CASE(
     config.reptateTowardsHead(head5);
 
     // Check the polymer length and coordinates
-    REQUIRE(config.getLength() == 8);
-    new_coords = config.getSegment(0, 8); 
-    REQUIRE(new_coords.rows() == 8);
+    REQUIRE(config.getLength() == 11);
+    new_coords = config.getSegment(0, 11); 
+    REQUIRE(new_coords.rows() == 11);
     REQUIRE_THAT(
         (new_coords.row(0) - head5.transpose()).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
-    for (int i = 1; i < 8; ++i)
+    for (int i = 1; i < 11; ++i)
     {
         REQUIRE_THAT(
             (new_coords.row(i) - old_coords.row(i - 1)).norm(),
@@ -367,10 +353,10 @@ TEST_CASE(
     config.reptateTowardsTailMultimer(tail_segment);
 
     // Check the polymer length and coordinates
-    REQUIRE(config.getLength() == 8);
-    new_coords = config.getSegment(0, 8); 
-    REQUIRE(new_coords.rows() == 8);
-    for (int i = 0; i < 5; ++i)
+    REQUIRE(config.getLength() == 11);
+    new_coords = config.getSegment(0, 11); 
+    REQUIRE(new_coords.rows() == 11);
+    for (int i = 0; i < 8; ++i)
     {
         REQUIRE_THAT(
             (new_coords.row(i) - old_coords.row(i + 3)).norm(), 
@@ -378,15 +364,15 @@ TEST_CASE(
         );
     }
     REQUIRE_THAT(
-        (new_coords.row(5) - tail_segment.row(0)).norm(), 
+        (new_coords.row(8) - tail_segment.row(0)).norm(), 
         Catch::Matchers::WithinAbs(0, tol)
     );
     REQUIRE_THAT(
-        (new_coords.row(6) - tail_segment.row(1)).norm(), 
+        (new_coords.row(9) - tail_segment.row(1)).norm(), 
         Catch::Matchers::WithinAbs(0, tol)
     ); 
     REQUIRE_THAT(
-        (new_coords.row(7) - tail_segment.row(2)).norm(),
+        (new_coords.row(10) - tail_segment.row(2)).norm(),
         Catch::Matchers::WithinAbs(0, tol)
     );
 
@@ -420,9 +406,9 @@ TEST_CASE(
     config.reptateTowardsHeadMultimer(head_segment); 
 
     // Check the polymer length and coordinates
-    REQUIRE(config.getLength() == 8);
-    new_coords = config.getSegment(0, 8); 
-    REQUIRE(new_coords.rows() == 8);
+    REQUIRE(config.getLength() == 11);
+    new_coords = config.getSegment(0, 11); 
+    REQUIRE(new_coords.rows() == 11);
     for (int i = 0; i < 4; ++i)
     {
         REQUIRE_THAT(
@@ -430,7 +416,7 @@ TEST_CASE(
             Catch::Matchers::WithinAbs(0, tol)
         );
     }
-    for (int i = 4; i < 8; ++i)
+    for (int i = 4; i < 11; ++i)
     {
         REQUIRE_THAT(
             (new_coords.row(i) - old_coords.row(i - 4)).norm(), 
@@ -829,172 +815,198 @@ TEST_CASE(
     boost::random::uniform_01<> uniform_dist;
     const double tol = 1e-3;
 
-    // Generate a 10-mer with randomly chosen angles and dihedrals 
+    // Generate a 10-mer with randomly chosen angles and dihedrals
     //
-    // The bond lengths are chosen to be smaller than the Lennard-Jones 
-    // length scale, so that we have clearly nonzero non-bonded interaction 
-    // energies
+    // The chain is generated with no angle or dihedral potentials to allow 
+    // for non-bonded interactions  
     const double kT = 1.380649e-2 * 300;
     std::unordered_map<std::string, double> lj_params,
-                                            fene_params,
-                                            angle_params,
-                                            dihedral_params;
+                                            fene_params, 
+                                            random_params, 
+                                            nodihedral_params;  
     lj_params["eps"] = kT; 
     lj_params["sigma"] = 0.9;
-    fene_params["K"] = 0.1 * kT; 
+    fene_params["K"] = 9 * kT; 
     fene_params["R0"] = 1.5;
-    angle_params["K"] = 0.1 * kT;
-    angle_params["theta0"] = 160 * boost::math::constants::pi<double>() / 180;
-    dihedral_params["K"] = 0.1 * kT;
-    dihedral_params["d"] = 1; 
-    dihedral_params["n"] = 1; 
-    const double scale = 0.9 * lj_params["sigma"];
-    const int length = 10; 
-    Matrix<double, Dynamic, 3> coords1(length, 3);
-    coords1.row(0) = Matrix<double, 3, 1>::Zero();
-    coords1(1, 0) = scale; 
-    coords1(1, 1) = 0; 
-    coords1(1, 2) = 0;
-    for (int i = 2; i < length; ++i)
-    {
-        double angle = (
-            -boost::math::constants::third_pi<double>() +
-            boost::math::constants::two_thirds_pi<double>() * uniform_dist(rng)
-        );  
-        coords1.row(i) = generateNextAtom<double>(
-            coords1.row(i - 2), coords1.row(i - 1), scale, angle, rng,
-            uniform_dist
-        );
-    }
-    PolymerConfiguration<double> config1(coords1, Units::NANO, 300.0);  
+
+    // Define a null cosine potential (to mimic random coils with excluded 
+    // volume interactions)
+    random_params["K"] = 0.0;
+    random_params["theta0"] = boost::math::constants::pi<double>();
+
+    // Define dihedral potential parameters  
+    nodihedral_params["K"] = 0;
+
+    // Define additional parameters for initialization and sampling 
+    const double collision_threshold = 0.9;    // Slightly less than 2^(1/6) * sigma ~ 1.01
+    const int max_tries_per_atom = 50;
+    const int max_n_backtracks = 50;  
+    Matrix<double, Dynamic, 2> bond_length_cdf = getFeneCDF<double>(
+        lj_params["eps"], lj_params["sigma"], fene_params["K"], fene_params["R0"],
+        kT, 10000
+    );
+
+    // Generate the 10-mer 
+    const int length = 10;
+    Matrix<double, 3, 1> r0 = Matrix<double, 3, 1>::Zero();  
+    PolymerConfiguration<double> config = generateKMer<double>(
+        length, lj_params, fene_params, AngleMode::COSINE, random_params, 
+        nodihedral_params, r0, collision_threshold, max_tries_per_atom,
+        max_n_backtracks, rng, uniform_dist, bond_length_cdf
+    );
+    Matrix<double, Dynamic, 3> coords = config.getSegment(0, length);  
+    REQUIRE(config.getLength() == length);
+    REQUIRE(coords.rows() == length);
 
     // Introduce a new atom at the tail
     //
     // Make it close to the existing polymer, so that we have clearly nonzero 
     // non-bonded interaction energies
     Matrix<double, 3, 1> r1;
-    r1 << -scale + 2 * scale * uniform_dist(rng), 
-          -scale + 2 * scale * uniform_dist(rng), 
-          -scale + 2 * scale * uniform_dist(rng); 
-    Matrix<double, 3, 1> r_tail = coords1.row(length - 2) + r1.transpose(); 
+    r1 << -collision_threshold + 2 * collision_threshold * uniform_dist(rng), 
+          -collision_threshold + 2 * collision_threshold * uniform_dist(rng), 
+          -collision_threshold + 2 * collision_threshold * uniform_dist(rng); 
+    Matrix<double, 3, 1> r_tail = coords.row(length - 2) + r1.transpose(); 
 
     // Generate a new reptated configuration 
-    PolymerConfiguration<double> config2(config1); 
-    config2.reptateTowardsTail(r_tail); 
+    PolymerConfiguration<double> config_reptated(config); 
+    config_reptated.reptateTowardsTail(r_tail);
+    Matrix<double, Dynamic, 3> coords_reptated = config_reptated.getSegment(0, length);  
 
     // Check the residual energy due to reptation
     //
-    // This should be the non-bonded energy between atoms 1, ..., 8 (0-indexed)
-    // in the original configuration and the new atom 
+    // This should be the non-bonded energy between atoms 1, ..., 8 in the
+    // original configuration and the new atom 
     double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
-    double reptate_residual_energy_12 = config1.getReptationResidualEnergy(
+    double residual_reptate = config.getReptationResidualEnergy(
         r_tail, lj_params, neighbor_threshold
     );
     double sum = 0; 
-    for (int i = 1; i < 9; ++i)
+    for (int i = 1; i < length - 1; ++i)
     {
-        double dist = (r_tail - coords1.row(i).transpose()).norm(); 
+        double dist = (r_tail - coords.row(i).transpose()).norm(); 
         sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
     }
-    REQUIRE_THAT(reptate_residual_energy_12, Catch::Matchers::WithinAbs(sum, tol)); 
+    REQUIRE_THAT(residual_reptate, Catch::Matchers::WithinAbs(sum, tol)); 
 
-    // Generate the reverse reptated configuration 
-    PolymerConfiguration<double> config3(config2); 
-    config3.reptateTowardsHead(coords1.row(0));
+    // Generate the reverse reptated configuration
+    Matrix<double, 3, 1> r_head_orig = coords.row(0);  
+    PolymerConfiguration<double> config_reversed(config_reptated); 
+    config_reversed.reptateTowardsHead(r_head_orig); 
+    Matrix<double, Dynamic, 3> coords_reversed = config_reversed.getSegment(0, length); 
 
     // Check the residual energy due to reptation
     //
-    // This should be the non-bonded energy between atoms 1, ..., 8 (0-indexed)
-    // in the new configuration and the new atom (atom 0 in the original
+    // This should be the non-bonded energy between atoms 1, ..., 8 in the
+    // reptated configuration and the new atom (atom 0 in the original
     // configuration) 
     //
     // This is equal to the non-bonded energy between atoms 2, ..., 9 in the 
-    // original configuration and the new atom 
-    double reptate_residual_energy_23 = config2.getReptationResidualEnergy(
-        coords1.row(0), lj_params, neighbor_threshold
+    // original configuration and the new atom
+    double residual_reverse = config_reptated.getReptationResidualEnergy(
+        r_head_orig, lj_params, neighbor_threshold
     );
     sum = 0; 
-    for (int i = 2; i < 10; ++i)
+    for (int i = 1; i < length - 1; ++i)
     {
-        double dist = (coords1.row(0) - coords1.row(i)).norm(); 
+        double dist = (r_head_orig.transpose() - coords_reptated.row(i)).norm();
         sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
     }
-    REQUIRE_THAT(reptate_residual_energy_23, Catch::Matchers::WithinAbs(sum, tol)); 
+    REQUIRE_THAT(residual_reverse, Catch::Matchers::WithinAbs(sum, tol));
+    sum = 0; 
+    for (int i = 2; i < length; ++i)
+    {
+        double dist = (r_head_orig.transpose() - coords.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(residual_reverse, Catch::Matchers::WithinAbs(sum, tol));
 
     // The reptation residual energy (1 -> 2) minus the reverse residual energy
     // (2 -> 3 = 1) must be equal to the total nonbonded energy difference
     // between 2 and 1
-    double energy1_nonbonded_nc = config1.getNonbondedEnergy(
+    double energy1_nonbonded_nc = config.getNonbondedEnergy(
         lj_params, neighbor_threshold, true
     );
-    double energy2_nonbonded_nc = config2.getNonbondedEnergy(
+    double energy2_nonbonded_nc = config_reptated.getNonbondedEnergy(
         lj_params, neighbor_threshold, true
     );
     double energy_nonbonded_diff = energy2_nonbonded_nc - energy1_nonbonded_nc; 
     REQUIRE_THAT(
-        reptate_residual_energy_12 - reptate_residual_energy_23,
+        residual_reptate - residual_reverse,
         Catch::Matchers::WithinAbs(energy_nonbonded_diff, tol)
     ); 
 
     // Introduce a new atom at the head
-    r1 << -scale + 2 * scale * uniform_dist(rng), 
-          -scale + 2 * scale * uniform_dist(rng), 
-          -scale + 2 * scale * uniform_dist(rng); 
-    Matrix<double, 3, 1> r_head = coords1.row(1) + r1.transpose(); 
+    //
+    // Make it close to the existing polymer, so that we have clearly nonzero 
+    // non-bonded interaction energies
+    r1 << -collision_threshold + 2 * collision_threshold * uniform_dist(rng), 
+          -collision_threshold + 2 * collision_threshold * uniform_dist(rng), 
+          -collision_threshold + 2 * collision_threshold * uniform_dist(rng); 
+    Matrix<double, 3, 1> r_head = coords.row(1) + r1.transpose(); 
 
     // Generate a new reptated configuration (from the original) 
-    PolymerConfiguration<double> config4(config1); 
-    config4.reptateTowardsHead(r_head); 
+    config_reptated = config; 
+    config_reptated.reptateTowardsHead(r_head);
+    coords_reptated = config_reptated.getSegment(0, length);  
 
     // Check the residual energy due to reptation
     //
-    // This should be the non-bonded energy between atoms 1, ..., 8 (0-indexed)
-    // in the original configuration and the new atom  
-    double reptate_residual_energy_14 = config1.getReptationResidualEnergy(
+    // This should be the non-bonded energy between atoms 1, ..., 8 in the
+    // original configuration and the new atom  
+    residual_reptate = config.getReptationResidualEnergy(
         r_head, lj_params, neighbor_threshold
     ); 
     sum = 0; 
-    for (int i = 1; i < 9; ++i)
+    for (int i = 1; i < length - 1; ++i)
     {
-        double dist = (r_head - coords1.row(i).transpose()).norm(); 
+        double dist = (r_head - coords.row(i).transpose()).norm(); 
         sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
     }
-    REQUIRE_THAT(reptate_residual_energy_14, Catch::Matchers::WithinAbs(sum, tol)); 
+    REQUIRE_THAT(residual_reptate, Catch::Matchers::WithinAbs(sum, tol)); 
 
-    // Generate the reverse reptated configuration 
-    PolymerConfiguration<double> config5(config4); 
-    config5.reptateTowardsTail(coords1.row(length - 1));
+    // Generate the reverse reptated configuration
+    Matrix<double, 3, 1> r_tail_orig = coords.row(length - 1);  
+    config_reversed = config_reptated; 
+    config_reversed.reptateTowardsTail(r_tail_orig);
+    coords_reversed = config_reversed.getSegment(0, length);  
 
     // Check the residual energy due to reptation
     //
-    // This should be the non-bonded energy between atoms 1, ..., 8 (0-indexed)
-    // in the new configuration and the new atom (atom 9 in the original
-    // configuration) 
+    // This should be the non-bonded energy between atoms 1, ..., 8 in the
+    // new configuration and the new atom (atom 9 in the original configuration) 
     //
     // This is equal to the non-bonded energy between atoms 0, ..., 7 in the 
     // original configuration and the new atom 
-    double reptate_residual_energy_45 = config4.getReptationResidualEnergy(
-        coords1.row(length - 1), lj_params, neighbor_threshold
+    residual_reverse = config_reptated.getReptationResidualEnergy(
+        r_tail_orig, lj_params, neighbor_threshold
     );  
-    sum = 0; 
-    for (int i = 0; i < 8; ++i)
+    sum = 0;
+    for (int i = 0; i < length - 2; ++i)
     {
-        double dist = (coords1.row(length - 1) - coords1.row(i)).norm(); 
+        double dist = (r_tail_orig.transpose() - coords.row(i)).norm(); 
         sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
     }
-    REQUIRE_THAT(reptate_residual_energy_45, Catch::Matchers::WithinAbs(sum, tol));
+    REQUIRE_THAT(residual_reverse, Catch::Matchers::WithinAbs(sum, tol));
+    sum = 0;
+    for (int i = 1; i < length - 1; ++i)
+    {
+        double dist = (r_tail_orig.transpose() - coords_reptated.row(i)).norm(); 
+        sum += lj<double>(dist, lj_params["eps"], lj_params["sigma"], true); 
+    }
+    REQUIRE_THAT(residual_reverse, Catch::Matchers::WithinAbs(sum, tol));
 
     // The reptation residual energy (1 -> 4) minus the reverse residual energy
     // (4 -> 5 = 1) must be equal to the total nonbonded energy difference
     // between 4 and 1
-    double energy4_nonbonded_nc = config4.getNonbondedEnergy(
+    double energy4_nonbonded_nc = config_reptated.getNonbondedEnergy(
         lj_params, neighbor_threshold, true
     );
     energy_nonbonded_diff = energy4_nonbonded_nc - energy1_nonbonded_nc; 
     REQUIRE_THAT(
-        reptate_residual_energy_14 - reptate_residual_energy_45,
+        residual_reptate - residual_reverse,
         Catch::Matchers::WithinAbs(energy_nonbonded_diff, tol)
-    ); 
+    );
 }
 
 /**
