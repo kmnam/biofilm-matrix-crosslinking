@@ -3,7 +3,7 @@
  *     Kee-Myoung Nam
  *
  * Last updated:
- *     4/27/2026
+ *     5/28/2026
  */
 #include <iostream>
 #include <filesystem>
@@ -99,11 +99,15 @@ int main(int argc, char** argv)
                                             fene_params, 
                                             angle_params, 
                                             dihedral_params;
-    const double kT = 1.380649e-2 * 300;    // Use "nano" units 
+    const double kT = 1.380649e-2 * 300;    // Use "nano" units
+
+    // Parse Lennard-Jones and FENE potential parameters
     lj_params["eps"] = json_data["lj_eps"].as_double() * kT; 
     lj_params["sigma"] = json_data["lj_sigma"].as_double(); 
     fene_params["K"] = json_data["fene_K"].as_double() * kT;
     fene_params["R0"] = json_data["fene_R0"].as_double();
+
+    // Parse angle potential parameters
     AngleMode angle_mode = (
         json_data["angle_mode"].as_int64() == 0 ? AngleMode::COSINE : AngleMode::GAUSSIAN
     ); 
@@ -127,17 +131,26 @@ int main(int argc, char** argv)
             json_data["gaussian_theta2"].as_double() * boost::math::constants::pi<double>() / 180
         );
     } 
+    
+    // Parse dihedral potential parameters 
     dihedral_params["K"] = json_data["dihedral_K"].as_double() * kT;
     dihedral_params["d"] = 1; 
     dihedral_params["n"] = 1;
-    const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
+    try
+    {
+        dihedral_params["delta"] = (
+            json_data["dihedral_delta"].as_double() * boost::math::constants::pi<double>() / 180
+        ); 
+    }
+    catch (boost::wrapexcept<boost::system::system_error>& e) { }
 
     // Calculate the energy of each configuration from the original run
     std::vector<double> energies_total,
                         energies_nonbonded,
                         energies_bond, 
                         energies_angle, 
-                        energies_dihedral; 
+                        energies_dihedral;
+    const double neighbor_threshold = 1.1 * pow(2, 1. / 6.) * lj_params["sigma"]; 
     for (int i = 0; i < melt_configs0.size(); ++i)
     {
         std::cout << "... recomputing energy of configuration " << i << std::endl; 
@@ -186,7 +199,7 @@ int main(int argc, char** argv)
         energies_dihedral.push_back(energy_dihedral);  
     }
 
-    // Only retain the desired number of files 
+    // Only retain the desired number of configurations 
     if (argc > 3)
     {
         const int n_configs = std::stoi(argv[3]);
