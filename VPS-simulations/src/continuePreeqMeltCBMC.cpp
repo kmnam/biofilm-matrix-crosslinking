@@ -83,7 +83,7 @@ int main(int argc, char** argv)
     boost::random::uniform_01<> uniform_dist;
 
     // Parse additional input parameters to pass into LAMMPS
-    const int ncores = std::stoi(argv[4]);  
+    const int ncores = std::stoi(argv[6]);  
     const double mass = json_data["monomer_mass"].as_double();
     const double dt = json_data["dt"].as_double(); 
     const double damp = json_data["damp"].as_double();
@@ -104,23 +104,39 @@ int main(int argc, char** argv)
     // Run LAMMPS ... 
     //
     // Prepare an input file for LAMMPS 
-    ss.str(std::string()); 
-    ss.clear(); 
+    std::stringstream ss; 
     ss << outprefix << "_soft_paths.txt"; 
     std::string soft_input_filename = ss.str(); 
     std::ofstream outfile(soft_input_filename);
-    boost::random::uniform_int_distribution<> lammps_seed_dist(1, 999); 
-    outfile << init_filename << std::endl
-            << outprefix << "_soft.lammpstrj" << std::endl
-            << outprefix << "_resolved.data" << std::endl
-            << outprefix << "_lj_coeffs.data" << std::endl
-            << dt << std::endl
-            << damp << std::endl
-            << static_cast<int>(t_add_soft / dt) << std::endl
-            << static_cast<int>(t_add_lj / dt) << std::endl
-            << static_cast<int>(dt_per_dump / dt) << std::endl
-            << lammps_seed_dist(rng) << std::endl
-            << lammps_seed_dist(rng) << std::endl;
+    boost::random::uniform_int_distribution<> lammps_seed_dist(1, 999);
+    
+    // If the soft potential is required ... 
+    if (t_add_soft > 0)
+    { 
+        outfile << restart_filename << std::endl
+                << outprefix << "_soft.lammpstrj" << std::endl
+                << outprefix << "_resolved.data" << std::endl
+                << outprefix << "_lj_coeffs.data" << std::endl
+                << dt << std::endl
+                << damp << std::endl
+                << static_cast<int>(t_add_soft / dt) << std::endl
+                << static_cast<int>(t_add_lj / dt) << std::endl
+                << static_cast<int>(dt_per_dump / dt) << std::endl
+                << lammps_seed_dist(rng) << std::endl
+                << lammps_seed_dist(rng) << std::endl;
+    }
+    else     // Otherwise ... 
+    {
+        outfile << restart_filename << std::endl
+                << outprefix << "_soft.lammpstrj" << std::endl
+                << outprefix << "_resolved.data" << std::endl
+                << dt << std::endl
+                << damp << std::endl
+                << static_cast<int>(t_add_lj / dt) << std::endl
+                << static_cast<int>(dt_per_dump / dt) << std::endl
+                << lammps_seed_dist(rng) << std::endl
+                << lammps_seed_dist(rng) << std::endl;
+    }
     outfile.close();
 
     // Run LAMMPS
@@ -129,18 +145,34 @@ int main(int argc, char** argv)
     // 1) No angle or dihedral potential (random coils with excluded volume
     //    interactions 
     // 2) Gaussian angle potential and harmonic (or trivial) dihedral potential
-    // 3) Gaussian angle potential and Fourier dihedral potential 
+    // 3) Gaussian angle potential and Fourier dihedral potential
+    //
+    // For each mode, the choice of script also depends on whether the soft 
+    // potential is required  
     std::string lammps_script_filename;
     if (angle_mode == AngleMode::COSINE && angle_params["K"] == 0)
     {
-        lammps_script_filename = "random_coil_soft.lammps";
+        if (t_add_soft > 0)
+            lammps_script_filename = "random_coil_soft.lammps";
+        else 
+            lammps_script_filename = "random_coil_nomin.lammps"; 
     } 
     else if (angle_mode == AngleMode::GAUSSIAN)
     {
         if (dihedral_params.find("delta") == dihedral_params.end())
-            lammps_script_filename = "bimodal_angles_gaussian_soft.lammps";
-        else 
-            lammps_script_filename = "bimodal_angles_gaussian_fourier_soft.lammps"; 
+        {
+            if (t_add_soft > 0)
+                lammps_script_filename = "bimodal_angles_gaussian_soft.lammps";
+            else 
+                lammps_script_filename = "bimodal_angles_gaussian_nomin.lammps"; 
+        }
+        else
+        {
+            if (t_add_soft > 0) 
+                lammps_script_filename = "bimodal_angles_gaussian_fourier_soft.lammps";
+            else 
+                lammps_script_filename = "bimodal_angles_gaussian_fourier_nomin.lammps"; 
+        } 
     }
     else
     {
