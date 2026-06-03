@@ -17,7 +17,8 @@ class VonMisesMixture:
     """
     A finite von Mises mixture model. 
     """
-    def __init__(self, n_components=2, rng=None):
+    def __init__(self, n_components=2, rng=None, means=None, kappa=None,
+                 weights=None):
         """
         Simple constructor. 
 
@@ -32,10 +33,26 @@ class VonMisesMixture:
         if rng is None:
             rng = np.random.default_rng(1234567890)
 
-        # Randomly distribute means and initialize all concentrations to 1 
-        self.means = rng.uniform(-np.pi, np.pi, size=n_components)
-        self.kappa = np.ones(n_components, dtype=np.float64)
-        self.weights = np.ones(n_components, dtype=np.float64) / n_components
+        # If means and/or concentrations have not been specified, randomly
+        # distribute means and initialize all concentrations to 1
+        if means is not None:
+            if means.size != self.n_components:
+                raise RuntimeError('Mean array size does not match number of components')
+            self.means = means.reshape(-1)
+        else:
+            self.means = rng.uniform(-np.pi, np.pi, size=n_components)
+        if kappa is not None:
+            if kappa.size != self.n_components:
+                raise RuntimeError('Kappa array size does not match number of components')
+            self.kappa = kappa.reshape(-1)
+        else:
+            self.kappa = np.ones(n_components, dtype=np.float64)
+        if weights is not None:
+            if weights.size != self.n_components:
+                raise RuntimeError('Weight array size does not match number of components')
+            self.weights = weights.reshape(-1)
+        else:
+            self.weights = np.ones(n_components, dtype=np.float64) / n_components
 
     ####################################################################
     def log_likelihood(self, X, Z, weights=None, means=None, kappa=None,
@@ -241,7 +258,7 @@ class VonMisesMixture:
                 Z[i] = np.argmin(np.abs((delta + np.pi) % (2 * np.pi) - np.pi))
 
     ####################################################################
-    def plot(self, ax):
+    def plot(self, ax, folded=False, deg=False):
         """
         Plot the PDF corresponding to the mixture model. 
 
@@ -254,14 +271,52 @@ class VonMisesMixture:
         -------
         Updated axes. 
         """
-        x = np.linspace(-np.pi, np.pi, 100)
-        ax.plot(
-            x,
-            sum(
-                self.weights[j] * vonmises.pdf(x, loc=self.means[j], kappa=self.kappa[j])
-                for j in range(self.n_components)
-            )
-        )
+        if not folded:
+            if deg:
+                x = np.linspace(-180, 180, 100)
+                ax.plot(
+                    x,
+                    (np.pi / 180) * sum(
+                        self.weights[j] * vonmises.pdf(
+                            x / 180 * np.pi, loc=self.means[j], kappa=self.kappa[j]
+                        )
+                        for j in range(self.n_components)
+                    )
+                )
+            else:
+                x = np.linspace(-np.pi, np.pi, 100)
+                ax.plot(
+                    x,
+                    sum(
+                        self.weights[j] * vonmises.pdf(
+                            x, loc=self.means[j], kappa=self.kappa[j]
+                        )
+                        for j in range(self.n_components)
+                    )
+                )
+        else:
+            if deg:
+                x = np.linspace(0, 180, 100)
+                ax.plot(
+                    x,
+                    (np.pi / 180) * sum(
+                        self.weights[j] * vonmises.pdf(
+                            x / 180 * np.pi, loc=self.means[j], kappa=self.kappa[j]
+                        )
+                        for j in range(self.n_components)
+                    )
+                )
+            else:
+                x = np.linspace(0, np.pi, 100)
+                ax.plot(
+                    x,
+                    sum(
+                        self.weights[j] * vonmises.pdf(
+                            x, loc=self.means[j], kappa=self.kappa[j]
+                        )
+                        for j in range(self.n_components)
+                    )
+                )
 
         return ax
 
