@@ -223,5 +223,5 @@ if __name__ == '__main__':
     axes[2].set_xlabel('Dihedral angle', size=14)
     axes[2].set_ylabel('Density', size=14)
     plt.tight_layout()
-    plt.savefig('bond_stats_combined.pdf'.format(run))
+    plt.savefig('bond_stats_combined.pdf')
 
