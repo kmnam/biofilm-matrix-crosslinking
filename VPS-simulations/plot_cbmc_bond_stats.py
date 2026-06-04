@@ -139,8 +139,8 @@ for i, fraction in enumerate(fractions):
             weights=np.array([1.0])
         )
     print(
-        '  - Folded bond angles:', angle_mixture.means, angle_mixture.kappa,
-        angle_mixture.weights
+        '  - Folded bond angles:', angle_mixture_folded.means,
+        angle_mixture_folded.kappa, angle_mixture_folded.weights
     )
     
     # Fit a von Mises distribution to the dihedral distribution
